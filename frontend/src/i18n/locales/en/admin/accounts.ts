@@ -492,6 +492,9 @@ export default {
         planTypeDesc:
           "Manually correct this account's ChatGPT plan tier (Plus / Pro / Free). Note: a token refresh near expiry or a 429 rate-limit response will auto-overwrite this with the real tier.",
         planTypeClear: 'Clear (auto-detect)',
+        noopToolCallInjection: 'Inject no-op Exec tool call',
+        noopToolCallInjectionDesc:
+          'Only applies to this OpenAI OAuth account. When enabled, each normal Responses turn ending in a user message receives a paired successful no-op Exec tool call. Compact requests are excluded. Disabled by default.',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',

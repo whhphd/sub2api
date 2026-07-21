@@ -46,6 +46,46 @@ func TestIsOpenAIWSClientDisconnectError(t *testing.T) {
 	}
 }
 
+func TestInjectOpenAIOAuthNoopToolCallPayload(t *testing.T) {
+	payload := []byte(`{"type":"response.create","model":"gpt-5.5","input":[{"type":"message","role":"user","content":"hello"}]}`)
+	enabledAccount := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true},
+	}
+
+	updated, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, enabledAccount, false)
+	require.NoError(t, err)
+	require.True(t, injected)
+	require.Equal(t, "response.create", gjson.GetBytes(updated, "type").String())
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(updated, "input.1.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(updated, "input.1.name").String())
+	require.Equal(t, openAIOAuthNoopExecInput, gjson.GetBytes(updated, "input.1.input").String())
+	require.Equal(t, gjson.GetBytes(updated, "input.1.call_id").String(), gjson.GetBytes(updated, "input.2.call_id").String())
+	require.Equal(t, "custom_tool_call_output", gjson.GetBytes(updated, "input.2.type").String())
+	require.Equal(t, openAIOAuthNoopExecOutput, gjson.GetBytes(updated, "input.2.output.0.text").String())
+
+	updatedAgain, injectedAgain, err := injectOpenAIOAuthNoopToolCallPayload(updated, enabledAccount, false)
+	require.NoError(t, err)
+	require.False(t, injectedAgain)
+	require.Equal(t, string(updated), string(updatedAgain))
+
+	disabledAccount := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	unchanged, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, disabledAccount, false)
+	require.NoError(t, err)
+	require.False(t, injected)
+	require.Equal(t, string(payload), string(unchanged))
+	unchanged, injected, err = injectOpenAIOAuthNoopToolCallPayload([]byte(`{`), disabledAccount, false)
+	require.NoError(t, err)
+	require.False(t, injected)
+	require.Equal(t, "{", string(unchanged))
+
+	compactPayload, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, enabledAccount, true)
+	require.NoError(t, err)
+	require.False(t, injected)
+	require.Equal(t, string(payload), string(compactPayload))
+}
+
 func TestIsOpenAIWSIngressPreviousResponseNotFound(t *testing.T) {
 	t.Parallel()
 

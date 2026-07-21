@@ -285,6 +285,34 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('OpenAI OAuth 批量编辑应提交 no-op tool call 注入字段', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-noop-toolcall-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-noop-toolcall-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_oauth_inject_noop_toolcall: true
+      }
+    })
+  })
+
+  it('OpenAI Setup Token 批量编辑不显示 no-op tool call 注入入口', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['setup-token']
+    })
+
+    expect(wrapper.find('#bulk-edit-openai-noop-toolcall-enabled').exists()).toBe(false)
+  })
+
   it('OpenAI OAuth 批量编辑应提交 codex_cli_only_allow_app_server 字段（需同时开启父开关）', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

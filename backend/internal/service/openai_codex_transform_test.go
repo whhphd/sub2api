@@ -44,6 +44,72 @@ func TestApplyCodexOAuthTransform_ToolContinuationPreservesInput(t *testing.T) {
 	require.Equal(t, "fc_1", second["call_id"])
 }
 
+func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
+	enabledAccount := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true},
+	}
+	userInput := func() map[string]any {
+		return map[string]any{"input": []any{
+			map[string]any{"type": "message", "role": "user", "content": "hello"},
+		}}
+	}
+
+	t.Run("enabled OAuth user turn", func(t *testing.T) {
+		reqBody := userInput()
+		require.True(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, false))
+
+		input := reqBody["input"].([]any)
+		require.Len(t, input, 3)
+		call := input[1].(map[string]any)
+		output := input[2].(map[string]any)
+		require.Equal(t, "custom_tool_call", call["type"])
+		require.Equal(t, "exec", call["name"])
+		require.Equal(t, openAIOAuthNoopExecInput, call["input"])
+		require.Regexp(t, `^call_poc_[0-9a-f]{12}$`, call["call_id"])
+		require.Equal(t, "custom_tool_call_output", output["type"])
+		require.Equal(t, call["call_id"], output["call_id"])
+		require.Equal(t, []any{map[string]any{
+			"type": "input_text",
+			"text": openAIOAuthNoopExecOutput,
+		}}, output["output"])
+
+		// The appended output is no longer a user message, so retrying the
+		// transformation cannot duplicate the pair.
+		require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, false))
+		require.Len(t, reqBody["input"].([]any), 3)
+	})
+
+	tests := []struct {
+		name    string
+		account *Account
+		compact bool
+		mutate  func(map[string]any)
+	}{
+		{name: "missing option defaults off", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}},
+		{name: "explicitly disabled", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: false}}},
+		{name: "non boolean option is off", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: "true"}}},
+		{name: "API key account", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true}}},
+		{name: "other platform OAuth", account: &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true}}},
+		{name: "compact request", account: enabledAccount, compact: true},
+		{name: "empty input", account: enabledAccount, mutate: func(body map[string]any) { body["input"] = []any{} }},
+		{name: "last item is assistant", account: enabledAccount, mutate: func(body map[string]any) { body["input"].([]any)[0].(map[string]any)["role"] = "assistant" }},
+		{name: "last item is tool output", account: enabledAccount, mutate: func(body map[string]any) {
+			body["input"] = append(body["input"].([]any), map[string]any{"type": "custom_tool_call_output", "call_id": "call_old"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reqBody := userInput()
+			if tt.mutate != nil {
+				tt.mutate(reqBody)
+			}
+			require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, tt.account, tt.compact))
+		})
+	}
+}
+
 func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *testing.T) {
 	reqBody := map[string]any{
 		"model":            "gpt-5.5",

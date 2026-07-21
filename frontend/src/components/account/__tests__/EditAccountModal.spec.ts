@@ -166,6 +166,21 @@ function buildAccount() {
   } as any
 }
 
+function buildOpenAIOAuthAccount() {
+  return {
+    ...buildAccount(),
+    name: 'OpenAI OAuth',
+    type: 'oauth',
+    credentials: {
+      access_token: 'oauth-access-token',
+      refresh_token: 'oauth-refresh-token',
+      model_mapping: {
+        'gpt-5.2': 'gpt-5.2'
+      }
+    }
+  } as any
+}
+
 function buildOpenAISparkShadowAccount() {
   const account = buildAccount()
   return {
@@ -414,6 +429,43 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('loads and submits the OpenAI OAuth no-op tool call toggle', async () => {
+    const account = buildOpenAIOAuthAccount()
+    account.extra = {
+      openai_oauth_inject_noop_toolcall: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="openai-oauth-noop-toolcall-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall).toBe(false)
+  })
+
+  it('defaults legacy OpenAI OAuth accounts to no-op tool call injection disabled', async () => {
+    const account = buildOpenAIOAuthAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="openai-oauth-noop-toolcall-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall).toBe(false)
   })
 
   it('defaults legacy OpenAI accounts to long-context billing disabled', async () => {

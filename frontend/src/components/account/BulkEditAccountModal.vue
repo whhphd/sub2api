@@ -766,6 +766,52 @@
         </div>
       </div>
 
+      <!-- OpenAI OAuth no-op Exec tool-call injection -->
+      <div v-if="allOpenAIOAuthAccounts" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-openai-noop-toolcall-label"
+            class="input-label mb-0"
+            for="bulk-edit-openai-noop-toolcall-enabled"
+          >
+            {{ t('admin.accounts.openai.noopToolCallInjection') }}
+          </label>
+          <input
+            v-model="enableOpenAIOAuthNoopToolCall"
+            id="bulk-edit-openai-noop-toolcall-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-noop-toolcall"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-noop-toolcall"
+          :class="!enableOpenAIOAuthNoopToolCall && 'pointer-events-none opacity-50'"
+        >
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.openai.noopToolCallInjectionDesc') }}
+          </p>
+          <button
+            id="bulk-edit-openai-noop-toolcall-toggle"
+            type="button"
+            role="switch"
+            :aria-checked="openAIOAuthNoopToolCallEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openAIOAuthNoopToolCallEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="openAIOAuthNoopToolCallEnabled = !openAIOAuthNoopToolCallEnabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openAIOAuthNoopToolCallEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI OAuth Codex CLI only -->
       <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1331,6 +1377,15 @@ const allOpenAIOAuth = computed(() => {
   )
 })
 
+const allOpenAIOAuthAccounts = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'openai' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'oauth')
+  )
+})
+
 const allOpenAIAPIKey = computed(() => {
   return (
     targetSelectedPlatforms.value.length === 1 &&
@@ -1401,6 +1456,7 @@ const enableOpenAIPassthrough = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableUpstreamBillingAutoProbe = ref(false)
+const enableOpenAIOAuthNoopToolCall = ref(false)
 const enableCodexCLIOnly = ref(false)
 const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
@@ -1432,6 +1488,7 @@ const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const upstreamBillingAutoProbeMode = ref<'enabled' | 'disabled'>('enabled')
+const openAIOAuthNoopToolCallEnabled = ref(false)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -1697,6 +1754,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.upstream_billing_probe_enabled = upstreamBillingAutoProbeMode.value === 'enabled'
   }
 
+  if (enableOpenAIOAuthNoopToolCall.value) {
+    const extra = ensureExtra()
+    extra.openai_oauth_inject_noop_toolcall = openAIOAuthNoopToolCallEnabled.value
+  }
+
   if (enableCodexCLIOnly.value) {
     const extra = ensureExtra()
     extra.codex_cli_only = codexCLIOnlyEnabled.value
@@ -1820,6 +1882,7 @@ const handleSubmit = async () => {
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableUpstreamBillingAutoProbe.value ||
+    enableOpenAIOAuthNoopToolCall.value ||
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAppServer.value ||
     enableOpenAICompactMode.value ||
@@ -1949,6 +2012,7 @@ watch(
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
       enableUpstreamBillingAutoProbe.value = false
+      enableOpenAIOAuthNoopToolCall.value = false
       enableCodexCLIOnly.value = false
       enableCodexCLIOnlyAppServer.value = false
       enableOpenAICompactMode.value = false
@@ -1976,6 +2040,7 @@ watch(
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       upstreamBillingAutoProbeMode.value = 'enabled'
+      openAIOAuthNoopToolCallEnabled.value = false
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'

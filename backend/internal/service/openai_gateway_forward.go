@@ -135,6 +135,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Stripped /responses image_generation tool for Codex client by account policy")
 			}
 		}
+		injectedBody, injected, injectErr := injectOpenAIOAuthNoopToolCallPayload(originalBody, account, isOpenAIResponsesCompactPath(c))
+		if injectErr != nil {
+			return nil, injectErr
+		}
+		if injected {
+			originalBody = injectedBody
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected no-op exec tool call for OAuth passthrough account: %s", account.Name)
+		}
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		mappedModel := account.GetMappedModel(reqModel)
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, mappedModel)
@@ -369,6 +377,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		if codexResult.Modified {
 			markDecodedModified()
+		}
+		if injectOpenAIOAuthNoopToolCall(decoded, account, isCompactRequest) {
+			markDecodedModified()
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected no-op exec tool call for OAuth account: %s", account.Name)
 		}
 		// 带真实 device_id 时补齐 client_metadata 安装标识，与真实 Codex 对齐（compact 形态不同，跳过）。
 		if !isCompactRequest && applyCodexClientMetadata(decoded, account) {

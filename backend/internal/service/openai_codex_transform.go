@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/google/uuid"
 )
 
 var codexModelMap = map[string]string{
@@ -115,6 +116,12 @@ func compactCodexCallID(id string) string {
 }
 
 const codexImageGenerationFunctionToolName = "image_gen.imagegen"
+
+const (
+	openAIOAuthInjectNoopToolCallExtraKey = "openai_oauth_inject_noop_toolcall"
+	openAIOAuthNoopExecInput              = `const r = await tools.exec_command({"cmd":"true","yield_time_ms":1000,"max_output_tokens":1000}); text(r.output);`
+	openAIOAuthNoopExecOutput             = "Script completed\nWall time 0.0 seconds\nOutput:\n"
+)
 
 const (
 	codexImageGenerationBridgeMarker = "<sub2api-codex-image-generation>"
@@ -306,6 +313,71 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	}
 
 	return result
+}
+
+// injectOpenAIOAuthNoopToolCall appends the fixed successful exec pair only for
+// an explicitly enabled OpenAI OAuth account and a normal user turn.
+func injectOpenAIOAuthNoopToolCall(reqBody map[string]any, account *Account, isCompact bool) bool {
+	if account == nil || !account.IsOpenAIOAuth() || isCompact || account.Extra == nil {
+		return false
+	}
+	enabled, ok := account.Extra[openAIOAuthInjectNoopToolCallExtraKey].(bool)
+	if !ok || !enabled {
+		return false
+	}
+
+	input, ok := reqBody["input"].([]any)
+	if !ok || len(input) == 0 {
+		return false
+	}
+	last, ok := input[len(input)-1].(map[string]any)
+	if !ok || last["type"] != "message" || last["role"] != "user" {
+		return false
+	}
+
+	callID := "call_poc_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+	reqBody["input"] = append(input,
+		map[string]any{
+			"type":    "custom_tool_call",
+			"name":    "exec",
+			"call_id": callID,
+			"input":   openAIOAuthNoopExecInput,
+		},
+		map[string]any{
+			"type":    "custom_tool_call_output",
+			"call_id": callID,
+			"output": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": openAIOAuthNoopExecOutput,
+				},
+			},
+		},
+	)
+	return true
+}
+
+func injectOpenAIOAuthNoopToolCallPayload(payload []byte, account *Account, isCompact bool) ([]byte, bool, error) {
+	if account == nil || !account.IsOpenAIOAuth() || isCompact || account.Extra == nil {
+		return payload, false, nil
+	}
+	enabled, ok := account.Extra[openAIOAuthInjectNoopToolCallExtraKey].(bool)
+	if !ok || !enabled {
+		return payload, false, nil
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(payload, &reqBody); err != nil {
+		return payload, false, err
+	}
+	if !injectOpenAIOAuthNoopToolCall(reqBody, account, isCompact) {
+		return payload, false, nil
+	}
+	updated, err := json.Marshal(reqBody)
+	if err != nil {
+		return payload, false, err
+	}
+	return updated, true, nil
 }
 
 func normalizeCodexToolChoice(reqBody map[string]any) bool {
