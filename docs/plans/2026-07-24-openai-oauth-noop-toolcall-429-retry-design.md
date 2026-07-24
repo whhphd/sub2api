@@ -30,7 +30,7 @@ Same-account retries retain the existing 500 ms retry delay. A successful respon
 
 ## Cooldown And Scheduling
 
-For every OpenAI 429 received while the child option is effective:
+For every OpenAI 429 received by the general account rate-limit handler while the child option is effective:
 
 - Do not write `rate_limit_reset_at`.
 - Do not create an in-memory runtime scheduling block.
@@ -39,7 +39,11 @@ For every OpenAI 429 received while the child option is effective:
 
 After the fourth 429, the account is excluded only from the current request. A later request may select it immediately if no pre-existing scheduling state blocks it.
 
-The behavior applies to every OpenAI 429 category, including 5-hour, 7-day, 30-day, transient, image, and unidentified rate limits.
+Cooldown suppression applies to OpenAI 429 categories that reach the general account rate-limit handler, including 5-hour, 7-day, 30-day, transient, and unidentified rate limits. This remains account-level behavior even on Embeddings and Alpha Search; only their fixed same-account retry behavior is excluded.
+
+Image-generation requests are excluded from the new policy. An image 429 follows the existing image failover and image-capability cooldown flow immediately.
+
+Embeddings and Alpha Search requests are also excluded from the fixed same-account retry policy and retain their existing immediate failover behavior.
 
 ## Preserved Side Effects
 
@@ -62,7 +66,8 @@ Use request-local failover metadata instead of a process-wide account counter.
 - Extend the existing handler retry path to honor the explicit retry limit independently of pool-mode configuration.
 - After the explicit retry limit is exhausted, preserve the existing current-request exclusion and next-account selection flow.
 - Short-circuit persistent and runtime cooldown mutation before any cooldown write. Do not write a cooldown and clear it afterward because concurrent scheduling can observe the temporary state.
-- Apply the same policy to HTTP, image, alpha-search, media, and applicable WebSocket/OpenAI response paths that use OpenAI OAuth accounts.
+- Apply fixed same-account retries only to Responses, Chat Completions, passthrough, and applicable WebSocket paths that carry injected user-message input for OpenAI OAuth accounts.
+- Keep image, Embeddings, and Alpha Search requests on their existing immediate failover behavior.
 
 ## Administration UI
 
@@ -90,7 +95,8 @@ Keep each implementation slice at three changed files or fewer:
 
 - An off-by-one error could switch after three total attempts instead of four. Test the first three 429s as same-account retries and the fourth as a switch.
 - Existing pool-mode retry counts could override the fixed feature limit. Test enabled accounts with pool mode off and with custom pool retry counts of zero and ten.
-- A cooldown could still be written through one of the two 429 state paths. Test both runtime and repository state after header-based, body-based, image, and unidentified 429s.
+- A cooldown could still be written through one of the two 429 state paths. Test both runtime and repository state after header-based, body-based, and unidentified 429s.
+- Image 429s could accidentally inherit the fixed retry metadata or skip their existing image-capability cooldown. Test that they keep an explicit same-account retry limit of zero, write the image-capability cooldown, and immediately enter failover.
 - Storm protection could stop the request before switching. Test the enabled behavior while the global storm threshold is active.
 - Retrying streamed requests after output begins is unsafe. Preserve the existing committed-output guard and test that no retry occurs after semantic output is written.
 - Request-local state could leak between accounts or requests. Test independent counters for accounts A and B and a fresh counter for a new request.

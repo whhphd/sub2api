@@ -265,6 +265,35 @@ func newOpenAIUpstreamFailoverError(
 	return failoverErr
 }
 
+func newOpenAIAccountUpstreamFailoverError(
+	account *Account,
+	statusCode int,
+	responseHeaders http.Header,
+	responseBody []byte,
+	upstreamMsg string,
+	retryableOnSameAccount bool,
+) *UpstreamFailoverError {
+	failoverErr := newOpenAIUpstreamFailoverError(
+		statusCode,
+		responseHeaders,
+		responseBody,
+		upstreamMsg,
+		retryableOnSameAccount,
+	)
+	return applyOpenAIOAuth429RetryPolicy(account, failoverErr)
+}
+
+func applyOpenAIOAuth429RetryPolicy(account *Account, failoverErr *UpstreamFailoverError) *UpstreamFailoverError {
+	if failoverErr == nil {
+		return nil
+	}
+	if failoverErr.StatusCode == http.StatusTooManyRequests && account.IsOpenAIOAuthNoopToolCall429RetryEnabled() {
+		failoverErr.RetryableOnSameAccount = true
+		failoverErr.SameAccountRetryLimit = openAIOAuthNoop429SameAccountRetryLimit
+	}
+	return failoverErr
+}
+
 // IsOpenAIRequestBodyTooLarge reports whether another account may accept the
 // same request even though the selected account rejected its serialized size.
 func (e *UpstreamFailoverError) IsOpenAIRequestBodyTooLarge() bool {
@@ -382,7 +411,8 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel...)
-		return nil, newOpenAIUpstreamFailoverError(
+		return nil, newOpenAIAccountUpstreamFailoverError(
+			account,
 			resp.StatusCode,
 			resp.Header,
 			body,

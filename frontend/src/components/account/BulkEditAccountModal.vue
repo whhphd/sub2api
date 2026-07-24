@@ -800,7 +800,7 @@
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
               openAIOAuthNoopToolCallEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
             ]"
-            @click="openAIOAuthNoopToolCallEnabled = !openAIOAuthNoopToolCallEnabled"
+            @click="setOpenAIOAuthNoopToolCallEnabled(!openAIOAuthNoopToolCallEnabled)"
           >
             <span
               :class="[
@@ -809,6 +809,34 @@
               ]"
             />
           </button>
+          <div class="mt-4 flex items-center justify-between gap-4 border-l-2 border-gray-200 pl-4 dark:border-dark-600">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.openai.noopToolCall429Retry') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.openai.noopToolCall429RetryDesc') }}
+              </p>
+            </div>
+            <button
+              id="bulk-edit-openai-noop-toolcall-429-retry-toggle"
+              type="button"
+              role="switch"
+              :aria-checked="openAIOAuthNoopToolCall429RetryEnabled"
+              :disabled="!openAIOAuthNoopToolCallEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                openAIOAuthNoopToolCallEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+                openAIOAuthNoopToolCall429RetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+              @click="openAIOAuthNoopToolCall429RetryEnabled = !openAIOAuthNoopToolCall429RetryEnabled"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  openAIOAuthNoopToolCall429RetryEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1489,6 +1517,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const upstreamBillingAutoProbeMode = ref<'enabled' | 'disabled'>('enabled')
 const openAIOAuthNoopToolCallEnabled = ref(false)
+const openAIOAuthNoopToolCall429RetryEnabled = ref(false)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -1498,6 +1527,13 @@ const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
+
+const setOpenAIOAuthNoopToolCallEnabled = (enabled: boolean) => {
+  openAIOAuthNoopToolCallEnabled.value = enabled
+  if (!enabled) {
+    openAIOAuthNoopToolCall429RetryEnabled.value = false
+  }
+}
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -1757,6 +1793,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   if (enableOpenAIOAuthNoopToolCall.value) {
     const extra = ensureExtra()
     extra.openai_oauth_inject_noop_toolcall = openAIOAuthNoopToolCallEnabled.value
+    extra.openai_oauth_inject_noop_toolcall_ignore_429_cooldown =
+      openAIOAuthNoopToolCallEnabled.value && openAIOAuthNoopToolCall429RetryEnabled.value
   }
 
   if (enableCodexCLIOnly.value) {
@@ -2040,7 +2078,7 @@ watch(
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       upstreamBillingAutoProbeMode.value = 'enabled'
-      openAIOAuthNoopToolCallEnabled.value = false
+      setOpenAIOAuthNoopToolCallEnabled(false)
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'

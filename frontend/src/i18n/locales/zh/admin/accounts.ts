@@ -557,6 +557,9 @@ export default {
         noopToolCallInjection: '注入空 Exec 工具调用',
         noopToolCallInjectionDesc:
           '仅对本 OpenAI OAuth 账号生效。开启后，每个以用户消息结尾的普通 Responses 回合都会附加一对成功的空 Exec 工具调用；Compact 请求不会注入。默认关闭。',
+        noopToolCall429Retry: '429 时原账号连续重试 3 次后切换，且不暂停调度',
+        noopToolCall429RetryDesc:
+          '仅在上方注入开关开启时生效。同一用户请求在同一账号累计第 4 次 429 后才切换账号；不写入账号冷却时间。',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         codexCLIOnlyAppServer: '允许 Codex app-server 客户端',

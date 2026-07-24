@@ -485,6 +485,27 @@ func TestHandleFailoverError_SameAccountRetry(t *testing.T) {
 	})
 }
 
+func TestHandleFailoverError_ExplicitSameAccountRetryLimitOverridesAccountLimit(t *testing.T) {
+	fs := NewFailoverState(3, false)
+	mock := &mockTempUnscheduler{}
+	err := newTestFailoverErr(http.StatusTooManyRequests, true, false)
+	err.SameAccountRetryLimit = 3
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		action := fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformOpenAI, 10, err)
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, attempt, fs.SameAccountRetryCount[100])
+		require.Zero(t, fs.SwitchCount)
+		require.NotContains(t, fs.FailedAccountIDs, int64(100))
+	}
+
+	action := fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformOpenAI, 10, err)
+	require.Equal(t, FailoverContinue, action)
+	require.Equal(t, 3, fs.SameAccountRetryCount[100])
+	require.Equal(t, 1, fs.SwitchCount)
+	require.Contains(t, fs.FailedAccountIDs, int64(100))
+}
+
 // ---------------------------------------------------------------------------
 // HandleFailoverError — TempUnschedule 调用验证
 // ---------------------------------------------------------------------------

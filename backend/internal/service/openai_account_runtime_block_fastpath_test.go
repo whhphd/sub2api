@@ -27,6 +27,34 @@ func TestOpenAI429FastPath_MarksOAuthAccountCoolingDown(t *testing.T) {
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(apiKeyAccount))
 }
 
+func TestOpenAI429FastPath_NoopRetryPolicySkipsRuntimeCooldown(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	enabledAccount := &Account{
+		ID:       44,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			openAIOAuthInjectNoopToolCallExtraKey:                  true,
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+		},
+	}
+	childOnlyAccount := &Account{
+		ID:       45,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+		},
+	}
+
+	svc.markOpenAIOAuth429RateLimited(context.Background(), enabledAccount, http.Header{}, nil)
+	svc.markOpenAIOAuth429RateLimited(context.Background(), childOnlyAccount, http.Header{}, nil)
+
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(enabledAccount))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(childOnlyAccount))
+	require.Equal(t, int64(2), svc.openaiOAuth429WindowCount.Load(), "both 429s must remain visible to storm metrics")
+}
+
 // TestOpenAI429FastPath_SkipsSparkShadow 外审第8轮 P1:spark 影子被选中后若 /responses 返回 429,
 // 不得按 global x-codex-* 信号写内存运行时熔断(否则 spark 被冷却到 global reset、单影子场景无可用账号)。
 func TestOpenAI429FastPath_SkipsSparkShadow(t *testing.T) {
@@ -318,6 +346,15 @@ func TestOpenAIRuntimeBlock_ClearAccountSchedulingBlock(t *testing.T) {
 func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	retryPolicyAccount := &Account{
+		ID:       44,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			openAIOAuthInjectNoopToolCallExtraKey:                  true,
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+		},
+	}
 	apiKeyAccount := &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 	var state OpenAIOAuth429FailoverState
 
@@ -328,6 +365,7 @@ func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
 	}
 
 	require.True(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &state))
+	require.True(t, svc.ShouldStopOpenAIOAuth429Failover(retryPolicyAccount, http.StatusTooManyRequests, 1, &state))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusTooManyRequests, 1, &state))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusInternalServerError, 1, &state))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 0, &state))

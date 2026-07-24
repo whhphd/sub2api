@@ -2919,7 +2919,7 @@
             data-testid="openai-oauth-noop-toolcall-toggle"
             role="switch"
             :aria-checked="openAIOAuthNoopToolCallEnabled"
-            @click="openAIOAuthNoopToolCallEnabled = !openAIOAuthNoopToolCallEnabled"
+            @click="setOpenAIOAuthNoopToolCallEnabled(!openAIOAuthNoopToolCallEnabled)"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
               openAIOAuthNoopToolCallEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
@@ -2929,6 +2929,34 @@
               :class="[
                 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
                 openAIOAuthNoopToolCallEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+        <div class="mt-4 flex items-center justify-between gap-4 pl-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.noopToolCall429Retry') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.noopToolCall429RetryDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="openai-oauth-noop-toolcall-429-retry-toggle"
+            role="switch"
+            :aria-checked="openAIOAuthNoopToolCall429RetryEnabled"
+            :disabled="!openAIOAuthNoopToolCallEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openAIOAuthNoopToolCallEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+              openAIOAuthNoopToolCall429RetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="openAIOAuthNoopToolCall429RetryEnabled = !openAIOAuthNoopToolCall429RetryEnabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openAIOAuthNoopToolCall429RetryEnabled ? 'translate-x-5' : 'translate-x-0'
               ]"
             />
           </button>
@@ -3818,12 +3846,20 @@ const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_comple
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openAIOAuthNoopToolCallEnabled = ref(false)
+const openAIOAuthNoopToolCall429RetryEnabled = ref(false)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
 const webSearchEmulationMode = ref('default')
+
+const setOpenAIOAuthNoopToolCallEnabled = (enabled: boolean) => {
+  openAIOAuthNoopToolCallEnabled.value = enabled
+  if (!enabled) {
+    openAIOAuthNoopToolCall429RetryEnabled.value = false
+  }
+}
 const webSearchGlobalEnabled = ref(false)
 
 const toggleOpenAILongContextBilling = () => {
@@ -4267,7 +4303,7 @@ watch(
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-      openAIOAuthNoopToolCallEnabled.value = false
+      setOpenAIOAuthNoopToolCallEnabled(false)
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
     }
@@ -4297,7 +4333,7 @@ watch(
   [accountCategory, () => form.platform],
   ([category, platform]) => {
     if (platform === 'openai' && category !== 'oauth-based') {
-      openAIOAuthNoopToolCallEnabled.value = false
+      setOpenAIOAuthNoopToolCallEnabled(false)
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
     }
@@ -4698,7 +4734,7 @@ const resetForm = () => {
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-  openAIOAuthNoopToolCallEnabled.value = false
+  setOpenAIOAuthNoopToolCallEnabled(false)
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   anthropicPassthroughEnabled.value = false
@@ -4780,8 +4816,14 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
 
   if (form.type === 'oauth') {
     extra.openai_oauth_inject_noop_toolcall = openAIOAuthNoopToolCallEnabled.value
+    if (openAIOAuthNoopToolCallEnabled.value) {
+      extra.openai_oauth_inject_noop_toolcall_ignore_429_cooldown = openAIOAuthNoopToolCall429RetryEnabled.value
+    } else {
+      delete extra.openai_oauth_inject_noop_toolcall_ignore_429_cooldown
+    }
   } else {
     delete extra.openai_oauth_inject_noop_toolcall
+    delete extra.openai_oauth_inject_noop_toolcall_ignore_429_cooldown
   }
 
   if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {

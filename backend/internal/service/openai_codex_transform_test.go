@@ -110,6 +110,56 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 	}
 }
 
+func TestAccountOpenAIOAuthNoopToolCall429RetryEnabled(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    bool
+	}{
+		{
+			name: "parent and child enabled",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				openAIOAuthInjectNoopToolCallExtraKey:                  true,
+				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+			}},
+			want: true,
+		},
+		{
+			name: "parent disabled",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				openAIOAuthInjectNoopToolCallExtraKey:                  false,
+				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+			}},
+		},
+		{
+			name: "child missing",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				openAIOAuthInjectNoopToolCallExtraKey: true,
+			}},
+		},
+		{
+			name: "child non boolean",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				openAIOAuthInjectNoopToolCallExtraKey:                  true,
+				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: "true",
+			}},
+		},
+		{
+			name: "api key account",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{
+				openAIOAuthInjectNoopToolCallExtraKey:                  true,
+				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.account.IsOpenAIOAuthNoopToolCall429RetryEnabled())
+		})
+	}
+}
+
 func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *testing.T) {
 	reqBody := map[string]any{
 		"model":            "gpt-5.5",

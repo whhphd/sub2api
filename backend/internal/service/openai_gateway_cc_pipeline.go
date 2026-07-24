@@ -116,7 +116,8 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	if account.Platform != PlatformGrok {
 		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
-	return newOpenAIUpstreamFailoverError(
+	return newOpenAIAccountUpstreamFailoverError(
+		account,
 		resp.StatusCode,
 		resp.Header,
 		respBody,

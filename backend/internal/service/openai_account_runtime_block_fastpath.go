@@ -128,6 +128,9 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 		return
 	}
 	s.recordOpenAIOAuth429()
+	if account.IsOpenAIOAuthNoopToolCall429RetryEnabled() {
+		return
+	}
 
 	cooldownUntil := time.Now().Add(openAIOAuth429FallbackCooldown)
 	if s.rateLimitService != nil {

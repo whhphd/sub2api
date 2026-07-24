@@ -1211,6 +1211,12 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 }
 
+const (
+	openAIOAuthInjectNoopToolCallExtraKey                  = "openai_oauth_inject_noop_toolcall"
+	openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey = "openai_oauth_inject_noop_toolcall_ignore_429_cooldown"
+	openAIOAuthNoop429SameAccountRetryLimit                = 3
+)
+
 func (a *Account) IsOpenAILongContextBillingEnabled() bool {
 	if a == nil || !a.IsOpenAI() || a.Extra == nil {
 		return false
@@ -1225,6 +1231,15 @@ func (a *Account) IsAnthropic() bool {
 
 func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) IsOpenAIOAuthNoopToolCallInjectionEnabled() bool {
+	return a != nil && a.IsOpenAIOAuth() && a.getExtraBool(openAIOAuthInjectNoopToolCallExtraKey)
+}
+
+func (a *Account) IsOpenAIOAuthNoopToolCall429RetryEnabled() bool {
+	return a.IsOpenAIOAuthNoopToolCallInjectionEnabled() &&
+		a.getExtraBool(openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey)
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {

@@ -118,9 +118,8 @@ func compactCodexCallID(id string) string {
 const codexImageGenerationFunctionToolName = "image_gen.imagegen"
 
 const (
-	openAIOAuthInjectNoopToolCallExtraKey = "openai_oauth_inject_noop_toolcall"
-	openAIOAuthNoopExecInput              = `const r = await tools.exec_command({"cmd":"true","yield_time_ms":1000,"max_output_tokens":1000}); text(r.output);`
-	openAIOAuthNoopExecOutput             = "Script completed\nWall time 0.0 seconds\nOutput:\n"
+	openAIOAuthNoopExecInput  = `const r = await tools.exec_command({"cmd":"true","yield_time_ms":1000,"max_output_tokens":1000}); text(r.output);`
+	openAIOAuthNoopExecOutput = "Script completed\nWall time 0.0 seconds\nOutput:\n"
 )
 
 const (
@@ -318,11 +317,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 // injectOpenAIOAuthNoopToolCall appends the fixed successful exec pair only for
 // an explicitly enabled OpenAI OAuth account and a normal user turn.
 func injectOpenAIOAuthNoopToolCall(reqBody map[string]any, account *Account, isCompact bool) bool {
-	if account == nil || !account.IsOpenAIOAuth() || isCompact || account.Extra == nil {
-		return false
-	}
-	enabled, ok := account.Extra[openAIOAuthInjectNoopToolCallExtraKey].(bool)
-	if !ok || !enabled {
+	if account == nil || !account.IsOpenAIOAuthNoopToolCallInjectionEnabled() || isCompact {
 		return false
 	}
 
@@ -358,11 +353,7 @@ func injectOpenAIOAuthNoopToolCall(reqBody map[string]any, account *Account, isC
 }
 
 func injectOpenAIOAuthNoopToolCallPayload(payload []byte, account *Account, isCompact bool) ([]byte, bool, error) {
-	if account == nil || !account.IsOpenAIOAuth() || isCompact || account.Extra == nil {
-		return payload, false, nil
-	}
-	enabled, ok := account.Extra[openAIOAuthInjectNoopToolCallExtraKey].(bool)
-	if !ok || !enabled {
+	if account == nil || !account.IsOpenAIOAuthNoopToolCallInjectionEnabled() || isCompact {
 		return payload, false, nil
 	}
 

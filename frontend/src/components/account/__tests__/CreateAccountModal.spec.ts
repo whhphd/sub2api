@@ -213,6 +213,27 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(flow.props('initialInputMethod')).toBe('manual')
   })
 
+  it('includes the no-op 429 retry child option in OpenAI OAuth imports', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="openai-oauth-noop-toolcall-toggle"]').trigger('click')
+    const retryToggle = wrapper.get('[data-testid="openai-oauth-noop-toolcall-429-retry-toggle"]')
+    expect(retryToggle.attributes('disabled')).toBeUndefined()
+    await retryToggle.trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex retry policy')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    flow.vm.$emit('import-codex-session', 'session-json')
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra).toMatchObject({
+      openai_oauth_inject_noop_toolcall: true,
+      openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true,
+    })
+  })
+
   it.each([
     ['camelCase', { authMode: 'agentIdentity', agentIdentity: { agentRuntimeId: 'runtime' } }],
     ['nested identity without auth_mode', { agent_identity: { agent_runtime_id: 'runtime' } }],

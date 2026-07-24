@@ -104,6 +104,10 @@ func TestOpenAIGatewayServiceForwardImages_ImageRateLimitReturnsFailoverAndCools
 		Name:     "openai-oauth",
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			openAIOAuthInjectNoopToolCallExtraKey:                  true,
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+		},
 		Credentials: map[string]any{
 			"access_token": "token-123",
 		},
@@ -116,6 +120,8 @@ func TestOpenAIGatewayServiceForwardImages_ImageRateLimitReturnsFailoverAndCools
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
 	require.Contains(t, string(failoverErr.ResponseBody), "input-images per min")
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Zero(t, failoverErr.SameAccountRetryLimit)
 	require.Len(t, repo.modelRateLimitCalls, 1)
 	require.Equal(t, openAIImageGenerationRateLimitKey, repo.modelRateLimitCalls[0].scope)
 }

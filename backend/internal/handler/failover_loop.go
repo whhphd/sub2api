@@ -82,6 +82,7 @@ func (s *FailoverState) HandleFailoverError(
 	if failoverErr == nil || !failoverErr.ShouldRetryNextAccount() {
 		return FailoverExhausted
 	}
+	retryLimit = failoverErr.EffectiveSameAccountRetryLimit(retryLimit)
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	sameAccountRetry := failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < retryLimit

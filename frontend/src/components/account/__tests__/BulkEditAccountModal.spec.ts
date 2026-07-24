@@ -293,13 +293,33 @@ describe('BulkEditAccountModal', () => {
 
     await wrapper.get('#bulk-edit-openai-noop-toolcall-enabled').setValue(true)
     await wrapper.get('#bulk-edit-openai-noop-toolcall-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-openai-noop-toolcall-429-retry-toggle').trigger('click')
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
-        openai_oauth_inject_noop_toolcall: true
+        openai_oauth_inject_noop_toolcall: true,
+        openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true
+      }
+    })
+  })
+
+  it('OpenAI OAuth 批量关闭 no-op 注入时应同时关闭 429 重试策略', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-noop-toolcall-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_oauth_inject_noop_toolcall: false,
+        openai_oauth_inject_noop_toolcall_ignore_429_cooldown: false
       }
     })
   })

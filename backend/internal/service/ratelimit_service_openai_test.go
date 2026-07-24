@@ -200,6 +200,34 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	}
 }
 
+func TestHandle429_OpenAINoopRetryPolicyPreservesObservationsWithoutCooldown(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{
+		ID:          125,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"plan_type": "plus"},
+		Extra: map[string]any{
+			openAIOAuthInjectNoopToolCallExtraKey:                  true,
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+		},
+	}
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "100")
+	headers.Set("x-codex-primary-reset-after-seconds", "604800")
+	headers.Set("x-codex-primary-window-minutes", "10080")
+	body := []byte(`{"error":{"type":"usage_limit_reached","plan_type":"free","resets_at":1777283883}}`)
+
+	svc.handle429(context.Background(), account, headers, body)
+
+	require.Zero(t, repo.rateLimitedID)
+	require.NotEmpty(t, repo.updatedExtra)
+	require.Equal(t, 100.0, repo.updatedExtra["codex_7d_used_percent"])
+	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
+	require.Equal(t, "free", account.Credentials["plan_type"])
+}
+
 func TestHandle429_OpenAISyncsObservedPlanType(t *testing.T) {
 	repo := &openAI429SnapshotRepo{}
 	svc := NewRateLimitService(repo, nil, nil, nil, nil)
