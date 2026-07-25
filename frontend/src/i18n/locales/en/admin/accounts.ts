@@ -544,9 +544,9 @@ export default {
         noopToolCallInjection: 'Inject no-op Exec tool call',
         noopToolCallInjectionDesc:
           'Only applies to this OpenAI OAuth account. When enabled, each normal Responses turn ending in a user message receives a paired successful no-op Exec tool call. Compact requests are excluded. Disabled by default.',
-        noopToolCall429Retry: 'Pause scheduling after 10 consecutive 429 responses',
+        noopToolCall429Retry: 'Pause scheduling after 5 consecutive 429 responses',
         noopToolCall429RetryDesc:
-          'Effective only when the injection option above is enabled. The first 9 consecutive 429 responses switch the current request to another account without pausing this account. The 10th uses the upstream reset time and automatically restores scheduling when it expires.',
+          'Effective only when the injection option above is enabled. The first 4 consecutive 429 responses switch the current request to another account without pausing this account. The 5th uses the upstream reset time and automatically restores scheduling when it expires.',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
