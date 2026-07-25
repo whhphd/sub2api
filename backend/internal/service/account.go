@@ -1214,7 +1214,6 @@ func (a *Account) IsOpenAI() bool {
 const (
 	openAIOAuthInjectNoopToolCallExtraKey                  = "openai_oauth_inject_noop_toolcall"
 	openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey = "openai_oauth_inject_noop_toolcall_ignore_429_cooldown"
-	openAIOAuthNoop429SameAccountRetryLimit                = 3
 )
 
 func (a *Account) IsOpenAILongContextBillingEnabled() bool {

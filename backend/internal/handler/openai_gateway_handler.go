@@ -243,6 +243,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if !service.IsOpenAIResponsesCompactPathForTest(c) {
+		c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
+	}
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
 	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
 	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
@@ -818,6 +821,7 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverAnthropicMessagesPanic(c, &streamStarted)
+	c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 
 	requestStart := time.Now()
 
@@ -1390,6 +1394,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		h.errorResponse(c, http.StatusUpgradeRequired, "invalid_request_error", "WebSocket upgrade required (Upgrade: websocket)")
 		return
 	}
+	c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 	setOpenAIClientTransportWS(c)
 
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)

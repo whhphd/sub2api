@@ -8,7 +8,8 @@ import (
 )
 
 type openAI403CounterResetStub struct {
-	resetCalls []int64
+	resetCalls    []int64
+	reset429Calls []int64
 }
 
 func (s *openAI403CounterResetStub) IncrementOpenAI403Count(context.Context, int64, int) (int64, error) {
@@ -17,6 +18,15 @@ func (s *openAI403CounterResetStub) IncrementOpenAI403Count(context.Context, int
 
 func (s *openAI403CounterResetStub) ResetOpenAI403Count(_ context.Context, accountID int64) error {
 	s.resetCalls = append(s.resetCalls, accountID)
+	return nil
+}
+
+func (s *openAI403CounterResetStub) IncrementOpenAIOAuth429Count(context.Context, int64) (int64, error) {
+	return 0, nil
+}
+
+func (s *openAI403CounterResetStub) ResetOpenAIOAuth429Count(_ context.Context, accountID int64) error {
+	s.reset429Calls = append(s.reset429Calls, accountID)
 	return nil
 }
 
@@ -45,4 +55,36 @@ func TestOpenAIGatewayServiceRecordUsage_ResetsOpenAI403CounterForZeroUsage(t *t
 	require.NoError(t, err)
 	require.Equal(t, []int64{777}, counter.resetCalls)
 	require.Equal(t, 1, usageRepo.calls)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ResetsEligibleOAuth429Counter(t *testing.T) {
+	counter := &openAI403CounterResetStub{}
+	rateLimitSvc := NewRateLimitService(nil, nil, nil, nil, nil)
+	rateLimitSvc.SetOpenAIOAuth429CounterCache(counter)
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+	svc.rateLimitService = rateLimitSvc
+	account := &Account{
+		ID:       778,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			openAIOAuthInjectNoopToolCallExtraKey:                  true,
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+		},
+	}
+
+	err := svc.RecordUsage(WithOpenAIOAuth429ThresholdPolicy(context.Background()), &OpenAIRecordUsageInput{
+		Result:  &OpenAIForwardResult{RequestID: "resp_zero_usage_reset_429", Model: "gpt-5.1"},
+		APIKey:  &APIKey{ID: 1002, Group: &Group{RateMultiplier: 1}},
+		User:    &User{ID: 2002},
+		Account: account,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{778}, counter.reset429Calls)
 }

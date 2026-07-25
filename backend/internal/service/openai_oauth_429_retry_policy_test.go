@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewOpenAIAccountUpstreamFailoverError_NoOp429RetryPolicy(t *testing.T) {
+func TestNewOpenAIAccountUpstreamFailoverError_NoOp429PolicyDoesNotForceSameAccountRetry(t *testing.T) {
 	enabledAccount := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
@@ -17,7 +17,7 @@ func TestNewOpenAIAccountUpstreamFailoverError_NoOp429RetryPolicy(t *testing.T) 
 		},
 	}
 
-	t.Run("enabled 429 forces three same-account retries", func(t *testing.T) {
+	t.Run("enabled 429 keeps the normal failover policy", func(t *testing.T) {
 		failoverErr := newOpenAIAccountUpstreamFailoverError(
 			enabledAccount,
 			http.StatusTooManyRequests,
@@ -27,9 +27,8 @@ func TestNewOpenAIAccountUpstreamFailoverError_NoOp429RetryPolicy(t *testing.T) 
 			false,
 		)
 
-		require.True(t, failoverErr.RetryableOnSameAccount)
-		require.Equal(t, openAIOAuthNoop429SameAccountRetryLimit, failoverErr.SameAccountRetryLimit)
-		require.Equal(t, openAIOAuthNoop429SameAccountRetryLimit, failoverErr.EffectiveSameAccountRetryLimit(10))
+		require.False(t, failoverErr.RetryableOnSameAccount)
+		require.Zero(t, failoverErr.SameAccountRetryLimit)
 	})
 
 	t.Run("non-429 keeps existing policy", func(t *testing.T) {
@@ -44,7 +43,6 @@ func TestNewOpenAIAccountUpstreamFailoverError_NoOp429RetryPolicy(t *testing.T) 
 
 		require.False(t, failoverErr.RetryableOnSameAccount)
 		require.Zero(t, failoverErr.SameAccountRetryLimit)
-		require.Equal(t, 10, failoverErr.EffectiveSameAccountRetryLimit(10))
 	})
 
 	t.Run("child without parent keeps existing policy", func(t *testing.T) {
@@ -64,6 +62,7 @@ func TestNewOpenAIAccountUpstreamFailoverError_NoOp429RetryPolicy(t *testing.T) 
 			false,
 		)
 
+		require.False(t, failoverErr.RetryableOnSameAccount)
 		require.False(t, failoverErr.RetryableOnSameAccount)
 		require.Zero(t, failoverErr.SameAccountRetryLimit)
 	})

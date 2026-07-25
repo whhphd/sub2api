@@ -23,6 +23,7 @@ import (
 func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
+	c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 
 	requestStart := time.Now()
 

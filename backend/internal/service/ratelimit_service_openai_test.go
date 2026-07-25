@@ -200,7 +200,7 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	}
 }
 
-func TestHandle429_OpenAINoopRetryPolicyPreservesObservationsWithoutCooldown(t *testing.T) {
+func TestHandle429_OpenAIDefersCooldownWhenThresholdPolicySuppressesIt(t *testing.T) {
 	repo := &openAI429SnapshotRepo{}
 	svc := NewRateLimitService(repo, nil, nil, nil, nil)
 	account := &Account{
@@ -219,7 +219,7 @@ func TestHandle429_OpenAINoopRetryPolicyPreservesObservationsWithoutCooldown(t *
 	headers.Set("x-codex-primary-window-minutes", "10080")
 	body := []byte(`{"error":{"type":"usage_limit_reached","plan_type":"free","resets_at":1777283883}}`)
 
-	svc.handle429(context.Background(), account, headers, body)
+	svc.handle429(withOpenAIOAuth429CooldownSuppressed(context.Background(), true), account, headers, body)
 
 	require.Zero(t, repo.rateLimitedID)
 	require.NotEmpty(t, repo.updatedExtra)

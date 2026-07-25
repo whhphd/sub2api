@@ -280,17 +280,6 @@ func newOpenAIAccountUpstreamFailoverError(
 		upstreamMsg,
 		retryableOnSameAccount,
 	)
-	return applyOpenAIOAuth429RetryPolicy(account, failoverErr)
-}
-
-func applyOpenAIOAuth429RetryPolicy(account *Account, failoverErr *UpstreamFailoverError) *UpstreamFailoverError {
-	if failoverErr == nil {
-		return nil
-	}
-	if failoverErr.StatusCode == http.StatusTooManyRequests && account.IsOpenAIOAuthNoopToolCall429RetryEnabled() {
-		failoverErr.RetryableOnSameAccount = true
-		failoverErr.SameAccountRetryLimit = openAIOAuthNoop429SameAccountRetryLimit
-	}
 	return failoverErr
 }
 

@@ -69,6 +69,16 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return false
 	}
 	stateCtx = withTempUnschedulableModel(stateCtx, canonicalModel)
+	if isOpenAIOAuth429ThresholdPolicyEligible(ctx) && account.IsOpenAIOAuthNoopToolCall429RetryEnabled() && s.rateLimitService != nil {
+		if statusCode == http.StatusTooManyRequests {
+			stateCtx = withOpenAIOAuth429CooldownSuppressed(
+				stateCtx,
+				s.rateLimitService.shouldSuppressOpenAIOAuth429Cooldown(stateCtx, account),
+			)
+		} else {
+			s.rateLimitService.resetOpenAIOAuth429Counter(stateCtx, account.ID)
+		}
+	}
 	if s.rateLimitService != nil && len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
 		return true
 	}
@@ -131,7 +141,7 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 		return
 	}
 	s.recordOpenAIOAuth429()
-	if account.IsOpenAIOAuthNoopToolCall429RetryEnabled() {
+	if isOpenAIOAuth429CooldownSuppressed(ctx) {
 		return
 	}
 

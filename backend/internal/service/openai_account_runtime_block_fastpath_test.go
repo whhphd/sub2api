@@ -27,10 +27,19 @@ func TestOpenAI429FastPath_MarksOAuthAccountCoolingDown(t *testing.T) {
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(apiKeyAccount))
 }
 
-func TestOpenAI429FastPath_NoopRetryPolicySkipsRuntimeCooldown(t *testing.T) {
+func TestOpenAI429FastPath_NoopPolicyRequiresExplicitCooldownSuppression(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	enabledAccount := &Account{
 		ID:       44,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			openAIOAuthInjectNoopToolCallExtraKey:                  true,
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
+		},
+	}
+	outOfScopeAccount := &Account{
+		ID:       46,
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Extra: map[string]any{
@@ -47,12 +56,14 @@ func TestOpenAI429FastPath_NoopRetryPolicySkipsRuntimeCooldown(t *testing.T) {
 		},
 	}
 
-	svc.markOpenAIOAuth429RateLimited(context.Background(), enabledAccount, http.Header{}, nil)
+	svc.markOpenAIOAuth429RateLimited(withOpenAIOAuth429CooldownSuppressed(context.Background(), true), enabledAccount, http.Header{}, nil)
+	svc.markOpenAIOAuth429RateLimited(context.Background(), outOfScopeAccount, http.Header{}, nil)
 	svc.markOpenAIOAuth429RateLimited(context.Background(), childOnlyAccount, http.Header{}, nil)
 
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(enabledAccount))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(outOfScopeAccount))
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(childOnlyAccount))
-	require.Equal(t, int64(2), svc.openaiOAuth429WindowCount.Load(), "both 429s must remain visible to storm metrics")
+	require.Equal(t, int64(3), svc.openaiOAuth429WindowCount.Load(), "all 429s must remain visible to storm metrics")
 }
 
 // TestOpenAI429FastPath_SkipsSparkShadow 外审第8轮 P1:spark 影子被选中后若 /responses 返回 429,
