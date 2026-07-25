@@ -29,7 +29,7 @@ func (s *openAIOAuth429CounterStub) ResetOpenAIOAuth429Count(_ context.Context, 
 }
 
 func TestRateLimitService_ShouldSuppressOpenAIOAuth429CooldownUntilThreshold(t *testing.T) {
-	counter := &openAIOAuth429CounterStub{counts: []int64{1, 9, 10}}
+	counter := &openAIOAuth429CounterStub{counts: []int64{1, 4, 5}}
 	svc := &RateLimitService{openAIOAuth429Counter: counter}
 	account := &Account{ID: 42}
 

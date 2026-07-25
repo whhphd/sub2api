@@ -5,7 +5,7 @@ import (
 	"log/slog"
 )
 
-const openAIOAuth429ConsecutiveThreshold int64 = 10
+const openAIOAuth429ConsecutiveThreshold int64 = 5
 
 type openAIOAuth429PolicyEligibleContextKey struct{}
 type openAIOAuth429CooldownSuppressedContextKey struct{}
