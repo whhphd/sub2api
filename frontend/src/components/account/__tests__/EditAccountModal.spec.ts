@@ -435,7 +435,8 @@ describe('EditAccountModal', () => {
     const account = buildOpenAIOAuthAccount()
     account.extra = {
       openai_oauth_inject_noop_toolcall: true,
-      openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true
+      openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true,
+      openai_oauth_inject_noop_toolcall_429_threshold: 17
     }
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -448,6 +449,9 @@ describe('EditAccountModal', () => {
     expect(toggle.attributes('aria-checked')).toBe('true')
     expect(retryToggle.attributes('aria-checked')).toBe('true')
     expect(retryToggle.attributes('disabled')).toBeUndefined()
+    expect(
+      (wrapper.get('[data-testid="openai-oauth-noop-toolcall-429-threshold"]').element as HTMLInputElement).value
+    ).toBe('17')
 
     await toggle.trigger('click')
     expect(retryToggle.attributes('aria-checked')).toBe('false')
@@ -457,6 +461,26 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall).toBe(false)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall_ignore_429_cooldown).toBeUndefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall_429_threshold).toBeUndefined()
+  })
+
+  it('defaults and submits the OpenAI OAuth 429 threshold', async () => {
+    const account = buildOpenAIOAuthAccount()
+    account.extra = {
+      openai_oauth_inject_noop_toolcall: true,
+      openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const thresholdInput = wrapper.get('[data-testid="openai-oauth-noop-toolcall-429-threshold"]')
+    expect((thresholdInput.element as HTMLInputElement).value).toBe('10')
+    await thresholdInput.setValue('22')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall_429_threshold).toBe(22)
   })
 
   it('defaults legacy OpenAI OAuth accounts to no-op tool call injection disabled', async () => {
