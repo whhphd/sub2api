@@ -28,15 +28,47 @@ func (s *openAIOAuth429CounterStub) ResetOpenAIOAuth429Count(_ context.Context, 
 	return nil
 }
 
-func TestRateLimitService_ShouldSuppressOpenAIOAuth429CooldownUntilThreshold(t *testing.T) {
-	counter := &openAIOAuth429CounterStub{counts: []int64{1, 4, 5}}
-	svc := &RateLimitService{openAIOAuth429Counter: counter}
-	account := &Account{ID: 42}
+func TestRateLimitService_ShouldSuppressOpenAIOAuth429CooldownUntilConfiguredThreshold(t *testing.T) {
+	tests := []struct {
+		name       string
+		account    *Account
+		counts     []int64
+		suppressed []bool
+	}{
+		{
+			name:       "missing setting defaults to ten",
+			account:    &Account{ID: 42},
+			counts:     []int64{1, 9, 10},
+			suppressed: []bool{true, true, false},
+		},
+		{
+			name: "custom threshold",
+			account: &Account{ID: 43, Extra: map[string]any{
+				openAIOAuth429ConsecutiveThresholdExtraKey: 3,
+			}},
+			counts:     []int64{1, 2, 3},
+			suppressed: []bool{true, true, false},
+		},
+		{
+			name: "minimum threshold pauses immediately",
+			account: &Account{ID: 44, Extra: map[string]any{
+				openAIOAuth429ConsecutiveThresholdExtraKey: 1,
+			}},
+			counts:     []int64{1},
+			suppressed: []bool{false},
+		},
+	}
 
-	require.True(t, svc.shouldSuppressOpenAIOAuth429Cooldown(context.Background(), account))
-	require.True(t, svc.shouldSuppressOpenAIOAuth429Cooldown(context.Background(), account))
-	require.False(t, svc.shouldSuppressOpenAIOAuth429Cooldown(context.Background(), account))
-	require.Equal(t, []int64{account.ID}, counter.resetCalls)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			counter := &openAIOAuth429CounterStub{counts: tt.counts}
+			svc := &RateLimitService{openAIOAuth429Counter: counter}
+			for i, want := range tt.suppressed {
+				require.Equal(t, want, svc.shouldSuppressOpenAIOAuth429Cooldown(context.Background(), tt.account), "call %d", i+1)
+			}
+			require.Equal(t, []int64{tt.account.ID}, counter.resetCalls)
+		})
+	}
 }
 
 func TestRateLimitService_ShouldSuppressOpenAIOAuth429CooldownFallsBackOnRedisError(t *testing.T) {

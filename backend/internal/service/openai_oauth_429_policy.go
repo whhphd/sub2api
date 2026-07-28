@@ -5,8 +5,6 @@ import (
 	"log/slog"
 )
 
-const openAIOAuth429ConsecutiveThreshold int64 = 5
-
 type openAIOAuth429PolicyEligibleContextKey struct{}
 type openAIOAuth429CooldownSuppressedContextKey struct{}
 
@@ -46,19 +44,20 @@ func (s *RateLimitService) shouldSuppressOpenAIOAuth429Cooldown(ctx context.Cont
 	if s == nil || s.openAIOAuth429Counter == nil || account == nil || account.ID <= 0 {
 		return false
 	}
+	threshold := account.GetOpenAIOAuth429ConsecutiveThreshold()
 	count, err := s.openAIOAuth429Counter.IncrementOpenAIOAuth429Count(ctx, account.ID)
 	if err != nil {
 		slog.Warn("openai_oauth_429_counter_increment_failed", "account_id", account.ID, "error", err)
 		return false
 	}
-	if count >= openAIOAuth429ConsecutiveThreshold {
+	if count >= threshold {
 		s.resetOpenAIOAuth429Counter(ctx, account.ID)
 		return false
 	}
 	slog.Info("openai_oauth_429_cooldown_deferred",
 		"account_id", account.ID,
 		"consecutive_429", count,
-		"threshold", openAIOAuth429ConsecutiveThreshold,
+		"threshold", threshold,
 	)
 	return true
 }
