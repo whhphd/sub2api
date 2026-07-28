@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -1213,8 +1214,12 @@ func (a *Account) IsOpenAI() bool {
 }
 
 const (
-	openAIOAuthInjectNoopToolCallExtraKey                  = "openai_oauth_inject_noop_toolcall"
-	openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey = "openai_oauth_inject_noop_toolcall_ignore_429_cooldown"
+	openAIOAuthInjectNoopToolCallExtraKey                        = "openai_oauth_inject_noop_toolcall"
+	openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey       = "openai_oauth_inject_noop_toolcall_ignore_429_cooldown"
+	openAIOAuth429ConsecutiveThresholdExtraKey                   = "openai_oauth_inject_noop_toolcall_429_threshold"
+	defaultOpenAIOAuth429ConsecutiveThreshold              int64 = 10
+	minOpenAIOAuth429ConsecutiveThreshold                  int64 = 1
+	maxOpenAIOAuth429ConsecutiveThreshold                  int64 = 100
 )
 
 func (a *Account) IsOpenAILongContextBillingEnabled() bool {
@@ -1240,6 +1245,62 @@ func (a *Account) IsOpenAIOAuthNoopToolCallInjectionEnabled() bool {
 func (a *Account) IsOpenAIOAuthNoopToolCall429RetryEnabled() bool {
 	return a.IsOpenAIOAuthNoopToolCallInjectionEnabled() &&
 		a.getExtraBool(openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey)
+}
+
+func (a *Account) GetOpenAIOAuth429ConsecutiveThreshold() int64 {
+	if a == nil || a.Extra == nil {
+		return defaultOpenAIOAuth429ConsecutiveThreshold
+	}
+	raw, ok := a.Extra[openAIOAuth429ConsecutiveThresholdExtraKey]
+	if !ok {
+		return defaultOpenAIOAuth429ConsecutiveThreshold
+	}
+	threshold, ok := parseOpenAIOAuth429ConsecutiveThreshold(raw)
+	if !ok {
+		return defaultOpenAIOAuth429ConsecutiveThreshold
+	}
+	return threshold
+}
+
+func parseOpenAIOAuth429ConsecutiveThreshold(raw any) (int64, bool) {
+	var threshold int64
+	switch value := raw.(type) {
+	case int:
+		threshold = int64(value)
+	case int32:
+		threshold = int64(value)
+	case int64:
+		threshold = value
+	case float32:
+		parsed := float64(value)
+		if math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed != math.Trunc(parsed) {
+			return 0, false
+		}
+		threshold = int64(parsed)
+	case float64:
+		if math.IsNaN(value) || math.IsInf(value, 0) || value != math.Trunc(value) {
+			return 0, false
+		}
+		threshold = int64(value)
+	case json.Number:
+		parsed, err := value.Int64()
+		if err != nil {
+			return 0, false
+		}
+		threshold = parsed
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		threshold = parsed
+	default:
+		return 0, false
+	}
+	if threshold < minOpenAIOAuth429ConsecutiveThreshold || threshold > maxOpenAIOAuth429ConsecutiveThreshold {
+		return 0, false
+	}
+	return threshold, true
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
