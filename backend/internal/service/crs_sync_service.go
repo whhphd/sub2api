@@ -25,6 +25,7 @@ type CRSSyncService struct {
 	oauthService       *OAuthService
 	openaiOAuthService *OpenAIOAuthService
 	geminiOAuthService *GeminiOAuthService
+	settingService     *SettingService
 	cfg                *config.Config
 }
 
@@ -34,6 +35,7 @@ func NewCRSSyncService(
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
+	settingService *SettingService,
 	cfg *config.Config,
 ) *CRSSyncService {
 	return &CRSSyncService{
@@ -42,8 +44,16 @@ func NewCRSSyncService(
 		oauthService:       oauthService,
 		openaiOAuthService: openaiOAuthService,
 		geminiOAuthService: geminiOAuthService,
+		settingService:     settingService,
 		cfg:                cfg,
 	}
+}
+
+func (s *CRSSyncService) createAccount(ctx context.Context, account *Account) error {
+	if err := s.settingService.ApplyOpenAIOAuthNewAccountDefaults(ctx, account); err != nil {
+		return err
+	}
+	return s.accountRepo.Create(ctx, account)
 }
 
 // guardCRSShadowParentInvariant 守住「有 spark 影子的母账号」不变量(与 AdminService.UpdateAccount 一致):
@@ -390,7 +400,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := s.createAccount(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -526,7 +536,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := s.createAccount(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -681,7 +691,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := s.createAccount(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -832,7 +842,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := s.createAccount(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -962,7 +972,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      mapCRSStatus(src.IsActive, src.Status),
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := s.createAccount(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -1092,7 +1102,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      mapCRSStatus(src.IsActive, src.Status),
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := s.createAccount(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++

@@ -253,6 +253,7 @@ type UpdateSettingsRequest struct {
 	// OpenAI account scheduling
 	OpenAILowUpstreamRatePriorityEnabled               *bool    `json:"openai_low_upstream_rate_priority_enabled"`
 	OpenAIOAuthSchedulingRateMultiplier                *float64 `json:"openai_oauth_scheduling_rate_multiplier"`
+	OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled   *bool    `json:"openai_oauth_new_account_noop_toolcall_defaults_enabled"`
 	OpenAIAdvancedSchedulerEnabled                     *bool    `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool    `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled *bool    `json:"openai_advanced_scheduler_subscription_priority_enabled"`
@@ -1600,6 +1601,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIOAuthSchedulingRateMultiplier
 		}(),
+		OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled: func() bool {
+			if req.OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled != nil {
+				return *req.OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled
+			}
+			return previousSettings.OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled
+		}(),
 		OpenAIAdvancedSchedulerEnabled: func() bool {
 			if req.OpenAIAdvancedSchedulerEnabled != nil {
 				return *req.OpenAIAdvancedSchedulerEnabled
@@ -2036,6 +2043,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentVisibleMethodWxpayEnabled:                       updatedSettings.PaymentVisibleMethodWxpayEnabled,
 		OpenAILowUpstreamRatePriorityEnabled:                   updatedSettings.OpenAILowUpstreamRatePriorityEnabled,
 		OpenAIOAuthSchedulingRateMultiplier:                    updatedSettings.OpenAIOAuthSchedulingRateMultiplier,
+		OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled:       updatedSettings.OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled,
 		OpenAIAdvancedSchedulerEnabled:                         updatedSettings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           updatedSettings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled:     updatedSettings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,

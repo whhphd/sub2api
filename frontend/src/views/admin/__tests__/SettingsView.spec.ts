@@ -194,6 +194,8 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.payment.findProvider": "查看支持的支付方式",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
+    "admin.settings.openaiExperimentalScheduler.newAccountDefaultsTitle": "新建 OpenAI OAuth 账号默认启用工具注入与 429 调度",
+    "admin.settings.openaiExperimentalScheduler.newAccountDefaultsDescription": "开启后，所有渠道新建的 OpenAI OAuth 账号都会强制启用空工具调用注入和连续 429 调度策略；不影响存量账号，创建后仍可在账号设置中单独关闭。",
     "admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle": "低倍率优先",
     "admin.settings.openaiExperimentalScheduler.lowRatePriorityDescription": "开启后优先选择计费倍率较低的账号；倍率相同时，再比较账号优先级和当前负载等。启用实验调度策略后，此开关不生效。",
     "admin.settings.openaiExperimentalScheduler.oauthRateTitle": "OAuth 调度参考倍率",
@@ -485,6 +487,7 @@ const baseSettingsResponse = {
   payment_visible_method_wxpay_enabled: true,
   openai_low_upstream_rate_priority_enabled: false,
   openai_oauth_scheduling_rate_multiplier: 1,
+  openai_oauth_new_account_noop_toolcall_defaults_enabled: false,
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
@@ -1182,6 +1185,27 @@ describe("admin SettingsView payment visible method controls", () => {
       weightedModeText.indexOf("调度权值覆盖"),
     );
     expect(weightedModeText).toContain("计费倍率");
+  });
+
+  it("loads and saves the OpenAI OAuth new-account defaults switch", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    const toggle = wrapper.get(
+      '[data-testid="openai-oauth-new-account-defaults-toggle"]',
+    );
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.text()).toContain("不影响存量账号");
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_oauth_new_account_noop_toolcall_defaults_enabled: true,
+      }),
+    );
   });
 
   it("passes translated upload and remove labels to the payment help image uploader", async () => {

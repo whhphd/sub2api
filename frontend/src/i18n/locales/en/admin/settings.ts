@@ -1183,6 +1183,8 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
         description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.",
+        newAccountDefaultsTitle: 'Enable tool injection and 429 scheduling for new OpenAI OAuth accounts',
+        newAccountDefaultsDescription: 'When enabled, OpenAI OAuth accounts created through any channel are forced to enable no-op tool-call injection and consecutive-429 scheduling. Existing accounts are unchanged, and either option can still be disabled per account after creation.',
         lowRatePriorityTitle: 'Prefer lower rates',
         lowRatePriorityDescription: 'When enabled, accounts with lower billing rates are preferred. If rates are equal, account priority, current load, and other scheduling factors are considered. This switch is ignored when the experimental scheduler is enabled.',
         oauthRateTitle: 'OAuth scheduling reference rate',

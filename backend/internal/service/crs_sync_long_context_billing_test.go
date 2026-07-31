@@ -109,7 +109,7 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 				existing = &Account{ID: 41, Platform: PlatformOpenAI, Type: accountType, Extra: existingExtra}
 			}
 			repo := newCRSLongContextAccountRepo(existing)
-			result := runCRSOpenAILongContextSync(t, repo, crsOpenAILongContextSource{
+			result := runCRSOpenAILongContextSync(t, repo, nil, crsOpenAILongContextSource{
 				collection:  tt.collection,
 				credentials: tt.credentials,
 				extra:       tt.sourceExtra,
@@ -128,7 +128,29 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 	}
 }
 
-func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source crsOpenAILongContextSource) *SyncFromCRSResult {
+func TestCRSSyncOpenAINewAccountDefaults(t *testing.T) {
+	repo := newCRSLongContextAccountRepo()
+	settingService := NewSettingService(&openAIOAuthNewAccountDefaultsRepo{value: "true"}, nil)
+
+	result := runCRSOpenAILongContextSync(t, repo, settingService, crsOpenAILongContextSource{
+		collection:  "openaiOAuthAccounts",
+		credentials: map[string]any{"access_token": "oauth-token"},
+		extra: map[string]any{
+			openAIOAuthInjectNoopToolCallExtraKey:                  false,
+			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: false,
+			openAIOAuth429ConsecutiveThresholdExtraKey:             float64(15),
+		},
+	})
+
+	require.Len(t, result.Items, 1)
+	require.Equal(t, "created", result.Items[0].Action)
+	stored := repo.accounts["crs-openai-1"]
+	require.True(t, stored.IsOpenAIOAuthNoopToolCallInjectionEnabled())
+	require.True(t, stored.IsOpenAIOAuthNoopToolCall429RetryEnabled())
+	require.Equal(t, int64(15), stored.GetOpenAIOAuth429ConsecutiveThreshold())
+}
+
+func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, settingService *SettingService, source crsOpenAILongContextSource) *SyncFromCRSResult {
 	t.Helper()
 	account := map[string]any{
 		"kind":        "openai",
@@ -158,7 +180,7 @@ func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source cr
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
-	service := NewCRSSyncService(repo, nil, nil, nil, nil, cfg)
+	service := NewCRSSyncService(repo, nil, nil, nil, nil, settingService, cfg)
 	result, err := service.SyncFromCRS(context.Background(), SyncFromCRSInput{
 		BaseURL:  server.URL,
 		Username: "admin",

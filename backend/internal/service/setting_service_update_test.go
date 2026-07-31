@@ -401,6 +401,7 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 		PaymentVisibleMethodWxpayEnabled:                   false,
 		OpenAILowUpstreamRatePriorityEnabled:               true,
 		OpenAIOAuthSchedulingRateMultiplier:                0.05,
+		OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled:   true,
 		OpenAIAdvancedSchedulerEnabled:                     true,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:       true,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled: true,
@@ -423,6 +424,7 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 	require.Equal(t, "false", repo.updates[SettingPaymentVisibleMethodWxpayEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAILowUpstreamRatePriorityEnabled])
 	require.Equal(t, "0.05", repo.updates[SettingKeyOpenAIOAuthSchedulingRateMultiplier])
+	require.Equal(t, "true", repo.updates[SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled])
 	require.Equal(t, "true", repo.updates[openAIAdvancedSchedulerSettingKey])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled])
@@ -507,6 +509,8 @@ func TestSettingService_ParseSettingsDefaultsOpenAIOAuthSchedulingRateMultiplier
 
 	require.Equal(t, 1.0, svc.parseSettings(map[string]string{}).OpenAIOAuthSchedulingRateMultiplier)
 	require.Equal(t, 0.05, svc.parseSettings(map[string]string{SettingKeyOpenAIOAuthSchedulingRateMultiplier: "0.05"}).OpenAIOAuthSchedulingRateMultiplier)
+	require.False(t, svc.parseSettings(map[string]string{}).OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled)
+	require.True(t, svc.parseSettings(map[string]string{SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled: "true"}).OpenAIOAuthNewAccountNoopToolcallDefaultsEnabled)
 }
 
 func TestSettingService_GetAllSettings_OpenAIAdvancedSchedulerEffectiveValuesUseConfig(t *testing.T) {

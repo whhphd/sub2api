@@ -316,6 +316,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	if err != nil {
 		return nil, err
 	}
+	if err := s.settingService.ApplyOpenAIOAuthNewAccountDefaults(ctx, duplicate); err != nil {
+		return nil, err
+	}
 	// A copied credential must be reviewed before it can share live traffic with its source.
 	duplicate.Schedulable = false
 	if s.accountDuplicateRepo == nil {
@@ -553,6 +556,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.settingService.ApplyOpenAIOAuthNewAccountDefaults(ctx, account); err != nil {
 		return nil, err
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -1337,6 +1343,9 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		Extra: map[string]any{
 			openAILongContextBillingEnabledKey: parent.IsOpenAILongContextBillingEnabled(),
 		},
+	}
+	if err := s.settingService.ApplyOpenAIOAuthNewAccountDefaults(ctx, shadow); err != nil {
+		return nil, err
 	}
 
 	// 5. 持久化（Create 填充 shadow.ID）。并发竞态:预查(步骤2)放行后另一请求抢先建成,本次会撞
