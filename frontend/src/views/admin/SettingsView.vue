@@ -594,8 +594,14 @@
                         {{ t("admin.settings.openaiOauthRuntime.pauseModeFixed") }}
                       </option>
                     </select>
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    <p
+                      v-if="openAIOAuthRuntimeForm.dynamic_429_scheduling.pause_mode === 'upstream_reset'"
+                      class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                    >
                       {{ t("admin.settings.openaiOauthRuntime.pauseModeUpstreamResetHint") }}
+                    </p>
+                    <p v-else class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiOauthRuntime.fixedPauseSecondsHint") }}
                     </p>
                   </div>
                   <div>
