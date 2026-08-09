@@ -431,7 +431,7 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
-  it('loads and submits the OpenAI OAuth no-op tool call toggle', async () => {
+  it('hides account-level OpenAI OAuth runtime controls and preserves stored legacy keys', async () => {
     const account = buildOpenAIOAuthAccount()
     account.extra = {
       openai_oauth_inject_noop_toolcall: true,
@@ -444,63 +444,13 @@ describe('EditAccountModal', () => {
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
-    const toggle = wrapper.get('[data-testid="openai-oauth-noop-toolcall-toggle"]')
-    const retryToggle = wrapper.get('[data-testid="openai-oauth-noop-toolcall-429-retry-toggle"]')
-    expect(toggle.attributes('aria-checked')).toBe('true')
-    expect(retryToggle.attributes('aria-checked')).toBe('true')
-    expect(retryToggle.attributes('disabled')).toBeUndefined()
-    expect(
-      (wrapper.get('[data-testid="openai-oauth-noop-toolcall-429-threshold"]').element as HTMLInputElement).value
-    ).toBe('17')
-
-    await toggle.trigger('click')
-    expect(retryToggle.attributes('aria-checked')).toBe('false')
-    expect(retryToggle.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-429-retry-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-429-threshold"]').exists()).toBe(false)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall).toBe(false)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall_ignore_429_cooldown).toBeUndefined()
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall_429_threshold).toBeUndefined()
-  })
-
-  it('defaults and submits the OpenAI OAuth 429 threshold', async () => {
-    const account = buildOpenAIOAuthAccount()
-    account.extra = {
-      openai_oauth_inject_noop_toolcall: true,
-      openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true
-    }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-
-    const wrapper = mountModal(account)
-    const thresholdInput = wrapper.get('[data-testid="openai-oauth-noop-toolcall-429-threshold"]')
-    expect((thresholdInput.element as HTMLInputElement).value).toBe('10')
-    await thresholdInput.setValue('22')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall_429_threshold).toBe(22)
-  })
-
-  it('defaults legacy OpenAI OAuth accounts to no-op tool call injection disabled', async () => {
-    const account = buildOpenAIOAuthAccount()
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
-
-    const wrapper = mountModal(account)
-    const toggle = wrapper.get('[data-testid="openai-oauth-noop-toolcall-toggle"]')
-    const retryToggle = wrapper.get('[data-testid="openai-oauth-noop-toolcall-429-retry-toggle"]')
-    expect(toggle.attributes('aria-checked')).toBe('false')
-    expect(retryToggle.attributes('aria-checked')).toBe('false')
-    expect(retryToggle.attributes('disabled')).toBeDefined()
-
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall).toBe(false)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_inject_noop_toolcall_ignore_429_cooldown).toBeUndefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject(account.extra)
   })
 
   it('loads and clears the OAuth-only Codex namespace flatten toggle', async () => {
