@@ -534,6 +534,9 @@ const (
 	SettingKeyOpenAIOAuthSchedulingRateMultiplier = "openai_oauth_scheduling_rate_multiplier"
 	// SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled 新建 OpenAI OAuth 账号时默认启用空工具调用注入和 429 调度策略。
 	SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled = "openai_oauth_new_account_noop_toolcall_defaults_enabled"
+	// SettingKeyOpenAIOAuthRuntimeSettings stores the global runtime policy for
+	// OpenAI OAuth noop tool-call injection and dynamic 429 scheduling.
+	SettingKeyOpenAIOAuthRuntimeSettings = "openai_oauth_runtime_settings"
 	// SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled OpenAI 高级调度下是否启用粘性加权。
 	SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled = "openai_advanced_scheduler_sticky_weighted_enabled"
 	// SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled OpenAI 高级调度下是否优先使用订阅账号池。

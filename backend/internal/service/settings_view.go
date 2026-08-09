@@ -1,6 +1,10 @@
 package service
 
-import "strings"
+import (
+	"fmt"
+	"math"
+	"strings"
+)
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
@@ -560,6 +564,129 @@ type RateLimit429CooldownSettings struct {
 	Enabled bool `json:"enabled"`
 	// CooldownSeconds 默认回避时长（秒）
 	CooldownSeconds int `json:"cooldown_seconds"`
+}
+
+const (
+	OpenAIOAuth429PauseModeUpstreamReset = "upstream_reset"
+	OpenAIOAuth429PauseModeFixed         = "fixed"
+
+	defaultOpenAIOAuth429WindowSeconds     = 300
+	defaultOpenAIOAuth429MinimumSamples    = 20
+	defaultOpenAIOAuth429MinimumCount      = 3
+	defaultOpenAIOAuth429RatioThreshold    = 1.0
+	defaultOpenAIOAuth429FixedPauseSeconds = 60
+	defaultOpenAIOAuth429PolicyRevision    = int64(1)
+
+	minOpenAIOAuth429WindowSeconds     = 60
+	maxOpenAIOAuth429WindowSeconds     = 3600
+	minOpenAIOAuth429MinimumSamples    = 2
+	maxOpenAIOAuth429MinimumSamples    = 10000
+	minOpenAIOAuth429RatioThreshold    = 0.01
+	maxOpenAIOAuth429RatioThreshold    = 1.0
+	minOpenAIOAuth429FixedPauseSeconds = 1
+	maxOpenAIOAuth429FixedPauseSeconds = 7200
+	openAIOAuth429RatioScale           = int64(10000)
+)
+
+// OpenAIOAuthDynamic429SchedulingSettings configures the account-local fixed
+// observation window used by the global OpenAI OAuth 429 policy.
+type OpenAIOAuthDynamic429SchedulingSettings struct {
+	Enabled           bool    `json:"enabled"`
+	WindowSeconds     int     `json:"window_seconds"`
+	MinimumSamples    int     `json:"minimum_samples"`
+	Minimum429Count   int     `json:"minimum_429_count"`
+	RatioThreshold    float64 `json:"ratio_threshold"`
+	PauseMode         string  `json:"pause_mode"`
+	FixedPauseSeconds int     `json:"fixed_pause_seconds"`
+	Revision          int64   `json:"revision"`
+}
+
+// OpenAIOAuthRuntimeSettings contains the two independent global OpenAI OAuth
+// runtime policies.
+type OpenAIOAuthRuntimeSettings struct {
+	NoopToolcallInjectionEnabled bool                                    `json:"noop_toolcall_injection_enabled"`
+	Dynamic429Scheduling         OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
+}
+
+func DefaultOpenAIOAuthRuntimeSettings(enabled bool) *OpenAIOAuthRuntimeSettings {
+	return &OpenAIOAuthRuntimeSettings{
+		NoopToolcallInjectionEnabled: enabled,
+		Dynamic429Scheduling: OpenAIOAuthDynamic429SchedulingSettings{
+			Enabled:           enabled,
+			WindowSeconds:     defaultOpenAIOAuth429WindowSeconds,
+			MinimumSamples:    defaultOpenAIOAuth429MinimumSamples,
+			Minimum429Count:   defaultOpenAIOAuth429MinimumCount,
+			RatioThreshold:    defaultOpenAIOAuth429RatioThreshold,
+			PauseMode:         OpenAIOAuth429PauseModeUpstreamReset,
+			FixedPauseSeconds: defaultOpenAIOAuth429FixedPauseSeconds,
+			Revision:          defaultOpenAIOAuth429PolicyRevision,
+		},
+	}
+}
+
+func cloneOpenAIOAuthRuntimeSettings(settings *OpenAIOAuthRuntimeSettings) *OpenAIOAuthRuntimeSettings {
+	if settings == nil {
+		return DefaultOpenAIOAuthRuntimeSettings(false)
+	}
+	cloned := *settings
+	return &cloned
+}
+
+func normalizeOpenAIOAuthRuntimeSettings(settings *OpenAIOAuthRuntimeSettings) (*OpenAIOAuthRuntimeSettings, error) {
+	normalized := cloneOpenAIOAuthRuntimeSettings(settings)
+	defaults := DefaultOpenAIOAuthRuntimeSettings(false).Dynamic429Scheduling
+	dynamic := &normalized.Dynamic429Scheduling
+
+	if dynamic.Revision < 1 {
+		dynamic.Revision = defaults.Revision
+	}
+	if !dynamic.Enabled {
+		if dynamic.WindowSeconds < minOpenAIOAuth429WindowSeconds || dynamic.WindowSeconds > maxOpenAIOAuth429WindowSeconds {
+			dynamic.WindowSeconds = defaults.WindowSeconds
+		}
+		if dynamic.MinimumSamples < minOpenAIOAuth429MinimumSamples || dynamic.MinimumSamples > maxOpenAIOAuth429MinimumSamples {
+			dynamic.MinimumSamples = defaults.MinimumSamples
+		}
+		if dynamic.Minimum429Count < 1 || dynamic.Minimum429Count > dynamic.MinimumSamples {
+			dynamic.Minimum429Count = defaults.Minimum429Count
+		}
+		if math.IsNaN(dynamic.RatioThreshold) || math.IsInf(dynamic.RatioThreshold, 0) ||
+			dynamic.RatioThreshold < minOpenAIOAuth429RatioThreshold || dynamic.RatioThreshold > maxOpenAIOAuth429RatioThreshold {
+			dynamic.RatioThreshold = defaults.RatioThreshold
+		}
+		if dynamic.PauseMode != OpenAIOAuth429PauseModeUpstreamReset && dynamic.PauseMode != OpenAIOAuth429PauseModeFixed {
+			dynamic.PauseMode = defaults.PauseMode
+		}
+		if dynamic.FixedPauseSeconds < minOpenAIOAuth429FixedPauseSeconds || dynamic.FixedPauseSeconds > maxOpenAIOAuth429FixedPauseSeconds {
+			dynamic.FixedPauseSeconds = defaults.FixedPauseSeconds
+		}
+		return normalized, nil
+	}
+
+	if dynamic.WindowSeconds < minOpenAIOAuth429WindowSeconds || dynamic.WindowSeconds > maxOpenAIOAuth429WindowSeconds {
+		return nil, fmt.Errorf("window_seconds must be between %d and %d", minOpenAIOAuth429WindowSeconds, maxOpenAIOAuth429WindowSeconds)
+	}
+	if dynamic.MinimumSamples < minOpenAIOAuth429MinimumSamples || dynamic.MinimumSamples > maxOpenAIOAuth429MinimumSamples {
+		return nil, fmt.Errorf("minimum_samples must be between %d and %d", minOpenAIOAuth429MinimumSamples, maxOpenAIOAuth429MinimumSamples)
+	}
+	if dynamic.Minimum429Count < 1 || dynamic.Minimum429Count > dynamic.MinimumSamples {
+		return nil, fmt.Errorf("minimum_429_count must be between 1 and minimum_samples")
+	}
+	if math.IsNaN(dynamic.RatioThreshold) || math.IsInf(dynamic.RatioThreshold, 0) ||
+		dynamic.RatioThreshold < minOpenAIOAuth429RatioThreshold || dynamic.RatioThreshold > maxOpenAIOAuth429RatioThreshold {
+		return nil, fmt.Errorf("ratio_threshold must be between %.2f and %.0f", minOpenAIOAuth429RatioThreshold, maxOpenAIOAuth429RatioThreshold)
+	}
+	if dynamic.PauseMode != OpenAIOAuth429PauseModeUpstreamReset && dynamic.PauseMode != OpenAIOAuth429PauseModeFixed {
+		return nil, fmt.Errorf("pause_mode must be %q or %q", OpenAIOAuth429PauseModeUpstreamReset, OpenAIOAuth429PauseModeFixed)
+	}
+	if dynamic.FixedPauseSeconds < minOpenAIOAuth429FixedPauseSeconds || dynamic.FixedPauseSeconds > maxOpenAIOAuth429FixedPauseSeconds {
+		return nil, fmt.Errorf("fixed_pause_seconds must be between %d and %d", minOpenAIOAuth429FixedPauseSeconds, maxOpenAIOAuth429FixedPauseSeconds)
+	}
+	return normalized, nil
+}
+
+func openAIOAuth429RatioBasisPoints(ratio float64) int64 {
+	return int64(math.Round(ratio * float64(openAIOAuth429RatioScale)))
 }
 
 // DefaultOverloadCooldownSettings 返回默认的过载冷却配置（启用，10分钟）
