@@ -51,10 +51,9 @@ func TestInjectOpenAIOAuthNoopToolCallPayload(t *testing.T) {
 	enabledAccount := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
-		Extra:    map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true},
 	}
 
-	updated, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, enabledAccount, false)
+	updated, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, enabledAccount, true, false)
 	require.NoError(t, err)
 	require.True(t, injected)
 	require.Equal(t, "response.create", gjson.GetBytes(updated, "type").String())
@@ -65,22 +64,22 @@ func TestInjectOpenAIOAuthNoopToolCallPayload(t *testing.T) {
 	require.Equal(t, "custom_tool_call_output", gjson.GetBytes(updated, "input.2.type").String())
 	require.Equal(t, openAIOAuthNoopExecOutput, gjson.GetBytes(updated, "input.2.output.0.text").String())
 
-	updatedAgain, injectedAgain, err := injectOpenAIOAuthNoopToolCallPayload(updated, enabledAccount, false)
+	updatedAgain, injectedAgain, err := injectOpenAIOAuthNoopToolCallPayload(updated, enabledAccount, true, false)
 	require.NoError(t, err)
 	require.False(t, injectedAgain)
 	require.Equal(t, string(updated), string(updatedAgain))
 
-	disabledAccount := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	unchanged, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, disabledAccount, false)
+	disabledAccount := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true}}
+	unchanged, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, disabledAccount, false, false)
 	require.NoError(t, err)
 	require.False(t, injected)
 	require.Equal(t, string(payload), string(unchanged))
-	unchanged, injected, err = injectOpenAIOAuthNoopToolCallPayload([]byte(`{`), disabledAccount, false)
+	unchanged, injected, err = injectOpenAIOAuthNoopToolCallPayload([]byte(`{`), disabledAccount, false, false)
 	require.NoError(t, err)
 	require.False(t, injected)
 	require.Equal(t, "{", string(unchanged))
 
-	compactPayload, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, enabledAccount, true)
+	compactPayload, injected, err := injectOpenAIOAuthNoopToolCallPayload(payload, enabledAccount, true, true)
 	require.NoError(t, err)
 	require.False(t, injected)
 	require.Equal(t, string(payload), string(compactPayload))
