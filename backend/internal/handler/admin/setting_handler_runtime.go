@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -152,6 +153,47 @@ func (h *SettingHandler) UpdateRateLimit429CooldownSettings(c *gin.Context) {
 		Enabled:         updatedSettings.Enabled,
 		CooldownSeconds: updatedSettings.CooldownSeconds,
 	})
+}
+
+// GetOpenAIOAuthRuntimeSettings returns the global OpenAI OAuth injection and
+// dynamic 429 scheduling policies.
+// GET /api/v1/admin/settings/openai-oauth-runtime
+func (h *SettingHandler) GetOpenAIOAuthRuntimeSettings(c *gin.Context) {
+	response.Success(c, h.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()))
+}
+
+// UpdateOpenAIOAuthRuntimeSettingsRequest supports independent saves from the
+// two System Settings cards. Pointer fields distinguish omission from false.
+type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
+	NoopToolcallInjectionEnabled *bool                                            `json:"noop_toolcall_injection_enabled"`
+	Dynamic429Scheduling         *service.OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
+}
+
+// UpdateOpenAIOAuthRuntimeSettings partially updates the global policy.
+// PATCH /api/v1/admin/settings/openai-oauth-runtime
+func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
+	var req UpdateOpenAIOAuthRuntimeSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings, err := h.settingService.UpdateOpenAIOAuthRuntimeSettings(
+		c.Request.Context(),
+		req.NoopToolcallInjectionEnabled,
+		req.Dynamic429Scheduling,
+	)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	slog.Info("openai_oauth_runtime_settings_updated",
+		"noop_toolcall_injection_changed", req.NoopToolcallInjectionEnabled != nil,
+		"dynamic_429_scheduling_changed", req.Dynamic429Scheduling != nil,
+		"dynamic_429_policy_revision", settings.Dynamic429Scheduling.Revision,
+	)
+	response.Success(c, settings)
 }
 
 // GetPanelRateLimitSettings 获取面板 API 限流配置

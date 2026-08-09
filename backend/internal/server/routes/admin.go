@@ -553,6 +553,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 429默认回避配置
 		adminSettings.GET("/rate-limit-429-cooldown", h.Admin.Setting.GetRateLimit429CooldownSettings)
 		adminSettings.PUT("/rate-limit-429-cooldown", h.Admin.Setting.UpdateRateLimit429CooldownSettings)
+		// OpenAI OAuth 全局运行时策略
+		adminSettings.GET("/openai-oauth-runtime", h.Admin.Setting.GetOpenAIOAuthRuntimeSettings)
+		adminSettings.PATCH("/openai-oauth-runtime", h.Admin.Setting.UpdateOpenAIOAuthRuntimeSettings)
 		// 面板 API 限流配置
 		adminSettings.GET("/panel-rate-limit", h.Admin.Setting.GetPanelRateLimitSettings)
 		adminSettings.PUT("/panel-rate-limit", h.Admin.Setting.UpdatePanelRateLimitSettings)
