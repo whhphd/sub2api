@@ -76,14 +76,26 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return false
 	}
 	stateCtx = withTempUnschedulableModel(stateCtx, canonicalModel)
-	if isOpenAIOAuth429ThresholdPolicyEligible(ctx) && account.IsOpenAIOAuthNoopToolCall429RetryEnabled() && s.rateLimitService != nil {
+	if isOpenAIOAuth429ThresholdPolicyEligible(ctx) && isOpenAIOAuthAccount(account) && s.rateLimitService != nil {
+		resetAt := time.Time{}
 		if statusCode == http.StatusTooManyRequests {
-			stateCtx = withOpenAIOAuth429CooldownSuppressed(
-				stateCtx,
-				s.rateLimitService.shouldSuppressOpenAIOAuth429Cooldown(stateCtx, account),
-			)
-		} else {
-			s.rateLimitService.resetOpenAIOAuth429Counter(stateCtx, account.ID)
+			if headerResetAt := s.rateLimitService.calculateOpenAI429ResetTime(headers); headerResetAt != nil && headerResetAt.After(time.Now()) {
+				resetAt = *headerResetAt
+			} else if resetUnix := parseOpenAIRateLimitResetTime(responseBody); resetUnix != nil {
+				bodyResetAt := time.Unix(*resetUnix, 0)
+				if bodyResetAt.After(time.Now()) {
+					resetAt = bodyResetAt
+				}
+			}
+		}
+		decision := s.rateLimitService.observeOpenAIOAuthDynamic429(
+			stateCtx,
+			account,
+			statusCode == http.StatusTooManyRequests,
+			resetAt,
+		)
+		if statusCode == http.StatusTooManyRequests {
+			stateCtx = withOpenAIOAuth429CooldownSuppressed(stateCtx, decision.SuppressCooldown)
 		}
 	}
 	if s.rateLimitService != nil && len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
