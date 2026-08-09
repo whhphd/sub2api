@@ -17,6 +17,8 @@ const {
   getOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getOpenAIOAuthRuntimeSettings,
+  updateOpenAIOAuthRuntimeSettings,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
@@ -45,6 +47,8 @@ const {
   getOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
+  getOpenAIOAuthRuntimeSettings: vi.fn(),
+  updateOpenAIOAuthRuntimeSettings: vi.fn(),
   getPanelRateLimitSettings: vi.fn().mockResolvedValue({
     enabled: true,
     user_rpm: 240,
@@ -92,6 +96,8 @@ vi.mock("@/api", () => ({
       getOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
+      getOpenAIOAuthRuntimeSettings,
+      updateOpenAIOAuthRuntimeSettings,
       getPanelRateLimitSettings,
       updatePanelRateLimitSettings,
       getStreamTimeoutSettings,
@@ -633,6 +639,8 @@ describe("admin SettingsView payment visible method controls", () => {
     getOverloadCooldownSettings.mockReset();
     getRateLimit429CooldownSettings.mockReset();
     updateRateLimit429CooldownSettings.mockReset();
+    getOpenAIOAuthRuntimeSettings.mockReset();
+    updateOpenAIOAuthRuntimeSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -678,6 +686,28 @@ describe("admin SettingsView payment visible method controls", () => {
       cooldown_seconds: 5,
     });
     updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
+    const openAIOAuthRuntimeSettings = {
+      noop_toolcall_injection_enabled: true,
+      dynamic_429_scheduling: {
+        enabled: false,
+        window_seconds: 300,
+        minimum_samples: 20,
+        minimum_429_count: 3,
+        ratio_threshold: 1,
+        pause_mode: "upstream_reset",
+        fixed_pause_seconds: 60,
+        revision: 1,
+      },
+    };
+    getOpenAIOAuthRuntimeSettings.mockResolvedValue(openAIOAuthRuntimeSettings);
+    updateOpenAIOAuthRuntimeSettings.mockImplementation(async (payload) => ({
+      noop_toolcall_injection_enabled:
+        payload.noop_toolcall_injection_enabled ??
+        openAIOAuthRuntimeSettings.noop_toolcall_injection_enabled,
+      dynamic_429_scheduling:
+        payload.dynamic_429_scheduling ??
+        openAIOAuthRuntimeSettings.dynamic_429_scheduling,
+    }));
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
       action: "temp_unsched",
@@ -1411,25 +1441,78 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(weightedModeText).toContain("计费倍率");
   });
 
-  it("loads and saves the OpenAI OAuth new-account defaults switch", async () => {
+  it("loads and independently saves the global OpenAI OAuth injection switch", async () => {
     const wrapper = mountView();
 
     await flushPromises();
-    const toggle = wrapper.get(
-      '[data-testid="openai-oauth-new-account-defaults-toggle"]',
-    );
-    expect((toggle.element as HTMLInputElement).checked).toBe(false);
-    expect(wrapper.text()).toContain("不影响存量账号");
+    await openGatewayTab(wrapper);
+    expect(
+      wrapper.find('[data-testid="openai-oauth-new-account-defaults-toggle"]').exists(),
+    ).toBe(false);
 
-    await toggle.setValue(true);
-    await wrapper.find("form").trigger("submit.prevent");
+    const toggle = wrapper.get('[data-testid="openai-oauth-injection-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+
+    await toggle.setValue(false);
+    await wrapper.get('[data-testid="openai-oauth-injection-save"]').trigger("click");
     await flushPromises();
 
-    expect(updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        openai_oauth_new_account_noop_toolcall_defaults_enabled: true,
-      }),
+    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
+      noop_toolcall_injection_enabled: false,
+    });
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("enables dynamic 429 fields by mode and saves only that global policy", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const enabled = wrapper.get('[data-testid="openai-oauth-dynamic-429-toggle"]');
+    const windowInput = wrapper.get('[data-testid="openai-oauth-dynamic-429-window"]');
+    const fixedPauseInput = wrapper.get(
+      '[data-testid="openai-oauth-dynamic-429-fixed-pause"]',
     );
+    expect((enabled.element as HTMLInputElement).checked).toBe(false);
+    expect(windowInput.attributes("disabled")).toBeDefined();
+    expect(fixedPauseInput.attributes("disabled")).toBeDefined();
+
+    await enabled.setValue(true);
+    expect(windowInput.attributes("disabled")).toBeUndefined();
+    expect(fixedPauseInput.attributes("disabled")).toBeDefined();
+
+    await wrapper
+      .get('[data-testid="openai-oauth-dynamic-429-pause-mode"]')
+      .setValue("fixed");
+    expect(fixedPauseInput.attributes("disabled")).toBeUndefined();
+    await windowInput.setValue("600");
+    await wrapper
+      .get('[data-testid="openai-oauth-dynamic-429-samples"]')
+      .setValue("40");
+    await wrapper
+      .get('[data-testid="openai-oauth-dynamic-429-count"]')
+      .setValue("5");
+    await wrapper
+      .get('[data-testid="openai-oauth-dynamic-429-ratio"]')
+      .setValue("0.25");
+    await fixedPauseInput.setValue("90");
+    await wrapper.get('[data-testid="openai-oauth-dynamic-429-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
+      dynamic_429_scheduling: {
+        enabled: true,
+        window_seconds: 600,
+        minimum_samples: 40,
+        minimum_429_count: 5,
+        ratio_threshold: 0.25,
+        pause_mode: "fixed",
+        fixed_pause_seconds: 90,
+        revision: 1,
+      },
+    });
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it("passes translated upload and remove labels to the payment help image uploader", async () => {
