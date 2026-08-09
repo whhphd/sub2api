@@ -1302,6 +1302,50 @@ export async function updateRateLimit429CooldownSettings(
   return data;
 }
 
+// ==================== OpenAI OAuth Runtime Settings ====================
+
+export type OpenAIOAuth429PauseMode = "upstream_reset" | "fixed";
+
+export interface OpenAIOAuthDynamic429SchedulingSettings {
+  enabled: boolean;
+  window_seconds: number;
+  minimum_samples: number;
+  minimum_429_count: number;
+  ratio_threshold: number;
+  pause_mode: OpenAIOAuth429PauseMode;
+  fixed_pause_seconds: number;
+  revision: number;
+}
+
+export interface OpenAIOAuthRuntimeSettings {
+  noop_toolcall_injection_enabled: boolean;
+  dynamic_429_scheduling: OpenAIOAuthDynamic429SchedulingSettings;
+}
+
+export type UpdateOpenAIOAuthRuntimeSettingsRequest = Partial<
+  Pick<
+    OpenAIOAuthRuntimeSettings,
+    "noop_toolcall_injection_enabled" | "dynamic_429_scheduling"
+  >
+>;
+
+export async function getOpenAIOAuthRuntimeSettings(): Promise<OpenAIOAuthRuntimeSettings> {
+  const { data } = await apiClient.get<OpenAIOAuthRuntimeSettings>(
+    "/admin/settings/openai-oauth-runtime",
+  );
+  return data;
+}
+
+export async function updateOpenAIOAuthRuntimeSettings(
+  settings: UpdateOpenAIOAuthRuntimeSettingsRequest,
+): Promise<OpenAIOAuthRuntimeSettings> {
+  const { data } = await apiClient.patch<OpenAIOAuthRuntimeSettings>(
+    "/admin/settings/openai-oauth-runtime",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Panel Rate Limit Settings ====================
 
 /**
@@ -1561,6 +1605,8 @@ export const settingsAPI = {
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getOpenAIOAuthRuntimeSettings,
+  updateOpenAIOAuthRuntimeSettings,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
