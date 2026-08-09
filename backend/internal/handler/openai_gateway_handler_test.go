@@ -28,6 +28,32 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func TestShouldEnableOpenAIOAuthDynamic429ForResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "/v1/responses", want: true},
+		{path: "/openai/v1/responses", want: true},
+		{path: "/responses", want: true},
+		{path: "/backend-api/codex/responses", want: true},
+		{path: "/v1/responses/input_tokens", want: false},
+		{path: "/responses/input_tokens", want: false},
+		{path: "/backend-api/codex/responses/input_tokens", want: false},
+		{path: "/v1/responses/compact", want: false},
+		{path: "/responses/compact", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, tt.path, nil)
+			require.Equal(t, tt.want, shouldEnableOpenAIOAuthDynamic429ForResponses(ctx))
+		})
+	}
+}
+
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string

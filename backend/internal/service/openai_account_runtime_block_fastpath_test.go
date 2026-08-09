@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -463,6 +464,28 @@ func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusTooManyRequests, 1, &state))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusInternalServerError, 1, &state))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 0, &state))
+}
+
+func TestShouldStopOpenAIOAuth429Failover_GlobalDynamicPolicyOverridesStorm(t *testing.T) {
+	settingRepo := newMockSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(true)
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingRepo.data[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+	svc := &OpenAIGatewayService{settingService: NewSettingService(settingRepo, &config.Config{})}
+	account := &Account{ID: 46, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	for i := 0; i < openAIOAuth429StormThreshold; i++ {
+		svc.recordOpenAIOAuth429()
+	}
+	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &OpenAIOAuth429FailoverState{}))
+
+	settings.Dynamic429Scheduling.Enabled = false
+	data, err = json.Marshal(settings)
+	require.NoError(t, err)
+	settingRepo.data[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+	svc.settingService.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{settings: settings, expiresAt: 0})
+	require.True(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &OpenAIOAuth429FailoverState{}))
 }
 
 func TestShouldStopOpenAIOAuth429Failover_TracksOneGrokFollowupAttempt(t *testing.T) {

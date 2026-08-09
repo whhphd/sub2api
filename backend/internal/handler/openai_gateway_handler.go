@@ -231,6 +231,10 @@ func NewOpenAIGatewayHandler(
 	}
 }
 
+func shouldEnableOpenAIOAuthDynamic429ForResponses(c *gin.Context) bool {
+	return GetInboundEndpoint(c) == EndpointResponses && !service.IsOpenAIResponsesCompactPathForTest(c)
+}
+
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
@@ -288,7 +292,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !service.IsOpenAIResponsesCompactPathForTest(c) && GetInboundEndpoint(c) != EndpointResponsesInputTokens {
+	if shouldEnableOpenAIOAuthDynamic429ForResponses(c) {
 		c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 	}
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
