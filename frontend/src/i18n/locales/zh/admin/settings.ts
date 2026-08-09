@@ -1293,8 +1293,6 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。',
-        newAccountDefaultsTitle: '新建 OpenAI OAuth 账号默认启用工具注入与 429 调度',
-        newAccountDefaultsDescription: '开启后，所有渠道新建的 OpenAI OAuth 账号都会强制启用空工具调用注入和连续 429 调度策略；不影响存量账号，创建后仍可在账号设置中单独关闭。',
         lowRatePriorityTitle: '低倍率优先',
         lowRatePriorityDescription: '开启后优先选择计费倍率较低的账号；倍率相同时，再比较账号优先级和当前负载等。启用实验调度策略后，此开关不生效。',
         oauthRateTitle: 'OAuth 调度参考倍率',
