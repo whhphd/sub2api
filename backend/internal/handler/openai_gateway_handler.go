@@ -288,7 +288,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !service.IsOpenAIResponsesCompactPathForTest(c) {
+	if !service.IsOpenAIResponsesCompactPathForTest(c) && GetInboundEndpoint(c) != EndpointResponsesInputTokens {
 		c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 	}
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
@@ -635,8 +635,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					switchCount++
-					if !(failoverErr.StatusCode == http.StatusTooManyRequests && account.IsOpenAIOAuthNoopToolCall429RetryEnabled()) &&
-						h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1185,8 +1184,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 					switchCount++
-					if !(failoverErr.StatusCode == http.StatusTooManyRequests && account.IsOpenAIOAuthNoopToolCall429RetryEnabled()) &&
-						h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1863,8 +1861,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return false
 		}
 		switchCount++
-		if !(failoverErr.StatusCode == http.StatusTooManyRequests && account.IsOpenAIOAuthNoopToolCall429RetryEnabled()) &&
-			h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 			closeOpenAIWSFailoverExhausted(wsConn, failoverErr)
 			return false
 		}

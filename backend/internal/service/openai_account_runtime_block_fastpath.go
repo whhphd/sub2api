@@ -387,5 +387,12 @@ func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account
 	if statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) {
 		return false
 	}
+	// Dynamic scheduling deliberately lets the current request try other
+	// accounts while the account-local window is still below its pause
+	// threshold. The request's failed-account set still prevents selecting the
+	// same ordinary OAuth account again.
+	if s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(context.Background()).Dynamic429Scheduling.Enabled {
+		return false
+	}
 	return s.isOpenAIOAuth429Storm()
 }
