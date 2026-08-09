@@ -395,7 +395,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
-		if injectedPayload, injected, injectErr := injectOpenAIOAuthNoopToolCallPayload(normalized, account, false); injectErr != nil {
+		if injectedPayload, injected, injectErr := injectOpenAIOAuthNoopToolCallPayload(
+			normalized,
+			account,
+			s.openAIOAuthNoopToolCallInjectionEnabled(ctx),
+			false,
+		); injectErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", injectErr)
 		} else if injected {
 			normalized = injectedPayload

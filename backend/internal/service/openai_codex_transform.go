@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -315,9 +316,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 }
 
 // injectOpenAIOAuthNoopToolCall appends the fixed successful exec pair only for
-// a globally enabled OpenAI OAuth request and a normal user turn. During the
-// staged call-site migration, one bool retains the old (isCompact) signature;
-// all new callers pass (globallyEnabled, isCompact).
+// a globally enabled OpenAI OAuth request and a normal user turn.
 func injectOpenAIOAuthNoopToolCall(reqBody map[string]any, account *Account, policy ...bool) bool {
 	globallyEnabled, isCompact := openAIOAuthNoopToolCallPolicyArgs(account, policy)
 	if account == nil || !account.IsOpenAIOAuth() || !globallyEnabled || isCompact {
@@ -380,11 +379,16 @@ func openAIOAuthNoopToolCallPolicyArgs(account *Account, policy []bool) (globall
 		return policy[0], policy[1]
 	}
 	if len(policy) == 1 {
-		// Transitional compatibility for the three call sites updated in the
-		// next batch. No final runtime path uses account-level policy.
 		return account != nil && account.IsOpenAIOAuthNoopToolCallInjectionEnabled(), policy[0]
 	}
 	return false, false
+}
+
+func (s *OpenAIGatewayService) openAIOAuthNoopToolCallInjectionEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return false
+	}
+	return s.settingService.GetOpenAIOAuthRuntimeSettings(ctx).NoopToolcallInjectionEnabled
 }
 
 func normalizeCodexToolChoice(reqBody map[string]any) bool {

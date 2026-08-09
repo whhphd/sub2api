@@ -175,7 +175,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Stripped /responses image_generation tool for Codex client by account policy")
 			}
 		}
-		injectedBody, injected, injectErr := injectOpenAIOAuthNoopToolCallPayload(originalBody, account, isOpenAIResponsesCompactPath(c))
+		injectedBody, injected, injectErr := injectOpenAIOAuthNoopToolCallPayload(
+			originalBody,
+			account,
+			s.openAIOAuthNoopToolCallInjectionEnabled(ctx),
+			isOpenAIResponsesCompactPath(c),
+		)
 		if injectErr != nil {
 			return nil, injectErr
 		}
@@ -418,7 +423,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.Modified {
 			markDecodedModified()
 		}
-		if injectOpenAIOAuthNoopToolCall(decoded, account, isCompactRequest) {
+		if injectOpenAIOAuthNoopToolCall(decoded, account, s.openAIOAuthNoopToolCallInjectionEnabled(ctx), isCompactRequest) {
 			markDecodedModified()
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected no-op exec tool call for OAuth account: %s", account.Name)
 		}
