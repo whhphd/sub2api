@@ -128,7 +128,7 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 	}
 }
 
-func TestCRSSyncOpenAINewAccountDefaults(t *testing.T) {
+func TestCRSSyncOpenAIDoesNotRewriteLegacyRuntimePolicyFields(t *testing.T) {
 	repo := newCRSLongContextAccountRepo()
 	settingService := NewSettingService(&openAIOAuthNewAccountDefaultsRepo{value: "true"}, nil)
 
@@ -145,8 +145,8 @@ func TestCRSSyncOpenAINewAccountDefaults(t *testing.T) {
 	require.Len(t, result.Items, 1)
 	require.Equal(t, "created", result.Items[0].Action)
 	stored := repo.accounts["crs-openai-1"]
-	require.True(t, stored.IsOpenAIOAuthNoopToolCallInjectionEnabled())
-	require.True(t, stored.IsOpenAIOAuthNoopToolCall429RetryEnabled())
+	require.False(t, stored.IsOpenAIOAuthNoopToolCallInjectionEnabled())
+	require.False(t, stored.IsOpenAIOAuthNoopToolCall429RetryEnabled())
 	require.Equal(t, int64(15), stored.GetOpenAIOAuth429ConsecutiveThreshold())
 }
 
