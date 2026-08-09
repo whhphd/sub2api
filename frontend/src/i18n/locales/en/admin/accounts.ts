@@ -565,17 +565,6 @@ export default {
         planTypeDesc:
           "Manually correct this account's ChatGPT plan tier (Plus / Pro / Free). Note: a token refresh near expiry or a 429 rate-limit response will auto-overwrite this with the real tier.",
         planTypeClear: 'Clear (auto-detect)',
-        noopToolCallInjection: 'Inject no-op Exec tool call',
-        noopToolCallInjectionDesc:
-          'Only applies to this OpenAI OAuth account. When enabled, each normal Responses turn ending in a user message receives a paired successful no-op Exec tool call. Compact requests are excluded. Disabled by default.',
-        noopToolCall429Retry: 'Pause scheduling after the consecutive 429 threshold',
-        noopToolCall429RetryDesc:
-          'Effective only when the injection option above is enabled. Before the account threshold is reached, the current request switches accounts without pausing this one. At the threshold, the original rate-limit handling pauses until the upstream reset time and then restores scheduling automatically.',
-        noopToolCall429Threshold: 'Consecutive 429 pause threshold',
-        noopToolCall429ThresholdDesc: 'Enter an integer from 1 to 100. Missing or invalid values default to 10.',
-        noopToolCall429ThresholdOverwrite: 'Overwrite the consecutive 429 threshold',
-        noopToolCall429ThresholdBulkDesc:
-          'Existing account values are kept by default. Enable overwrite to apply one integer from 1 to 100 to all selected accounts.',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
