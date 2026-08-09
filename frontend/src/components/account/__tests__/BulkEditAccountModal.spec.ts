@@ -345,95 +345,15 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
-  it('OpenAI OAuth 批量编辑应提交 no-op tool call 注入字段', async () => {
+  it.each(['oauth', 'setup-token'])('OpenAI %s 批量编辑不显示账号级运行策略入口', (type) => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
-      selectedTypes: ['oauth']
-    })
-
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-enabled').setValue(true)
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-toggle').trigger('click')
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-429-retry-toggle').trigger('click')
-    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
-      extra: {
-        openai_oauth_inject_noop_toolcall: true,
-        openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true
-      }
-    })
-  })
-
-  it('OpenAI OAuth 批量编辑默认保持现有 429 阈值', async () => {
-    const wrapper = mountModal({
-      selectedPlatforms: ['openai'],
-      selectedTypes: ['oauth']
-    })
-
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-enabled').setValue(true)
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-toggle').trigger('click')
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-429-retry-toggle').trigger('click')
-    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
-      extra: {
-        openai_oauth_inject_noop_toolcall: true,
-        openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true
-      }
-    })
-  })
-
-  it('OpenAI OAuth 批量编辑可覆盖 429 阈值', async () => {
-    const wrapper = mountModal({
-      selectedPlatforms: ['openai'],
-      selectedTypes: ['oauth']
-    })
-
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-enabled').setValue(true)
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-toggle').trigger('click')
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-429-retry-toggle').trigger('click')
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-429-threshold-enabled').setValue(true)
-    await wrapper.get('[data-testid="bulk-edit-openai-noop-toolcall-429-threshold"]').setValue('24')
-    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
-      extra: {
-        openai_oauth_inject_noop_toolcall: true,
-        openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true,
-        openai_oauth_inject_noop_toolcall_429_threshold: 24
-      }
-    })
-  })
-
-  it('OpenAI OAuth 批量关闭 no-op 注入时应同时关闭 429 重试策略', async () => {
-    const wrapper = mountModal({
-      selectedPlatforms: ['openai'],
-      selectedTypes: ['oauth']
-    })
-
-    await wrapper.get('#bulk-edit-openai-noop-toolcall-enabled').setValue(true)
-    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
-      extra: {
-        openai_oauth_inject_noop_toolcall: false,
-        openai_oauth_inject_noop_toolcall_ignore_429_cooldown: false
-      }
-    })
-  })
-
-  it('OpenAI Setup Token 批量编辑不显示 no-op tool call 注入入口', () => {
-    const wrapper = mountModal({
-      selectedPlatforms: ['openai'],
-      selectedTypes: ['setup-token']
+      selectedTypes: [type]
     })
 
     expect(wrapper.find('#bulk-edit-openai-noop-toolcall-enabled').exists()).toBe(false)
+    expect(wrapper.find('#bulk-edit-openai-noop-toolcall-429-retry-toggle').exists()).toBe(false)
+    expect(wrapper.find('#bulk-edit-openai-noop-toolcall-429-threshold-enabled').exists()).toBe(false)
   })
 
   it('OpenAI OAuth 批量编辑应提交 codex_cli_only_allow_app_server 字段（需同时开启父开关）', async () => {

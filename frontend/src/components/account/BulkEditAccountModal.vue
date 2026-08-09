@@ -825,115 +825,6 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth no-op Exec tool-call injection -->
-      <div v-if="allOpenAIOAuthOnly" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="mb-3 flex items-center justify-between">
-          <label
-            id="bulk-edit-openai-noop-toolcall-label"
-            class="input-label mb-0"
-            for="bulk-edit-openai-noop-toolcall-enabled"
-          >
-            {{ t('admin.accounts.openai.noopToolCallInjection') }}
-          </label>
-          <input
-            v-model="enableOpenAIOAuthNoopToolCall"
-            id="bulk-edit-openai-noop-toolcall-enabled"
-            type="checkbox"
-            aria-controls="bulk-edit-openai-noop-toolcall"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-        </div>
-        <div
-          id="bulk-edit-openai-noop-toolcall"
-          :class="!enableOpenAIOAuthNoopToolCall && 'pointer-events-none opacity-50'"
-        >
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.openai.noopToolCallInjectionDesc') }}
-          </p>
-          <button
-            id="bulk-edit-openai-noop-toolcall-toggle"
-            type="button"
-            role="switch"
-            :aria-checked="openAIOAuthNoopToolCallEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              openAIOAuthNoopToolCallEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-            @click="setOpenAIOAuthNoopToolCallEnabled(!openAIOAuthNoopToolCallEnabled)"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                openAIOAuthNoopToolCallEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
-          <div class="mt-4 flex items-center justify-between gap-4 border-l-2 border-gray-200 pl-4 dark:border-dark-600">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.openai.noopToolCall429Retry') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.openai.noopToolCall429RetryDesc') }}
-              </p>
-            </div>
-            <button
-              id="bulk-edit-openai-noop-toolcall-429-retry-toggle"
-              type="button"
-              role="switch"
-              :aria-checked="openAIOAuthNoopToolCall429RetryEnabled"
-              :disabled="!openAIOAuthNoopToolCallEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                openAIOAuthNoopToolCallEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
-                openAIOAuthNoopToolCall429RetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-              @click="openAIOAuthNoopToolCall429RetryEnabled = !openAIOAuthNoopToolCall429RetryEnabled"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  openAIOAuthNoopToolCall429RetryEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-          <div
-            v-if="openAIOAuthNoopToolCallEnabled && openAIOAuthNoopToolCall429RetryEnabled"
-            class="mt-4 border-l-2 border-gray-200 pl-4 dark:border-dark-600"
-          >
-            <div class="mb-3 flex items-center justify-between gap-4">
-              <label class="input-label mb-0" for="bulk-edit-openai-noop-toolcall-429-threshold-enabled">
-                {{ t('admin.accounts.openai.noopToolCall429ThresholdOverwrite') }}
-              </label>
-              <input
-                id="bulk-edit-openai-noop-toolcall-429-threshold-enabled"
-                v-model="enableOpenAIOAuth429ConsecutiveThreshold"
-                type="checkbox"
-                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-            </div>
-            <div :class="!enableOpenAIOAuth429ConsecutiveThreshold && 'pointer-events-none opacity-50'">
-              <label class="input-label" for="bulk-edit-openai-noop-toolcall-429-threshold">
-                {{ t('admin.accounts.openai.noopToolCall429Threshold') }}
-              </label>
-              <input
-                id="bulk-edit-openai-noop-toolcall-429-threshold"
-                v-model.number="openAIOAuth429ConsecutiveThreshold"
-                data-testid="bulk-edit-openai-noop-toolcall-429-threshold"
-                type="number"
-                min="1"
-                max="100"
-                step="1"
-                class="input max-w-40"
-                @blur="normalizeOpenAIOAuth429ConsecutiveThresholdInput"
-              />
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.openai.noopToolCall429ThresholdBulkDesc') }}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- OpenAI OAuth Codex CLI only -->
       <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1589,8 +1480,6 @@ const enableOpenAIFlattenNamespaces = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableUpstreamBillingAutoProbe = ref(false)
-const enableOpenAIOAuthNoopToolCall = ref(false)
-const enableOpenAIOAuth429ConsecutiveThreshold = ref(false)
 const enableCodexCLIOnly = ref(false)
 const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
@@ -1624,12 +1513,6 @@ const openaiFlattenNamespacesEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const upstreamBillingAutoProbeMode = ref<'enabled' | 'disabled'>('enabled')
-const openAIOAuthNoopToolCallEnabled = ref(false)
-const openAIOAuthNoopToolCall429RetryEnabled = ref(false)
-const OPENAI_OAUTH_429_THRESHOLD_DEFAULT = 10
-const OPENAI_OAUTH_429_THRESHOLD_MIN = 1
-const OPENAI_OAUTH_429_THRESHOLD_MAX = 100
-const openAIOAuth429ConsecutiveThreshold = ref<number | string>(OPENAI_OAUTH_429_THRESHOLD_DEFAULT)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -1640,30 +1523,6 @@ const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
 
-const setOpenAIOAuthNoopToolCallEnabled = (enabled: boolean) => {
-  openAIOAuthNoopToolCallEnabled.value = enabled
-  if (!enabled) {
-    openAIOAuthNoopToolCall429RetryEnabled.value = false
-  }
-}
-
-const normalizeOpenAIOAuth429ConsecutiveThreshold = (value: unknown): number => {
-  const threshold = typeof value === 'number' ? value : Number(value)
-  if (
-    !Number.isInteger(threshold) ||
-    threshold < OPENAI_OAUTH_429_THRESHOLD_MIN ||
-    threshold > OPENAI_OAUTH_429_THRESHOLD_MAX
-  ) {
-    return OPENAI_OAUTH_429_THRESHOLD_DEFAULT
-  }
-  return threshold
-}
-
-const normalizeOpenAIOAuth429ConsecutiveThresholdInput = () => {
-  openAIOAuth429ConsecutiveThreshold.value = normalizeOpenAIOAuth429ConsecutiveThreshold(
-    openAIOAuth429ConsecutiveThreshold.value
-  )
-}
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -1926,22 +1785,6 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.upstream_billing_probe_enabled = upstreamBillingAutoProbeMode.value === 'enabled'
   }
 
-  if (enableOpenAIOAuthNoopToolCall.value) {
-    const extra = ensureExtra()
-    extra.openai_oauth_inject_noop_toolcall = openAIOAuthNoopToolCallEnabled.value
-    extra.openai_oauth_inject_noop_toolcall_ignore_429_cooldown =
-      openAIOAuthNoopToolCallEnabled.value && openAIOAuthNoopToolCall429RetryEnabled.value
-    if (
-      openAIOAuthNoopToolCallEnabled.value &&
-      openAIOAuthNoopToolCall429RetryEnabled.value &&
-      enableOpenAIOAuth429ConsecutiveThreshold.value
-    ) {
-      extra.openai_oauth_inject_noop_toolcall_429_threshold = normalizeOpenAIOAuth429ConsecutiveThreshold(
-        openAIOAuth429ConsecutiveThreshold.value
-      )
-    }
-  }
-
   if (enableCodexCLIOnly.value) {
     const extra = ensureExtra()
     extra.codex_cli_only = codexCLIOnlyEnabled.value
@@ -2066,7 +1909,6 @@ const handleSubmit = async () => {
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableUpstreamBillingAutoProbe.value ||
-    enableOpenAIOAuthNoopToolCall.value ||
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAppServer.value ||
     enableOpenAICompactMode.value ||
@@ -2201,8 +2043,6 @@ watch(
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
       enableUpstreamBillingAutoProbe.value = false
-      enableOpenAIOAuthNoopToolCall.value = false
-      enableOpenAIOAuth429ConsecutiveThreshold.value = false
       enableCodexCLIOnly.value = false
       enableCodexCLIOnlyAppServer.value = false
       enableOpenAICompactMode.value = false
@@ -2231,8 +2071,6 @@ watch(
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       upstreamBillingAutoProbeMode.value = 'enabled'
-      setOpenAIOAuthNoopToolCallEnabled(false)
-      openAIOAuth429ConsecutiveThreshold.value = OPENAI_OAUTH_429_THRESHOLD_DEFAULT
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'
