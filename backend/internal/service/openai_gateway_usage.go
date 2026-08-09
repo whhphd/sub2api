@@ -137,8 +137,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
-		if isOpenAIOAuth429ThresholdPolicyEligible(ctx) && input.Account.IsOpenAIOAuthNoopToolCall429RetryEnabled() {
-			s.rateLimitService.resetOpenAIOAuth429Counter(ctx, input.Account.ID)
+		if isOpenAIOAuth429ThresholdPolicyEligible(ctx) && isOpenAIOAuthAccount(input.Account) && !input.CyberBlocked {
+			// A success can complete the fixed window's minimum sample count.
+			// Any resulting pause only affects later scheduling; this successful
+			// response continues through normal billing and usage persistence.
+			s.rateLimitService.observeOpenAIOAuthDynamic429(ctx, input.Account, false, time.Time{})
 		}
 	}
 

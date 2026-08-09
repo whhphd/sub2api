@@ -154,8 +154,3 @@ func (s *RateLimitService) applyOpenAIOAuthDynamic429Pause(ctx context.Context, 
 		"pause_for", time.Until(pauseUntil).Truncate(time.Second),
 	)
 }
-
-// resetOpenAIOAuth429Counter is retained until all staged call sites have moved
-// from streak resets to fixed-window outcome observations. Resetting here would
-// violate the anchored-window contract, so it is intentionally a no-op.
-func (s *RateLimitService) resetOpenAIOAuth429Counter(context.Context, int64) {}
