@@ -150,6 +150,10 @@ type SettingService struct {
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
 
+	openAIOAuthRuntimeSettingsCache atomic.Value // *cachedOpenAIOAuthRuntimeSettings
+	openAIOAuthRuntimeSettingsSF    singleflight.Group
+	openAIOAuthRuntimeSettingsMu    sync.Mutex
+
 	channelMonitorRuntimeListenersMu sync.Mutex
 	channelMonitorRuntimeListeners   []func()
 }

@@ -764,6 +764,148 @@ func (s *SettingService) SetRateLimit429CooldownSettings(ctx context.Context, se
 	return s.settingRepo.Set(ctx, SettingKeyRateLimit429CooldownSettings, string(data))
 }
 
+const (
+	openAIOAuthRuntimeSettingsCacheTTL   = 30 * time.Second
+	openAIOAuthRuntimeSettingsErrorTTL   = 5 * time.Second
+	openAIOAuthRuntimeSettingsDBTimeout  = 5 * time.Second
+	openAIOAuthRuntimeSettingsRefreshKey = "openai_oauth_runtime_settings"
+)
+
+type cachedOpenAIOAuthRuntimeSettings struct {
+	settings  *OpenAIOAuthRuntimeSettings
+	expiresAt int64
+}
+
+// GetOpenAIOAuthRuntimeSettings returns the global OpenAI OAuth runtime policy.
+// Runtime callers always receive a usable value: DB and decoding failures retain
+// the last known good configuration, or fail closed to both custom policies.
+func (s *SettingService) GetOpenAIOAuthRuntimeSettings(ctx context.Context) *OpenAIOAuthRuntimeSettings {
+	if s == nil || s.settingRepo == nil {
+		return DefaultOpenAIOAuthRuntimeSettings(false)
+	}
+	if cached, _ := s.openAIOAuthRuntimeSettingsCache.Load().(*cachedOpenAIOAuthRuntimeSettings); cached != nil &&
+		cached.settings != nil && time.Now().UnixNano() < cached.expiresAt {
+		return cloneOpenAIOAuthRuntimeSettings(cached.settings)
+	}
+
+	value, err, _ := s.openAIOAuthRuntimeSettingsSF.Do(openAIOAuthRuntimeSettingsRefreshKey, func() (any, error) {
+		if cached, _ := s.openAIOAuthRuntimeSettingsCache.Load().(*cachedOpenAIOAuthRuntimeSettings); cached != nil &&
+			cached.settings != nil && time.Now().UnixNano() < cached.expiresAt {
+			return cloneOpenAIOAuthRuntimeSettings(cached.settings), nil
+		}
+
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIOAuthRuntimeSettingsDBTimeout)
+		defer cancel()
+		settings, readErr := s.readOpenAIOAuthRuntimeSettings(dbCtx)
+		if readErr == nil {
+			s.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{
+				settings:  cloneOpenAIOAuthRuntimeSettings(settings),
+				expiresAt: time.Now().Add(openAIOAuthRuntimeSettingsCacheTTL).UnixNano(),
+			})
+			return settings, nil
+		}
+
+		fallback := DefaultOpenAIOAuthRuntimeSettings(false)
+		if cached, _ := s.openAIOAuthRuntimeSettingsCache.Load().(*cachedOpenAIOAuthRuntimeSettings); cached != nil && cached.settings != nil {
+			fallback = cloneOpenAIOAuthRuntimeSettings(cached.settings)
+		}
+		s.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{
+			settings:  cloneOpenAIOAuthRuntimeSettings(fallback),
+			expiresAt: time.Now().Add(openAIOAuthRuntimeSettingsErrorTTL).UnixNano(),
+		})
+		return fallback, readErr
+	})
+	settings, _ := value.(*OpenAIOAuthRuntimeSettings)
+	if err != nil {
+		slog.Warn("failed to refresh OpenAI OAuth runtime settings; using safe cached value",
+			"error", err,
+			"key", SettingKeyOpenAIOAuthRuntimeSettings)
+	}
+	return cloneOpenAIOAuthRuntimeSettings(settings)
+}
+
+func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*OpenAIOAuthRuntimeSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIOAuthRuntimeSettings)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return nil, fmt.Errorf("get OpenAI OAuth runtime settings: %w", err)
+	}
+	if strings.TrimSpace(value) != "" {
+		var settings OpenAIOAuthRuntimeSettings
+		if err := json.Unmarshal([]byte(value), &settings); err != nil {
+			return nil, fmt.Errorf("unmarshal OpenAI OAuth runtime settings: %w", err)
+		}
+		normalized, err := normalizeOpenAIOAuthRuntimeSettings(&settings)
+		if err != nil {
+			return nil, fmt.Errorf("validate OpenAI OAuth runtime settings: %w", err)
+		}
+		return normalized, nil
+	}
+
+	legacyValue, legacyErr := s.settingRepo.GetValue(ctx, SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled)
+	if legacyErr != nil && !errors.Is(legacyErr, ErrSettingNotFound) {
+		return nil, fmt.Errorf("get legacy OpenAI OAuth runtime setting: %w", legacyErr)
+	}
+	return DefaultOpenAIOAuthRuntimeSettings(strings.TrimSpace(legacyValue) == "true"), nil
+}
+
+// UpdateOpenAIOAuthRuntimeSettings applies an independent partial update. A
+// dynamic-policy update advances its revision so Redis observations from the
+// previous policy cannot be reused.
+func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
+	ctx context.Context,
+	noopToolcallInjectionEnabled *bool,
+	dynamic429Scheduling *OpenAIOAuthDynamic429SchedulingSettings,
+) (*OpenAIOAuthRuntimeSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, fmt.Errorf("setting service is unavailable")
+	}
+	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil {
+		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
+	}
+
+	s.openAIOAuthRuntimeSettingsMu.Lock()
+	defer s.openAIOAuthRuntimeSettingsMu.Unlock()
+
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIOAuthRuntimeSettingsDBTimeout)
+	defer cancel()
+	current, err := s.readOpenAIOAuthRuntimeSettings(dbCtx)
+	if err != nil {
+		return nil, err
+	}
+	if noopToolcallInjectionEnabled != nil {
+		current.NoopToolcallInjectionEnabled = *noopToolcallInjectionEnabled
+	}
+	if dynamic429Scheduling != nil {
+		nextRevision := current.Dynamic429Scheduling.Revision + 1
+		if nextRevision < 1 {
+			nextRevision = 1
+		}
+		current.Dynamic429Scheduling = *dynamic429Scheduling
+		current.Dynamic429Scheduling.Revision = nextRevision
+	}
+	normalized, err := normalizeOpenAIOAuthRuntimeSettings(current)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, fmt.Errorf("marshal OpenAI OAuth runtime settings: %w", err)
+	}
+	if err := s.settingRepo.Set(dbCtx, SettingKeyOpenAIOAuthRuntimeSettings, string(data)); err != nil {
+		return nil, fmt.Errorf("set OpenAI OAuth runtime settings: %w", err)
+	}
+
+	s.openAIOAuthRuntimeSettingsSF.Forget(openAIOAuthRuntimeSettingsRefreshKey)
+	s.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{
+		settings:  cloneOpenAIOAuthRuntimeSettings(normalized),
+		expiresAt: time.Now().Add(openAIOAuthRuntimeSettingsCacheTTL).UnixNano(),
+	})
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return cloneOpenAIOAuthRuntimeSettings(normalized), nil
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamTimeoutSettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyStreamTimeoutSettings)
