@@ -48,7 +48,6 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 	enabledAccount := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
-		Extra:    map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true},
 	}
 	userInput := func() map[string]any {
 		return map[string]any{"input": []any{
@@ -58,7 +57,7 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 
 	t.Run("enabled OAuth user turn", func(t *testing.T) {
 		reqBody := userInput()
-		require.True(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, false))
+		require.True(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, true, false))
 
 		input := reqBody["input"].([]any)
 		require.Len(t, input, 3)
@@ -77,25 +76,24 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 
 		// The appended output is no longer a user message, so retrying the
 		// transformation cannot duplicate the pair.
-		require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, false))
+		require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, true, false))
 		require.Len(t, reqBody["input"].([]any), 3)
 	})
 
 	tests := []struct {
-		name    string
-		account *Account
-		compact bool
-		mutate  func(map[string]any)
+		name            string
+		account         *Account
+		globallyEnabled bool
+		compact         bool
+		mutate          func(map[string]any)
 	}{
-		{name: "missing option defaults off", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}},
-		{name: "explicitly disabled", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: false}}},
-		{name: "non boolean option is off", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: "true"}}},
-		{name: "API key account", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true}}},
-		{name: "other platform OAuth", account: &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true}}},
-		{name: "compact request", account: enabledAccount, compact: true},
-		{name: "empty input", account: enabledAccount, mutate: func(body map[string]any) { body["input"] = []any{} }},
-		{name: "last item is assistant", account: enabledAccount, mutate: func(body map[string]any) { body["input"].([]any)[0].(map[string]any)["role"] = "assistant" }},
-		{name: "last item is tool output", account: enabledAccount, mutate: func(body map[string]any) {
+		{name: "global policy disabled ignores legacy account extra", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true}}},
+		{name: "API key account", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, globallyEnabled: true},
+		{name: "other platform OAuth", account: &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth}, globallyEnabled: true},
+		{name: "compact request", account: enabledAccount, globallyEnabled: true, compact: true},
+		{name: "empty input", account: enabledAccount, globallyEnabled: true, mutate: func(body map[string]any) { body["input"] = []any{} }},
+		{name: "last item is assistant", account: enabledAccount, globallyEnabled: true, mutate: func(body map[string]any) { body["input"].([]any)[0].(map[string]any)["role"] = "assistant" }},
+		{name: "last item is tool output", account: enabledAccount, globallyEnabled: true, mutate: func(body map[string]any) {
 			body["input"] = append(body["input"].([]any), map[string]any{"type": "custom_tool_call_output", "call_id": "call_old"})
 		}},
 	}
@@ -105,57 +103,7 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(reqBody)
 			}
-			require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, tt.account, tt.compact))
-		})
-	}
-}
-
-func TestAccountOpenAIOAuthNoopToolCall429RetryEnabled(t *testing.T) {
-	tests := []struct {
-		name    string
-		account *Account
-		want    bool
-	}{
-		{
-			name: "parent and child enabled",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
-				openAIOAuthInjectNoopToolCallExtraKey:                  true,
-				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
-			}},
-			want: true,
-		},
-		{
-			name: "parent disabled",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
-				openAIOAuthInjectNoopToolCallExtraKey:                  false,
-				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
-			}},
-		},
-		{
-			name: "child missing",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
-				openAIOAuthInjectNoopToolCallExtraKey: true,
-			}},
-		},
-		{
-			name: "child non boolean",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
-				openAIOAuthInjectNoopToolCallExtraKey:                  true,
-				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: "true",
-			}},
-		},
-		{
-			name: "api key account",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{
-				openAIOAuthInjectNoopToolCallExtraKey:                  true,
-				openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
-			}},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, tt.account.IsOpenAIOAuthNoopToolCall429RetryEnabled())
+			require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, tt.account, tt.globallyEnabled, tt.compact))
 		})
 	}
 }

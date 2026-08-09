@@ -315,9 +315,12 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 }
 
 // injectOpenAIOAuthNoopToolCall appends the fixed successful exec pair only for
-// an explicitly enabled OpenAI OAuth account and a normal user turn.
-func injectOpenAIOAuthNoopToolCall(reqBody map[string]any, account *Account, isCompact bool) bool {
-	if account == nil || !account.IsOpenAIOAuthNoopToolCallInjectionEnabled() || isCompact {
+// a globally enabled OpenAI OAuth request and a normal user turn. During the
+// staged call-site migration, one bool retains the old (isCompact) signature;
+// all new callers pass (globallyEnabled, isCompact).
+func injectOpenAIOAuthNoopToolCall(reqBody map[string]any, account *Account, policy ...bool) bool {
+	globallyEnabled, isCompact := openAIOAuthNoopToolCallPolicyArgs(account, policy)
+	if account == nil || !account.IsOpenAIOAuth() || !globallyEnabled || isCompact {
 		return false
 	}
 
@@ -352,8 +355,9 @@ func injectOpenAIOAuthNoopToolCall(reqBody map[string]any, account *Account, isC
 	return true
 }
 
-func injectOpenAIOAuthNoopToolCallPayload(payload []byte, account *Account, isCompact bool) ([]byte, bool, error) {
-	if account == nil || !account.IsOpenAIOAuthNoopToolCallInjectionEnabled() || isCompact {
+func injectOpenAIOAuthNoopToolCallPayload(payload []byte, account *Account, policy ...bool) ([]byte, bool, error) {
+	globallyEnabled, isCompact := openAIOAuthNoopToolCallPolicyArgs(account, policy)
+	if account == nil || !account.IsOpenAIOAuth() || !globallyEnabled || isCompact {
 		return payload, false, nil
 	}
 
@@ -361,7 +365,7 @@ func injectOpenAIOAuthNoopToolCallPayload(payload []byte, account *Account, isCo
 	if err := json.Unmarshal(payload, &reqBody); err != nil {
 		return payload, false, err
 	}
-	if !injectOpenAIOAuthNoopToolCall(reqBody, account, isCompact) {
+	if !injectOpenAIOAuthNoopToolCall(reqBody, account, globallyEnabled, isCompact) {
 		return payload, false, nil
 	}
 	updated, err := json.Marshal(reqBody)
@@ -369,6 +373,18 @@ func injectOpenAIOAuthNoopToolCallPayload(payload []byte, account *Account, isCo
 		return payload, false, err
 	}
 	return updated, true, nil
+}
+
+func openAIOAuthNoopToolCallPolicyArgs(account *Account, policy []bool) (globallyEnabled bool, isCompact bool) {
+	if len(policy) >= 2 {
+		return policy[0], policy[1]
+	}
+	if len(policy) == 1 {
+		// Transitional compatibility for the three call sites updated in the
+		// next batch. No final runtime path uses account-level policy.
+		return account != nil && account.IsOpenAIOAuthNoopToolCallInjectionEnabled(), policy[0]
+	}
+	return false, false
 }
 
 func normalizeCodexToolChoice(reqBody map[string]any) bool {
