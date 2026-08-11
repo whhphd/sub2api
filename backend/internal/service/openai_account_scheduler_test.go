@@ -879,6 +879,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorReports
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.False(t, IsOpenAIModelNotSupportedSelectionError(err))
 	require.Nil(t, selection)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 	require.EqualError(t, err, "no available OpenAI accounts supporting model: gpt-5.4-mini (pool=1, filtered: quota_auto_pause_7d=1)")
@@ -914,6 +915,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorReports
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.True(t, IsOpenAIModelNotSupportedSelectionError(err))
 	require.Nil(t, selection)
 	require.EqualError(t, err, "no available OpenAI accounts supporting model: grok-4.5 (pool=1, filtered: model_not_supported=1)")
 }
@@ -968,6 +970,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorAggrega
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.False(t, IsOpenAIModelNotSupportedSelectionError(err))
 	require.Nil(t, selection)
 	// Reasons are sorted lexicographically, so the message is deterministic.
 	require.EqualError(t, err, "no available OpenAI accounts supporting model: gpt-5.4-mini (pool=3, filtered: excluded=1 model_not_supported=1 quota_auto_pause_7d=1)")
@@ -991,6 +994,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorReports
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.False(t, IsOpenAIModelNotSupportedSelectionError(err))
 	require.Nil(t, selection)
 	require.EqualError(t, err, "no available OpenAI accounts supporting model: gpt-5.1 (pool=0)")
 }

@@ -1348,6 +1348,40 @@ func (s openAISelectionFilterStats) summary(extra string) string {
 	return b.String()
 }
 
+// onlyModelNotSupported reports a permanent model-mapping miss. Other
+// exclusion reasons (rate limits, quota pauses, runtime blocks, etc.) remain
+// retryable service-capacity failures.
+func (s openAISelectionFilterStats) onlyModelNotSupported() bool {
+	return s.pool > 0 && len(s.reasons) == 1 && s.reasons["model_not_supported"] == s.pool
+}
+
+type openAIModelNotSupportedSelectionError struct {
+	error
+}
+
+func (e openAIModelNotSupportedSelectionError) Unwrap() error {
+	return e.error
+}
+
+func (e openAIModelNotSupportedSelectionError) ModelNotSupported() bool {
+	return true
+}
+
+func noAvailableOpenAISelectionErrorFromStats(requestedModel string, compactBlocked bool, stats openAISelectionFilterStats, extra string) error {
+	err := noAvailableOpenAISelectionError(requestedModel, compactBlocked, stats.summary(extra))
+	if compactBlocked || !stats.onlyModelNotSupported() {
+		return err
+	}
+	return openAIModelNotSupportedSelectionError{error: err}
+}
+
+// IsOpenAIModelNotSupportedSelectionError identifies the permanent model
+// configuration failure without making handlers parse scheduler log text.
+func IsOpenAIModelNotSupportedSelectionError(err error) bool {
+	var typed interface{ ModelNotSupported() bool }
+	return errors.As(err, &typed) && typed.ModelNotSupported()
+}
+
 func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -1435,7 +1469,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		})
 	}
 	if len(filtered) == 0 {
-		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
+		return nil, 0, 0, 0, noAvailableOpenAISelectionErrorFromStats(req.RequestedModel, false, filterStats, "")
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -1629,7 +1663,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 	loadSkew := attempt.loadSkew
 
 	if len(attempt.selectionOrder) == 0 {
-		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, attempt.compactBlocked, filterStats.summary("selection_order_empty"))
+		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorFromStats(req.RequestedModel, attempt.compactBlocked, filterStats, "selection_order_empty")
 	}
 
 	if stickyFallback, stickyErr := s.tryFallbackToWeightedSticky(ctx, req); stickyErr != nil {
@@ -1664,7 +1698,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 				continue
 			}
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
-				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
+				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorFromStats(req.RequestedModel, compactBlocked, filterStats, "selection_order_exhausted")
 			}
 			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
@@ -1686,7 +1720,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 		}
 	}
 
-	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
+	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorFromStats(req.RequestedModel, compactBlocked, filterStats, "selection_order_exhausted")
 }
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {
