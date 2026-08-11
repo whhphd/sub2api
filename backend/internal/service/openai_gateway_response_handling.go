@@ -53,7 +53,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	if account != nil && account.Platform == PlatformOpenAI {
 		firstOutputTimeout = s.openAIFirstOutputTimeout(reasoningEffort)
 	}
-	guardFirstOutput := firstOutputTimeout > 0
+	// The safe overload-retry policy also needs the full first-output stage:
+	// structural Responses events can be much larger than bufio.Writer's 4 KiB
+	// buffer, which would otherwise flush them directly to the client.
+	safePreOutputOverloadRetry := account != nil && account.IsOpenAIOAuth() &&
+		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(ctx).SafePreOutputOverloadRetryEnabled
+	guardFirstOutput := firstOutputTimeout > 0 || safePreOutputOverloadRetry
 	var attemptResponseHeaders http.Header
 	if guardFirstOutput {
 		if s.responseHeaderFilter != nil {
@@ -231,8 +236,6 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
-	safePreOutputOverloadRetry := account != nil && account.IsOpenAIOAuth() &&
-		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(ctx).SafePreOutputOverloadRetryEnabled
 	var streamEarlyErr error
 	eventInProgress := false
 	eventStartsClientOutput := false

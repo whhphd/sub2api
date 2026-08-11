@@ -255,6 +255,133 @@ func TestOpenAIStandardStreamSafePreOutputMetadataStillFailsOver(t *testing.T) {
 	require.Empty(t, rec.Body.String())
 }
 
+func TestOpenAIStandardStreamSafePreOutputLargePreambleDoesNotCommit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.SafePreOutputOverloadRetryEnabled = true
+	settingsJSON, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(settingsJSON)
+
+	largeInstructions := strings.Repeat("large instruction ", 900)
+	created, err := json.Marshal(map[string]any{
+		"type": "response.created",
+		"response": map[string]any{
+			"id":           "resp_large_preamble",
+			"instructions": largeInstructions,
+		},
+	})
+	require.NoError(t, err)
+	inProgress, err := json.Marshal(map[string]any{
+		"type": "response.in_progress",
+		"response": map[string]any{
+			"id":           "resp_large_preamble",
+			"instructions": largeInstructions,
+		},
+	})
+	require.NoError(t, err)
+
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
+	svc := &OpenAIGatewayService{
+		cfg:            cfg,
+		settingService: NewSettingService(settingsRepo, nil),
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			"data: " + string(created),
+			"",
+			"event: response.in_progress",
+			"data: " + string(inProgress),
+			"",
+			"event: error",
+			`data: {"type":"error","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_large_preamble","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-large-preamble"}},
+	}
+
+	_, err = svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "large-preamble",
+	}, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStandardStreamSafePreOutputLargePreambleCommitsOnSemanticOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.SafePreOutputOverloadRetryEnabled = true
+	settingsJSON, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(settingsJSON)
+
+	largeInstructions := strings.Repeat("large instruction ", 900)
+	created, err := json.Marshal(map[string]any{
+		"type": "response.created",
+		"response": map[string]any{
+			"id":           "resp_large_success",
+			"instructions": largeInstructions,
+		},
+	})
+	require.NoError(t, err)
+	inProgress, err := json.Marshal(map[string]any{
+		"type": "response.in_progress",
+		"response": map[string]any{
+			"id":           "resp_large_success",
+			"instructions": largeInstructions,
+		},
+	})
+	require.NoError(t, err)
+
+	svc := &OpenAIGatewayService{
+		cfg:            &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		settingService: NewSettingService(settingsRepo, nil),
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			"data: " + string(created),
+			"",
+			"event: response.in_progress",
+			"data: " + string(inProgress),
+			"",
+			"event: response.output_text.delta",
+			`data: {"type":"response.output_text.delta","delta":"hello"}`,
+			"",
+			"event: response.completed",
+			`data: {"type":"response.completed","response":{"id":"resp_large_success","status":"completed"}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-large-success"}},
+	}
+
+	_, err = svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "large-success",
+	}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.True(t, c.Writer.Written())
+	require.Contains(t, rec.Body.String(), "large instruction ")
+	require.Contains(t, rec.Body.String(), `"delta":"hello"`)
+}
+
 // 回归用例（真实上游降载序列）：created → in_progress → error 帧 → response.failed。
 // 期望仍然走 pre-output failover（同账号重试 + 请求级瞬时标记），且不向客户端写出任何字节。
 func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *testing.T) {
