@@ -833,6 +833,20 @@ func isOpenAIUpstreamCapacityShedEvent(payload []byte) bool {
 	}
 }
 
+// isOpenAIUpstreamCapacityShedMessage recognizes the message-only form OpenAI
+// sends when the Responses stream is shed before an error code is included.
+// Keep this narrow so unrelated upstream failures do not inherit request-level
+// retry semantics.
+func isOpenAIUpstreamCapacityShedMessage(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	return normalized == "our servers are currently overloaded" ||
+		strings.HasPrefix(normalized, "our servers are currently overloaded.")
+}
+
+func isOpenAIUpstreamCapacityShedSignal(payload []byte, message string) bool {
+	return isOpenAIUpstreamCapacityShedEvent(payload) || isOpenAIUpstreamCapacityShedMessage(message)
+}
+
 // openAICapacityShedRetryableClientCode 是把上游容量降载错误转发给客户端时改写
 // 使用的错误码。Codex CLI 按闭集对错误码分类：server_is_overloaded / slow_down
 // 被判为致命错误（客户端提示 "Selected model is at capacity. Please try a
@@ -1030,7 +1044,7 @@ func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []b
 	// 换账号并不改变被降载的因素（客户端身份、模型容量都与账号无关），
 	// 只会让单个请求把整池账号逐个消耗掉，最终仍以同一个错误告终。
 	// 因此先在同一账号上做有界重试，用尽后才按常规流程切号。
-	if isOpenAIUpstreamCapacityShedEvent(payload) {
+	if isOpenAIUpstreamCapacityShedSignal(payload, message) {
 		return true
 	}
 	if !account.IsPoolMode() {
@@ -1121,7 +1135,7 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 		ResponseBody:           body,
 		ResponseHeaders:        headers,
 		RetryableOnSameAccount: openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
-		RequestScopedTransient: isOpenAIUpstreamCapacityShedEvent(payload),
+		RequestScopedTransient: isOpenAIUpstreamCapacityShedSignal(payload, message),
 	}
 }
 

@@ -71,10 +71,34 @@ func TestStreamFailedEventCapacityShedRetriesOnSameAccount(t *testing.T) {
 		require.True(t, openAIStreamFailedEventRetryableOnSameAccount(nonPool, payload, "overloaded"), code)
 	}
 
+	messageOnly := []byte(`{"type":"response.failed","response":{"error":{"message":"Our servers are currently overloaded. Please try again later."}}}`)
+	require.True(t, isOpenAIUpstreamCapacityShedSignal(messageOnly, "Our servers are currently overloaded. Please try again later."))
+	require.True(t, openAIStreamFailedEventRetryableOnSameAccount(nonPool, messageOnly, "Our servers are currently overloaded. Please try again later."))
+	require.False(t, isOpenAIUpstreamCapacityShedSignal(messageOnly, "An error occurred while processing your request."))
+
 	// 非降载的 failed 事件在非池模式下仍不做同账号重试，避免放大改动面。
 	other := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error"}}}`)
 	require.False(t, isOpenAIUpstreamCapacityShedEvent(other))
 	require.False(t, openAIStreamFailedEventRetryableOnSameAccount(nonPool, other, "boom"))
+}
+
+func TestOpenAIMessageOnlyCapacityShedBuildsRequestScopedFailover(t *testing.T) {
+	message := "Our servers are currently overloaded. Please try again later."
+	payload := []byte(`{"type":"response.failed","response":{"error":{"message":"` + message + `"}}}`)
+	svc := &OpenAIGatewayService{}
+
+	failoverErr := svc.newOpenAIStreamFailoverError(
+		nil,
+		&Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		false,
+		"",
+		payload,
+		message,
+	)
+
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
 }
 
 // 上游降载的真实序列是「event: error → event: response.failed」。error 帧不算
