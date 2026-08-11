@@ -854,6 +854,11 @@ func isOpenAIUpstreamCapacityShedSignal(payload []byte, message string) bool {
 // 客户端内置的退避重试。
 const openAICapacityShedRetryableClientCode = "server_error"
 
+const (
+	openAICapacityShedSameAccountRetryLimit = 10
+	openAICapacityShedSameAccountRetryDelay = 200 * time.Millisecond
+)
+
 // sanitizeOpenAICapacityShedErrorCodeForClient 把即将写给下游客户端的
 // error / response.failed 事件中的容量降载错误码改写为客户端可重试的错误码。
 // 走到转发这一步说明网关侧 failover 已不可用（流中途）或已用尽；保留原始降载码
@@ -1124,6 +1129,13 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	if statusCode == http.StatusTooManyRequests {
 		errType = "rate_limit_error"
 	}
+	requestScopedTransient := isOpenAIUpstreamCapacityShedSignal(payload, message)
+	sameAccountRetryLimit := 0
+	sameAccountRetryDelay := time.Duration(0)
+	if requestScopedTransient {
+		sameAccountRetryLimit = openAICapacityShedSameAccountRetryLimit
+		sameAccountRetryDelay = openAICapacityShedSameAccountRetryDelay
+	}
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
 			"type":    errType,
@@ -1135,7 +1147,9 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 		ResponseBody:           body,
 		ResponseHeaders:        headers,
 		RetryableOnSameAccount: openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
-		RequestScopedTransient: isOpenAIUpstreamCapacityShedSignal(payload, message),
+		SameAccountRetryLimit:  sameAccountRetryLimit,
+		SameAccountRetryDelay:  sameAccountRetryDelay,
+		RequestScopedTransient: requestScopedTransient,
 	}
 }
 

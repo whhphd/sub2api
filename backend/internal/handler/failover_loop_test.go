@@ -506,6 +506,29 @@ func TestHandleFailoverError_ExplicitSameAccountRetryLimitOverridesAccountLimit(
 	require.Contains(t, fs.FailedAccountIDs, int64(100))
 }
 
+func TestHandleFailoverError_OverloadUsesExplicitTenRetryLimit(t *testing.T) {
+	fs := NewFailoverState(3, false)
+	mock := &mockTempUnscheduler{}
+	err := newTestFailoverErr(http.StatusBadGateway, true, false)
+	err.SameAccountRetryLimit = 10
+	err.SameAccountRetryDelay = time.Nanosecond
+	err.RequestScopedTransient = true
+
+	for attempt := 1; attempt <= 10; attempt++ {
+		action := fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformOpenAI, 3, err)
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, attempt, fs.SameAccountRetryCount[100])
+		require.Zero(t, fs.SwitchCount)
+	}
+
+	action := fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformOpenAI, 3, err)
+	require.Equal(t, FailoverContinue, action)
+	require.Equal(t, 10, fs.SameAccountRetryCount[100])
+	require.Equal(t, 1, fs.SwitchCount)
+	require.Len(t, mock.calls, 1, "耗尽后仍应交给服务层处理临时摘除策略")
+	require.True(t, mock.calls[0].failoverErr.RequestScopedTransient)
+}
+
 // ---------------------------------------------------------------------------
 // HandleFailoverError — TempUnschedule 调用验证
 // ---------------------------------------------------------------------------

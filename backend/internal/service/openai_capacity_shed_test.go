@@ -99,6 +99,26 @@ func TestOpenAIMessageOnlyCapacityShedBuildsRequestScopedFailover(t *testing.T) 
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
 	require.True(t, failoverErr.RetryableOnSameAccount)
 	require.True(t, failoverErr.RequestScopedTransient)
+	require.Equal(t, 10, failoverErr.SameAccountRetryLimit)
+	require.Equal(t, 200*time.Millisecond, failoverErr.SameAccountRetryDelay)
+}
+
+func TestOpenAIOrdinaryStreamFailureKeepsRetryFallbackMetadata(t *testing.T) {
+	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error","message":"temporary"}}}`)
+	svc := &OpenAIGatewayService{}
+
+	failoverErr := svc.newOpenAIStreamFailoverError(
+		nil,
+		&Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		false,
+		"",
+		payload,
+		"temporary",
+	)
+
+	require.Zero(t, failoverErr.SameAccountRetryLimit)
+	require.Zero(t, failoverErr.SameAccountRetryDelay)
+	require.Equal(t, 500*time.Millisecond, failoverErr.EffectiveSameAccountRetryDelay(500*time.Millisecond))
 }
 
 // 上游降载的真实序列是「event: error → event: response.failed」。error 帧不算
