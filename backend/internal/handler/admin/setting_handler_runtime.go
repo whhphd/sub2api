@@ -163,10 +163,11 @@ func (h *SettingHandler) GetOpenAIOAuthRuntimeSettings(c *gin.Context) {
 }
 
 // UpdateOpenAIOAuthRuntimeSettingsRequest supports independent saves from the
-// two System Settings cards. Pointer fields distinguish omission from false.
+// the System Settings cards. Pointer fields distinguish omission from false.
 type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
-	NoopToolcallInjectionEnabled *bool                                            `json:"noop_toolcall_injection_enabled"`
-	Dynamic429Scheduling         *service.OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
+	NoopToolcallInjectionEnabled      *bool                                            `json:"noop_toolcall_injection_enabled"`
+	Dynamic429Scheduling              *service.OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
+	SafePreOutputOverloadRetryEnabled *bool                                            `json:"safe_pre_output_overload_retry_enabled"`
 }
 
 // UpdateOpenAIOAuthRuntimeSettings partially updates the global policy.
@@ -182,6 +183,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		c.Request.Context(),
 		req.NoopToolcallInjectionEnabled,
 		req.Dynamic429Scheduling,
+		req.SafePreOutputOverloadRetryEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
@@ -191,6 +193,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 	slog.Info("openai_oauth_runtime_settings_updated",
 		"noop_toolcall_injection_changed", req.NoopToolcallInjectionEnabled != nil,
 		"dynamic_429_scheduling_changed", req.Dynamic429Scheduling != nil,
+		"safe_pre_output_overload_retry_changed", req.SafePreOutputOverloadRetryEnabled != nil,
 		"dynamic_429_policy_revision", settings.Dynamic429Scheduling.Revision,
 	)
 	response.Success(c, settings)

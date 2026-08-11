@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -144,6 +145,114 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 	for _, tc := range cases {
 		require.Equal(t, tc.want, openAIStreamDataStartsClientOutput(tc.data, tc.eventType), "data=%s type=%s", tc.data, tc.eventType)
 	}
+}
+
+func TestOpenAIStreamSafePreOutputMetadataBuffer(t *testing.T) {
+	metadata := []struct {
+		data     string
+		typeName string
+	}{
+		{`{"type":"response.output_item.added","item":{"type":"message","status":"in_progress"}}`, "response.output_item.added"},
+		{`{"type":"response.content_part.added","part":{"type":"output_text"}}`, "response.content_part.added"},
+		{`{"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws_1"}}`, "response.output_item.done"},
+	}
+	for _, tc := range metadata {
+		require.True(t, openAIStreamEventIsSafePreOutputMetadata(tc.data, tc.typeName), tc.typeName)
+		require.False(t, openAIStreamDataStartsClientOutputWithSafePreOutputRetry(tc.data, tc.typeName, true), tc.typeName)
+	}
+
+	semantic := `{"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"hello"}]}}`
+	require.False(t, openAIStreamEventIsSafePreOutputMetadata(semantic, "response.output_item.done"))
+	require.True(t, openAIStreamDataStartsClientOutputWithSafePreOutputRetry(semantic, "response.output_item.done", true))
+	require.True(t, openAIStreamDataStartsClientOutputWithSafePreOutputRetry(metadata[0].data, metadata[0].typeName, false))
+}
+
+func TestOpenAIStreamSafePreOutputMetadataStillFailsOverBeforeClientOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
+	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.SafePreOutputOverloadRetryEnabled = true
+	settingsJSON, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(settingsJSON)
+	settingService := NewSettingService(settingsRepo, nil)
+	require.True(t, settingService.GetOpenAIOAuthRuntimeSettings(context.Background()).SafePreOutputOverloadRetryEnabled)
+	svc := &OpenAIGatewayService{cfg: cfg, settingService: settingService}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			"event: response.output_item.added",
+			`data: {"type":"response.output_item.added","item":{"type":"message","status":"in_progress"}}`,
+			"",
+			"event: error",
+			`data: {"type":"error","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_1","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-safe-pre-output"}},
+	}
+
+	_, err = svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc"}, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStandardStreamSafePreOutputMetadataStillFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.SafePreOutputOverloadRetryEnabled = true
+	settingsJSON, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(settingsJSON)
+	svc := &OpenAIGatewayService{
+		cfg:            &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		settingService: NewSettingService(settingsRepo, nil),
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_standard"}}`,
+			"",
+			"event: response.output_item.added",
+			`data: {"type":"response.output_item.added","item":{"type":"message","status":"in_progress"}}`,
+			"",
+			"event: error",
+			`data: {"type":"error","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_standard","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-safe-pre-output-standard"}},
+	}
+
+	_, err = svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "standard"}, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
 }
 
 // 回归用例（真实上游降载序列）：created → in_progress → error 帧 → response.failed。

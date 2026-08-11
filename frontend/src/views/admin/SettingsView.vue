@@ -466,6 +466,61 @@
             </div>
           </div>
 
+          <!-- OpenAI OAuth Safe Stream Retry -->
+          <div class="card" data-testid="openai-oauth-safe-retry-card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.openaiOauthRuntime.safeRetryTitle") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.openaiOauthRuntime.safeRetryDescription") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="openAIOAuthRuntimeLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-6">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.openaiOauthRuntime.safeRetryEnabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiOauthRuntime.safeRetryEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled"
+                    :disabled="openAIOAuthSafeRetrySaving"
+                    data-testid="openai-oauth-safe-retry-toggle"
+                  />
+                </div>
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="openAIOAuthSafeRetrySaving"
+                    data-testid="openai-oauth-safe-retry-save"
+                    @click="saveOpenAIOAuthSafeRetrySettings"
+                  >
+                    {{ openAIOAuthSafeRetrySaving ? t("common.saving") : t("common.save") }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- OpenAI OAuth Dynamic 429 Scheduling -->
           <div class="card" data-testid="openai-oauth-dynamic-429-card">
             <div
@@ -9111,9 +9166,11 @@ const rateLimit429CooldownForm = reactive({
 
 const openAIOAuthRuntimeLoading = ref(true);
 const openAIOAuthInjectionSaving = ref(false);
+const openAIOAuthSafeRetrySaving = ref(false);
 const openAIOAuthDynamic429Saving = ref(false);
 const openAIOAuthRuntimeForm = reactive({
   noop_toolcall_injection_enabled: false,
+  safe_pre_output_overload_retry_enabled: false,
   dynamic_429_scheduling: {
     enabled: false,
     window_seconds: 300,
@@ -12039,6 +12096,8 @@ async function loadOpenAIOAuthRuntimeSettings() {
     const settings = await adminAPI.settings.getOpenAIOAuthRuntimeSettings();
     openAIOAuthRuntimeForm.noop_toolcall_injection_enabled =
       settings.noop_toolcall_injection_enabled;
+    openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
+      settings.safe_pre_output_overload_retry_enabled;
     Object.assign(
       openAIOAuthRuntimeForm.dynamic_429_scheduling,
       settings.dynamic_429_scheduling,
@@ -12047,6 +12106,34 @@ async function loadOpenAIOAuthRuntimeSettings() {
     // Keep both global features disabled if the dedicated setting cannot load.
   } finally {
     openAIOAuthRuntimeLoading.value = false;
+  }
+}
+
+async function saveOpenAIOAuthSafeRetrySettings() {
+  openAIOAuthSafeRetrySaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({
+      safe_pre_output_overload_retry_enabled:
+        openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled,
+    });
+    openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
+      updated.safe_pre_output_overload_retry_enabled;
+    openAIOAuthRuntimeForm.noop_toolcall_injection_enabled =
+      updated.noop_toolcall_injection_enabled;
+    Object.assign(
+      openAIOAuthRuntimeForm.dynamic_429_scheduling,
+      updated.dynamic_429_scheduling,
+    );
+    appStore.showSuccess(t("admin.settings.openaiOauthRuntime.safeRetrySaved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.openaiOauthRuntime.safeRetrySaveFailed"),
+      ),
+    );
+  } finally {
+    openAIOAuthSafeRetrySaving.value = false;
   }
 }
 

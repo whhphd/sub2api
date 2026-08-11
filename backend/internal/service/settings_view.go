@@ -601,16 +601,17 @@ type OpenAIOAuthDynamic429SchedulingSettings struct {
 	Revision          int64   `json:"revision"`
 }
 
-// OpenAIOAuthRuntimeSettings contains the two independent global OpenAI OAuth
-// runtime policies.
+// OpenAIOAuthRuntimeSettings contains the global OpenAI OAuth runtime policies.
 type OpenAIOAuthRuntimeSettings struct {
-	NoopToolcallInjectionEnabled bool                                    `json:"noop_toolcall_injection_enabled"`
-	Dynamic429Scheduling         OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
+	NoopToolcallInjectionEnabled      bool                                    `json:"noop_toolcall_injection_enabled"`
+	Dynamic429Scheduling              OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
+	SafePreOutputOverloadRetryEnabled bool                                    `json:"safe_pre_output_overload_retry_enabled"`
 }
 
 func DefaultOpenAIOAuthRuntimeSettings(enabled bool) *OpenAIOAuthRuntimeSettings {
 	return &OpenAIOAuthRuntimeSettings{
-		NoopToolcallInjectionEnabled: enabled,
+		NoopToolcallInjectionEnabled:      enabled,
+		SafePreOutputOverloadRetryEnabled: false,
 		Dynamic429Scheduling: OpenAIOAuthDynamic429SchedulingSettings{
 			Enabled:           enabled,
 			WindowSeconds:     defaultOpenAIOAuth429WindowSeconds,

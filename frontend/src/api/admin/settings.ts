@@ -1320,12 +1320,15 @@ export interface OpenAIOAuthDynamic429SchedulingSettings {
 export interface OpenAIOAuthRuntimeSettings {
   noop_toolcall_injection_enabled: boolean;
   dynamic_429_scheduling: OpenAIOAuthDynamic429SchedulingSettings;
+  safe_pre_output_overload_retry_enabled: boolean;
 }
 
 export type UpdateOpenAIOAuthRuntimeSettingsRequest = Partial<
   Pick<
     OpenAIOAuthRuntimeSettings,
-    "noop_toolcall_injection_enabled" | "dynamic_429_scheduling"
+    | "noop_toolcall_injection_enabled"
+    | "dynamic_429_scheduling"
+    | "safe_pre_output_overload_retry_enabled"
   >
 >;
 

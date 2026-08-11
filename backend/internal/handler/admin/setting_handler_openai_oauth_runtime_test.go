@@ -129,6 +129,24 @@ func TestSettingHandlerOpenAIOAuthRuntimePatchIsPartial(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
 	require.True(t, persisted.NoopToolcallInjectionEnabled)
 	require.False(t, persisted.Dynamic429Scheduling.Enabled)
+	require.False(t, persisted.SafePreOutputOverloadRetryEnabled)
+}
+
+func TestSettingHandlerOpenAIOAuthRuntimePatchSafePreOutputRetryIsPartial(t *testing.T) {
+	handler, repo := newOpenAIOAuthRuntimeHandler()
+
+	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
+		"safe_pre_output_overload_retry_enabled": true,
+	})
+	require.Equal(t, http.StatusOK, recorder.Code)
+	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
+	require.True(t, settings.SafePreOutputOverloadRetryEnabled)
+	require.False(t, settings.NoopToolcallInjectionEnabled)
+	require.False(t, settings.Dynamic429Scheduling.Enabled)
+
+	var persisted service.OpenAIOAuthRuntimeSettings
+	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
+	require.True(t, persisted.SafePreOutputOverloadRetryEnabled)
 }
 
 func TestSettingHandlerOpenAIOAuthRuntimePatchDynamicIgnoresClientRevision(t *testing.T) {

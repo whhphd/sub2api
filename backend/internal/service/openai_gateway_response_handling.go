@@ -231,6 +231,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	safePreOutputOverloadRetry := account != nil && account.IsOpenAIOAuth() &&
+		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(ctx).SafePreOutputOverloadRetryEnabled
 	var streamEarlyErr error
 	eventInProgress := false
 	eventStartsClientOutput := false
@@ -538,7 +540,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 			}
-			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutputWithSafePreOutputRetry(data, eventType, safePreOutputOverloadRetry)
 			if guardFirstOutput {
 				eventStartsClientOutput = eventStartsClientOutput || startsClientOutput
 			}

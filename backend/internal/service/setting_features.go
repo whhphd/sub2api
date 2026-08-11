@@ -855,11 +855,12 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	ctx context.Context,
 	noopToolcallInjectionEnabled *bool,
 	dynamic429Scheduling *OpenAIOAuthDynamic429SchedulingSettings,
+	safePreOutputOverloadRetryEnabled *bool,
 ) (*OpenAIOAuthRuntimeSettings, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, fmt.Errorf("setting service is unavailable")
 	}
-	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil {
+	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -874,6 +875,9 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	}
 	if noopToolcallInjectionEnabled != nil {
 		current.NoopToolcallInjectionEnabled = *noopToolcallInjectionEnabled
+	}
+	if safePreOutputOverloadRetryEnabled != nil {
+		current.SafePreOutputOverloadRetryEnabled = *safePreOutputOverloadRetryEnabled
 	}
 	if dynamic429Scheduling != nil {
 		nextRevision := current.Dynamic429Scheduling.Revision + 1

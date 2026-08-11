@@ -97,6 +97,7 @@ func (r *openAIOAuthRuntimeSettingRepo) Delete(_ context.Context, key string) er
 func TestDefaultOpenAIOAuthRuntimeSettings(t *testing.T) {
 	disabled := DefaultOpenAIOAuthRuntimeSettings(false)
 	require.False(t, disabled.NoopToolcallInjectionEnabled)
+	require.False(t, disabled.SafePreOutputOverloadRetryEnabled)
 	require.False(t, disabled.Dynamic429Scheduling.Enabled)
 	require.Equal(t, 300, disabled.Dynamic429Scheduling.WindowSeconds)
 	require.Equal(t, 20, disabled.Dynamic429Scheduling.MinimumSamples)
@@ -109,6 +110,7 @@ func TestDefaultOpenAIOAuthRuntimeSettings(t *testing.T) {
 	enabled := DefaultOpenAIOAuthRuntimeSettings(true)
 	require.True(t, enabled.NoopToolcallInjectionEnabled)
 	require.True(t, enabled.Dynamic429Scheduling.Enabled)
+	require.False(t, enabled.SafePreOutputOverloadRetryEnabled)
 }
 
 func TestNormalizeOpenAIOAuthRuntimeSettingsValidBoundaries(t *testing.T) {
@@ -213,7 +215,7 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	svc.SetOnUpdateCallback(func() { callbackCount++ })
 
 	enabled := true
-	afterInjection, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), &enabled, nil)
+	afterInjection, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), &enabled, nil, nil)
 	require.NoError(t, err)
 	require.True(t, afterInjection.NoopToolcallInjectionEnabled)
 	require.False(t, afterInjection.Dynamic429Scheduling.Enabled)
@@ -223,13 +225,20 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	dynamic.Enabled = true
 	dynamic.WindowSeconds = 600
 	dynamic.Revision = 999
-	afterDynamic, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, &dynamic)
+	afterDynamic, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, &dynamic, nil)
 	require.NoError(t, err)
 	require.True(t, afterDynamic.NoopToolcallInjectionEnabled)
 	require.True(t, afterDynamic.Dynamic429Scheduling.Enabled)
 	require.Equal(t, 600, afterDynamic.Dynamic429Scheduling.WindowSeconds)
 	require.Equal(t, int64(2), afterDynamic.Dynamic429Scheduling.Revision)
-	require.Equal(t, 2, callbackCount)
+
+	safeRetryEnabled := true
+	afterSafeRetry, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, &safeRetryEnabled)
+	require.NoError(t, err)
+	require.True(t, afterSafeRetry.SafePreOutputOverloadRetryEnabled)
+	require.True(t, afterSafeRetry.NoopToolcallInjectionEnabled)
+	require.Equal(t, int64(2), afterSafeRetry.Dynamic429Scheduling.Revision)
+	require.Equal(t, 3, callbackCount)
 }
 
 func TestGetOpenAIOAuthRuntimeSettingsRetainsLastKnownGoodOnReadFailure(t *testing.T) {

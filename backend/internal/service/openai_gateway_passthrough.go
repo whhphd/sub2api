@@ -811,6 +811,43 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	return !openAIStreamEventIsPreamble(eventType)
 }
 
+// openAIStreamEventIsSafePreOutputMetadata identifies Responses events that
+// describe an output item but do not yet contain semantic model output. They
+// can be held in the existing pre-output buffer so a capacity-shed retry does
+// not expose a partial response to the client.
+func openAIStreamEventIsSafePreOutputMetadata(data, eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "response.output_item.added", "response.content_part.added":
+		return true
+	case "response.output_item.done":
+		item := gjson.Get(strings.TrimSpace(data), "item")
+		if !item.Exists() || !item.IsObject() {
+			return false
+		}
+		// A done event is semantic when it carries the completed text, tool
+		// arguments, image result, compaction payload, or another content body.
+		for _, path := range []string{
+			"content", "arguments", "result", "summary", "encrypted_content",
+			"input", "output", "text", "audio",
+		} {
+			value := item.Get(path)
+			if value.Exists() && strings.TrimSpace(value.Raw) != "" && value.Raw != "null" && value.Raw != "\"\"" && value.Raw != "[]" && value.Raw != "{}" {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func openAIStreamDataStartsClientOutputWithSafePreOutputRetry(data, eventType string, enabled bool) bool {
+	if enabled && openAIStreamEventIsSafePreOutputMetadata(data, eventType) {
+		return false
+	}
+	return openAIStreamDataStartsClientOutput(data, eventType)
+}
+
 // openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
 // 兼容 response.failed 的嵌套形态与裸 error 形态。
 func openAIStreamFailedEventErrorCode(payload []byte) string {
@@ -1194,6 +1231,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	safePreOutputOverloadRetry := account != nil && account.IsOpenAIOAuth() &&
+		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(ctx).SafePreOutputOverloadRetryEnabled
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
 	// flushPending 表示已写入但未到 SSE 空行边界的脏状态；defer 兜底函数退出前的残留，断连后不再 Flush。
@@ -1335,7 +1374,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
 			}
-			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutputWithSafePreOutputRetry(trimmedData, eventType, safePreOutputOverloadRetry)
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
