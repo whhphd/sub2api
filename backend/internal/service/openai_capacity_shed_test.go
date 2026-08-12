@@ -167,6 +167,52 @@ func TestOpenAIStreamSafePreOutputMetadataBuffer(t *testing.T) {
 	require.True(t, openAIStreamDataStartsClientOutputWithSafePreOutputRetry(metadata[0].data, metadata[0].typeName, false))
 }
 
+func TestOpenAIOverloadStreamTrackerStages(t *testing.T) {
+	tracker := newOpenAIOverloadStreamTracker()
+	tracker.Observe([]byte(`{"type":"response.created","response":{"id":"resp_stage"}}`), "response.created")
+	got := tracker.Snapshot(false)
+	require.Equal(t, "structural_only", got.StreamStage)
+	require.False(t, got.SemanticOutputStarted)
+	require.Equal(t, "response.created", got.LastEventType)
+
+	tracker.Observe([]byte(`{"type":"response.output_item.added","item":{"type":"message"}}`), "response.output_item.added")
+	got = tracker.Snapshot(false)
+	require.Equal(t, "output_started", got.StreamStage)
+	require.False(t, got.SemanticOutputStarted)
+
+	tracker.Observe([]byte(`{"type":"response.output_text.delta","delta":"hello"}`), "response.output_text.delta")
+	got = tracker.Snapshot(true)
+	require.Equal(t, "semantic_output", got.StreamStage)
+	require.True(t, got.SemanticOutputStarted)
+	require.Equal(t, "text", got.SemanticOutputKind)
+	require.True(t, got.DownstreamCommitted)
+	require.Equal(t, "resp_stage", got.UpstreamResponseID)
+}
+
+func TestOpenAIOverloadDiagnosticsFromError(t *testing.T) {
+	diagnostics := OpenAIOverloadStreamDiagnostics{
+		LastEventType:         "response.output_text.delta",
+		EventCount:            4,
+		StreamStage:           "semantic_output",
+		SemanticOutputStarted: true,
+		SemanticOutputKind:    "text",
+		DownstreamCommitted:   true,
+	}
+	exposed := &OpenAIOverloadExposedError{Message: "Our servers are currently overloaded. Please try again later.", Diagnostics: diagnostics}
+	got, ok := OpenAIOverloadDiagnosticsFromError(exposed)
+	require.True(t, ok)
+	require.Equal(t, diagnostics, *got)
+
+	failover := &UpstreamFailoverError{RequestScopedTransient: true, OverloadDiagnostics: &diagnostics}
+	got, ok = OpenAIOverloadDiagnosticsFromError(failover)
+	require.True(t, ok)
+	require.Equal(t, diagnostics, *got)
+
+	got, ok = OpenAIOverloadDiagnosticsFromError(errors.New("unrelated"))
+	require.False(t, ok)
+	require.Nil(t, got)
+}
+
 func TestOpenAIStreamSafePreOutputMetadataStillFailsOverBeforeClientOutput(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}

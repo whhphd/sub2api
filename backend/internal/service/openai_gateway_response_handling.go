@@ -235,7 +235,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
-	overloadTracker := newOpenAIOverloadStreamTracker()
+	var overloadTracker *openAIOverloadStreamTracker
+	if safePreOutputOverloadRetry {
+		overloadTracker = newOpenAIOverloadStreamTracker()
+	}
 	var exposedOverloadErr *OpenAIOverloadExposedError
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamEarlyErr error
@@ -1305,14 +1308,12 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 				msg = "Upstream compact response failed"
 			}
 			if isOpenAIUpstreamCapacityShedSignal(terminalPayload, msg) {
-				return nil, s.newOpenAIStreamFailoverError(
-					c,
-					account,
-					false,
-					resp.Header.Get("x-request-id"),
-					terminalPayload,
-					msg,
-					resp.Header,
+				enabled := account != nil && account.IsOpenAIOAuth() && s.settingService != nil &&
+					s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
+				return nil, attachOpenAIBufferedOverloadDiagnostics(
+					enabled,
+					s.newOpenAIStreamFailoverError(c, account, false, resp.Header.Get("x-request-id"), terminalPayload, msg, resp.Header),
+					extractOpenAIResponseIDFromJSONBytes(terminalPayload),
 				)
 			}
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
