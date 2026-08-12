@@ -121,10 +121,10 @@ func (s *openAIOverloadLogState) exposedAfterRetry(reqLog *zap.Logger, model, en
 	reqLog.Warn("openai.oauth.overload_exposed", fields...)
 }
 
-func openAIOverloadLogFields(accountID int64, model, endpoint string, stream bool, attempt, retryCount int, diagnostics *service.OpenAIOverloadStreamDiagnostics) []zap.Field {
+func openAIOverloadLogFields(accountID int64, _ string, endpoint string, _ bool, attempt, retryCount int, diagnostics *service.OpenAIOverloadStreamDiagnostics) []zap.Field {
 	fields := []zap.Field{
-		zap.Int64("account_id", accountID), zap.String("model", model), zap.String("endpoint", endpoint),
-		zap.Bool("stream", stream), zap.Int("attempt", attempt), zap.Int("retry_count", retryCount),
+		zap.Int64("account_id", accountID), zap.String("endpoint", endpoint),
+		zap.Int("attempt", attempt), zap.Int("retry_count", retryCount),
 	}
 	if diagnostics == nil {
 		return fields
