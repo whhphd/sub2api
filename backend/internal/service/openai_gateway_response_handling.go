@@ -235,6 +235,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
+	overloadTracker := newOpenAIOverloadStreamTracker()
+	var exposedOverloadErr *OpenAIOverloadExposedError
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamEarlyErr error
 	eventInProgress := false
@@ -361,6 +363,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
 		if sawFailedEvent {
+			if exposedOverloadErr != nil {
+				return resultWithUsage(), exposedOverloadErr
+			}
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
 		return resultWithUsage(), nil
@@ -476,9 +481,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					}
 					if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 						sawFailedEvent = true
-						streamEarlyErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage, resp.Header)
+						streamEarlyErr = attachOpenAIOverloadDiagnostics(safePreOutputOverloadRetry, s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage, resp.Header), overloadTracker, false)
 						return
 					}
+				}
+				if safePreOutputOverloadRetry && isOpenAIUpstreamCapacityShedSignal(dataBytes, failedMessage) {
+					diagnostics := overloadTracker.Snapshot(openAIStreamClientOutputStarted(c, clientOutputStarted))
+					exposedOverloadErr = &OpenAIOverloadExposedError{Message: failedMessage, Diagnostics: diagnostics}
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -489,6 +498,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 			}
 			imageCounter.AddSSEData(dataBytes)
+			overloadTracker.Observe(dataBytes, eventType)
 			searchCounter += countGrokNativeSearchCallsInSSEDataDedup(dataBytes, streamSearchSeen)
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)

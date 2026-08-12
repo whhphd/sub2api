@@ -649,6 +649,18 @@ const (
 
 type GatewayFailureReason string
 
+// OpenAIOverloadStreamDiagnostics describes the upstream stream immediately
+// before a capacity-shed event. It is attached only to overload failures.
+type OpenAIOverloadStreamDiagnostics struct {
+	LastEventType         string
+	EventCount            int
+	StreamStage           string
+	SemanticOutputStarted bool
+	SemanticOutputKind    string
+	DownstreamCommitted   bool
+	UpstreamResponseID    string
+}
+
 // UpstreamFailoverError indicates an upstream or credential error that may
 // trigger account failover. Additive metadata keeps existing composite literals
 // source-compatible and preserves their legacy retry-next-account behavior.
@@ -668,6 +680,36 @@ type UpstreamFailoverError struct {
 	NextAccountAction        NextAccountAction
 	ClientStatusCode         int
 	ClientMessage            string
+	OverloadDiagnostics      *OpenAIOverloadStreamDiagnostics
+}
+
+// OpenAIOverloadExposedError marks an overload that can no longer be retried
+// because semantic output has already been committed downstream.
+type OpenAIOverloadExposedError struct {
+	Message     string
+	Diagnostics OpenAIOverloadStreamDiagnostics
+}
+
+func (e *OpenAIOverloadExposedError) Error() string {
+	if e == nil || strings.TrimSpace(e.Message) == "" {
+		return "upstream response failed: Our servers are currently overloaded. Please try again later."
+	}
+	return "upstream response failed: " + e.Message
+}
+
+// OpenAIOverloadDiagnosticsFromError returns diagnostics for both retryable
+// pre-output overloads and exposed post-output overloads.
+func OpenAIOverloadDiagnosticsFromError(err error) (*OpenAIOverloadStreamDiagnostics, bool) {
+	var failoverErr *UpstreamFailoverError
+	if errors.As(err, &failoverErr) && failoverErr != nil && failoverErr.RequestScopedTransient && failoverErr.OverloadDiagnostics != nil {
+		return failoverErr.OverloadDiagnostics, true
+	}
+	var exposedErr *OpenAIOverloadExposedError
+	if errors.As(err, &exposedErr) && exposedErr != nil {
+		diagnostics := exposedErr.Diagnostics
+		return &diagnostics, true
+	}
+	return nil, false
 }
 
 func (e *UpstreamFailoverError) Error() string {

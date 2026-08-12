@@ -848,6 +848,109 @@ func openAIStreamDataStartsClientOutputWithSafePreOutputRetry(data, eventType st
 	return openAIStreamDataStartsClientOutput(data, eventType)
 }
 
+type openAIOverloadStreamTracker struct {
+	lastEventType string
+	eventCount    int
+	stage         string
+	semanticKinds map[string]struct{}
+	responseID    string
+}
+
+func newOpenAIOverloadStreamTracker() *openAIOverloadStreamTracker {
+	return &openAIOverloadStreamTracker{stage: "before_events", semanticKinds: make(map[string]struct{})}
+}
+
+func (t *openAIOverloadStreamTracker) Observe(payload []byte, eventType string) {
+	if t == nil {
+		return
+	}
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" || eventType == "error" || eventType == "response.failed" {
+		return
+	}
+	t.eventCount++
+	t.lastEventType = eventType
+	if t.responseID == "" {
+		t.responseID = extractOpenAIResponseIDFromJSONBytes(payload)
+	}
+	if isOpenAICompatResponsesTerminalEvent(eventType) {
+		t.stage = "terminal"
+		return
+	}
+	if openAIStreamEventIsSafePreOutputMetadata(string(payload), eventType) {
+		if t.stage == "before_events" || t.stage == "structural_only" {
+			t.stage = "output_started"
+		}
+		return
+	}
+	if openAIStreamEventIsPreamble(eventType) {
+		if t.stage == "before_events" {
+			t.stage = "structural_only"
+		}
+		return
+	}
+	kind := openAIOverloadSemanticKind(payload, eventType)
+	if kind != "" {
+		t.semanticKinds[kind] = struct{}{}
+		t.stage = "semantic_output"
+	}
+}
+
+func openAIOverloadSemanticKind(payload []byte, eventType string) string {
+	eventType = strings.ToLower(strings.TrimSpace(eventType))
+	switch {
+	case strings.Contains(eventType, "output_text") || strings.Contains(eventType, "refusal"):
+		return "text"
+	case strings.Contains(eventType, "function_call") || strings.Contains(eventType, "tool_call") || strings.Contains(eventType, "arguments"):
+		return "tool_call"
+	case strings.Contains(eventType, "reasoning") || strings.Contains(eventType, "summary"):
+		return "reasoning"
+	case strings.Contains(eventType, "image"):
+		return "image"
+	}
+	itemType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "item.type").String()))
+	switch {
+	case strings.Contains(itemType, "function") || strings.Contains(itemType, "tool"):
+		return "tool_call"
+	case strings.Contains(itemType, "reasoning"):
+		return "reasoning"
+	case strings.Contains(itemType, "image"):
+		return "image"
+	case strings.Contains(itemType, "message"):
+		return "text"
+	default:
+		return ""
+	}
+}
+
+func (t *openAIOverloadStreamTracker) Snapshot(downstreamCommitted bool) OpenAIOverloadStreamDiagnostics {
+	diagnostics := OpenAIOverloadStreamDiagnostics{DownstreamCommitted: downstreamCommitted, StreamStage: "before_events"}
+	if t == nil {
+		return diagnostics
+	}
+	diagnostics.LastEventType = t.lastEventType
+	diagnostics.EventCount = t.eventCount
+	diagnostics.StreamStage = t.stage
+	diagnostics.SemanticOutputStarted = len(t.semanticKinds) > 0
+	diagnostics.UpstreamResponseID = t.responseID
+	if len(t.semanticKinds) == 1 {
+		for kind := range t.semanticKinds {
+			diagnostics.SemanticOutputKind = kind
+		}
+	} else if len(t.semanticKinds) > 1 {
+		diagnostics.SemanticOutputKind = "mixed"
+	}
+	return diagnostics
+}
+
+func attachOpenAIOverloadDiagnostics(enabled bool, err *UpstreamFailoverError, tracker *openAIOverloadStreamTracker, downstreamCommitted bool) *UpstreamFailoverError {
+	if enabled && err != nil && err.RequestScopedTransient {
+		diagnostics := tracker.Snapshot(downstreamCommitted)
+		err.OverloadDiagnostics = &diagnostics
+	}
+	return err
+}
+
 // openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
 // 兼容 response.failed 的嵌套形态与裸 error 形态。
 func openAIStreamFailedEventErrorCode(payload []byte) string {
@@ -1230,6 +1333,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
+	overloadTracker := newOpenAIOverloadStreamTracker()
+	var exposedOverloadErr *OpenAIOverloadExposedError
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	safePreOutputOverloadRetry := account != nil && account.IsOpenAIOAuth() &&
 		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(ctx).SafePreOutputOverloadRetryEnabled
@@ -1349,8 +1454,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					}
 					if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 						return resultWithUsage(),
-							s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage, resp.Header)
+							attachOpenAIOverloadDiagnostics(safePreOutputOverloadRetry, s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage, resp.Header), overloadTracker, false)
 					}
+				}
+				if safePreOutputOverloadRetry && isOpenAIUpstreamCapacityShedSignal(dataBytes, failedMessage) {
+					diagnostics := overloadTracker.Snapshot(openAIStreamClientOutputStarted(c, clientOutputStarted))
+					exposedOverloadErr = &OpenAIOverloadExposedError{Message: failedMessage, Diagnostics: diagnostics}
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -1364,6 +1473,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if responseID == "" {
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
+			overloadTracker.Observe(dataBytes, eventType)
 			imageCounter.AddSSEData(dataBytes)
 			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
 				dataBytes,
@@ -1410,6 +1520,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(), nil
 		}
 		if sawFailedEvent {
+			if exposedOverloadErr != nil {
+				return resultWithUsage(), exposedOverloadErr
+			}
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -1440,6 +1553,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", err)
 	}
 	if sawFailedEvent {
+		if exposedOverloadErr != nil {
+			return resultWithUsage(), exposedOverloadErr
+		}
 		return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 	}
 	if !clientDisconnected && !sawDone && !sawTerminalEvent && ctx.Err() == nil {
