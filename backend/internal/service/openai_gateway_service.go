@@ -625,6 +625,15 @@ func (s *OpenAIGatewayService) ReplaceModelInBody(body []byte, newModel string) 
 	return ReplaceModelInBody(body, newModel)
 }
 
+// GetOpenAIOAuthRuntimeSettings exposes the cached runtime snapshot to the HTTP
+// lifecycle instrumentation without leaking the setting service itself.
+func (s *OpenAIGatewayService) GetOpenAIOAuthRuntimeSettings(ctx context.Context) *OpenAIOAuthRuntimeSettings {
+	if s == nil || s.settingService == nil {
+		return DefaultOpenAIOAuthRuntimeSettings(false)
+	}
+	return s.settingService.GetOpenAIOAuthRuntimeSettings(ctx)
+}
+
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
 	if s != nil && s.codexSnapshotThrottle != nil {
 		return s.codexSnapshotThrottle

@@ -95,6 +95,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+	overloadLog := newOpenAIOverloadLogState(h, c)
+	overloadEndpoint := c.Request.URL.Path
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
@@ -146,6 +148,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
+	forwardAttempt := 0
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
@@ -190,6 +193,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			} else {
 				if lastFailoverErr != nil {
+					overloadLog.exposedAfterRetry(reqLog, reqModel, overloadEndpoint, reqStream, forwardAttempt, "no_available_account")
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
 					h.handleStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
@@ -226,6 +230,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
+		forwardAttempt++
 
 		forwardBody := body
 		if channelMapping.Mapped {
@@ -257,6 +262,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			overloadLog.observe(reqLog, err, account, reqModel, overloadEndpoint, reqStream, forwardAttempt)
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
@@ -274,6 +280,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						return
 					}
 					if c.Writer.Size() != writerSizeBeforeForward {
+						overloadLog.exposed(reqLog, account, reqModel, overloadEndpoint, reqStream, forwardAttempt, "already_written")
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
@@ -281,6 +288,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
+						overloadLog.exposed(reqLog, account, reqModel, overloadEndpoint, reqStream, forwardAttempt, "no_retry")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -296,6 +304,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 								zap.Int("retry_limit", retryLimit),
 								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
 							)
+							overloadLog.retry(reqLog, account, reqModel, overloadEndpoint, reqStream, forwardAttempt, "same_account")
 							select {
 							case <-c.Request.Context().Done():
 								return
@@ -308,10 +317,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						overloadLog.exposed(reqLog, account, reqModel, overloadEndpoint, reqStream, forwardAttempt, "max_account_switches")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
+					overloadLog.retry(reqLog, account, reqModel, overloadEndpoint, reqStream, forwardAttempt, "next_account")
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -326,6 +337,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				overloadLog.exposed(reqLog, account, reqModel, overloadEndpoint, reqStream, forwardAttempt, map[bool]string{true: "already_written", false: "fallback"}[upstreamErrorAlreadyCommunicated])
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
 					wroteFallback = h.ensureOpenAIStreamReadErrorResponse(c, err, streamStarted)
@@ -341,6 +353,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				)
 				return
 			}
+		}
+		if err == nil {
+			overloadLog.recovered(reqLog, account, reqModel, overloadEndpoint, reqStream, forwardAttempt)
 		}
 		if result != nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, result.FirstTokenMs)
