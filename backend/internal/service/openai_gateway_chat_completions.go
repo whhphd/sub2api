@@ -448,7 +448,13 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
 		if openAIStreamFailedEventShouldFailover(payload, message) {
-			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message, resp.Header)
+			enabled := account != nil && account.IsOpenAIOAuth() && s.settingService != nil &&
+				s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
+			return nil, attachOpenAIBufferedOverloadDiagnostics(
+				enabled,
+				s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message, resp.Header),
+				finalResponse.ID,
+			)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
 		// response.failed 到达在 HTTP 200 SSE 流上，无真实 HTTP 错误码；统一走语义
@@ -535,6 +541,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
+	var exposedOverloadDiagnostics *OpenAIOverloadStreamDiagnostics
+	safeOverloadObservability := account != nil && account.IsOpenAIOAuth() &&
+		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
+	var overloadTracker *openAIOverloadStreamTracker
+	if safeOverloadObservability {
+		overloadTracker = newOpenAIOverloadStreamTracker()
+	}
 	// Grok chat bridge reuses Responses SSE; count native search tools for surcharge.
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
@@ -598,6 +611,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
+		overloadTracker.Observe([]byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
@@ -644,8 +658,17 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return true
 			}
 			if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
-				streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message, resp.Header)
+				streamFailoverErr = attachOpenAIOverloadDiagnostics(
+					safeOverloadObservability,
+					s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message, resp.Header),
+					overloadTracker,
+					openAIStreamClientOutputStarted(c, clientOutputStarted),
+				)
 				return true
+			}
+			if safeOverloadObservability && isOpenAIUpstreamCapacityShedSignal(payloadBytes, message) {
+				diagnostics := overloadTracker.Snapshot(openAIStreamClientOutputStarted(c, clientOutputStarted))
+				exposedOverloadDiagnostics = &diagnostics
 			}
 			message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
 			defaultStatus, defaultErrType, defaultMsg := http.StatusBadGateway, "upstream_error", message
@@ -680,7 +703,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if !clientDisconnected {
 				c.Writer.Flush()
 			}
-			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+			if exposedOverloadDiagnostics != nil {
+				streamNonFailoverErr = &OpenAIOverloadExposedError{Message: message, Diagnostics: *exposedOverloadDiagnostics}
+			} else {
+				streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+			}
 			return true
 		}
 

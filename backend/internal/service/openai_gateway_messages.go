@@ -577,7 +577,13 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
 		if openAIStreamFailedEventShouldFailover(payload, message) {
-			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message, resp.Header)
+			enabled := account != nil && account.IsOpenAIOAuth() && s.settingService != nil &&
+				s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
+			return nil, attachOpenAIBufferedOverloadDiagnostics(
+				enabled,
+				s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message, resp.Header),
+				finalResponse.ID,
+			)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
 		// 统一走语义状态推断 + body 归一化（与 /v1/responses 路径一致），
@@ -848,6 +854,12 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	clientOutputStarted := false
 	var streamFailoverErr error
 	var streamNonFailoverErr error
+	safeOverloadObservability := account != nil && account.IsOpenAIOAuth() &&
+		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
+	var overloadTracker *openAIOverloadStreamTracker
+	if safeOverloadObservability {
+		overloadTracker = newOpenAIOverloadStreamTracker()
+	}
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
 	countSearch := account != nil && account.IsGrok()
@@ -914,6 +926,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return false
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
+		overloadTracker.Observe([]byte(payload), event.Type)
 
 		eventType := strings.TrimSpace(event.Type)
 		isBareErrorEvent := eventType == "error"
@@ -957,11 +970,21 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					return true
 				}
 				message := extractOpenAISSEErrorMessage(payloadBytes)
+				var overloadDiagnostics *OpenAIOverloadStreamDiagnostics
+				if safeOverloadObservability && isOpenAIUpstreamCapacityShedSignal(payloadBytes, message) {
+					diagnostics := overloadTracker.Snapshot(openAIStreamClientOutputStarted(c, clientOutputStarted))
+					overloadDiagnostics = &diagnostics
+				}
 				// Once Anthropic output has started, switching accounts would splice
 				// two model streams together. Surface a proper Anthropic error event
 				// instead of returning a failover error that the handler cannot retry.
 				if !clientOutputStarted && openAIStreamFailedEventShouldFailover(payloadBytes, message) {
-					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message, resp.Header)
+					streamFailoverErr = attachOpenAIOverloadDiagnostics(
+						safeOverloadObservability,
+						s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message, resp.Header),
+						overloadTracker,
+						false,
+					)
 					return true
 				}
 				message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
@@ -988,7 +1011,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 						}
 					}
 				}
-				streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", errMsg)
+				if overloadDiagnostics != nil {
+					streamNonFailoverErr = &OpenAIOverloadExposedError{Message: errMsg, Diagnostics: *overloadDiagnostics}
+				} else {
+					streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", errMsg)
+				}
 				return true
 			}
 		}
