@@ -147,9 +147,8 @@ func TestHandleErrorResponse_Deterministic400WithNonJSONBody(t *testing.T) {
 	require.NotEmpty(t, gjson.Get(body, "error.message").String())
 }
 
-// 作用域守卫：本次只放行 400。其余落到 default 的状态码必须维持原样，
-// 避免后续有人顺手把 404/422/5xx 一起改掉。
-func TestHandleErrorResponse_NonDeterministicStatusesKeepGeneric502(t *testing.T) {
+// 作用域守卫：400 之外的状态码继续使用各自既定映射，避免扩大客户端错误透传范围。
+func TestHandleErrorResponse_NonDeterministicStatusesKeepConfiguredMapping(t *testing.T) {
 	cases := []struct {
 		name       string
 		statusCode int
@@ -158,9 +157,9 @@ func TestHandleErrorResponse_NonDeterministicStatusesKeepGeneric502(t *testing.T
 		wantType   string
 		wantMsg    string
 	}{
-		// 404/405 可能是上游 base_url 配错（运营方问题），不当成客户端错误暴露。
+		// 404 已由站点策略统一映射为不暴露上游详情的 not_found_error。
 		{"not_found", http.StatusNotFound, `{"error":{"message":"Unknown request URL"}}`,
-			http.StatusBadGateway, "upstream_error", "Upstream request failed"},
+			http.StatusNotFound, "not_found_error", "Not found"},
 		{"unprocessable", http.StatusUnprocessableEntity, `{"error":{"message":"Invalid schema for field messages"}}`,
 			http.StatusBadGateway, "upstream_error", "Upstream request failed"},
 		// 401/402/403 是网关运营方的凭据/账单问题，必须继续对客户端屏蔽上游账号状态。
