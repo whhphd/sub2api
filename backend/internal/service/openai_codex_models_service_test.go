@@ -1329,6 +1329,30 @@ func TestFetchCodexModelsManifestOAuth401TokenRevokedDisablesAccount(t *testing.
 	require.Equal(t, 0, repo.setTempUnschedCalls)
 }
 
+func TestFetchCodexModelsManifestOAuth402DeactivatedWorkspaceDisablesAccountAndAllowsFailover(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusPaymentRequired)
+		_, _ = w.Write([]byte(`{"detail":{"code":"deactivated_workspace"}}`))
+	}))
+	defer server.Close()
+
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	defer func() { chatgptCodexModelsURL = original }()
+
+	repo := &codexModelsAccountStateRepo{}
+	s := newCodexModels401TestService(repo)
+	account := newCodexModelsTestAccount()
+
+	_, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.Error(t, err)
+	require.True(t, IsRetryableCodexModelsManifestError(err), "manifest 402 should fail over to another account")
+	require.Equal(t, 1, repo.setErrorCalls, "deactivated workspace should permanently disable the account")
+	require.Contains(t, repo.lastErrorMsg, "Workspace deactivated")
+	require.Equal(t, 0, repo.setTempUnschedCalls)
+	require.True(t, s.isOpenAIAccountRuntimeBlocked(account), "account should be blocked before the repository snapshot refreshes")
+}
+
 func TestFetchCodexModelsManifestAgentIdentity401DoesNotDisableAccount(t *testing.T) {
 	key, privateKey := newTestAgentIdentityKey(t)
 	account := &Account{
@@ -1386,6 +1410,31 @@ func TestFetchCodexModelsManifestAPIKey401KeepsNoFailoverAndNoDisable(t *testing
 	require.False(t, IsRetryableCodexModelsManifestError(err), "custom upstream manifest 401 keeps the no-failover behavior")
 	require.Equal(t, 0, repo.setErrorCalls, "custom upstream manifest 401 must not disable the account")
 	require.Equal(t, 0, repo.setTempUnschedCalls)
+}
+
+func TestFetchCodexModelsManifestAPIKey402KeepsNoFailoverAndNoDisable(t *testing.T) {
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusPaymentRequired,
+			Status:     "402 Payment Required",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"detail":{"code":"deactivated_workspace"}}`)),
+		}, nil
+	}}
+
+	repo := &codexModelsAccountStateRepo{}
+	s := newCodexModelsAPIKeyTestService(upstream)
+	s.rateLimitService = NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+
+	_, err := s.FetchCodexModelsManifest(
+		context.Background(),
+		newCodexModelsAPIKeyTestAccount("https://upstream.example"),
+		"0.144.0",
+		"",
+	)
+	require.Error(t, err)
+	require.False(t, IsRetryableCodexModelsManifestError(err), "custom upstream manifest 402 keeps the no-failover behavior")
+	require.Equal(t, 0, repo.setErrorCalls, "custom upstream manifest 402 must not disable the account")
 }
 
 func TestFetchCodexModelsManifestAPIKeyUpstreamError(t *testing.T) {

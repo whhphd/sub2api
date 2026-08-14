@@ -58,13 +58,13 @@ func (e *codexModelsManifestUpstreamError) Unwrap() error { return e.err }
 
 // IsRetryableCodexModelsManifestError reports whether another selected account
 // may succeed without changing the request. Configuration and upstream 4xx
-// responses, except 429 and ChatGPT-backend 401, are intentionally not
-// retried. A manifest 401 from the ChatGPT Codex backend reflects the selected
-// OAuth account's upstream token rather than the client request (the client's
-// own API key was already validated locally), so a different account may still
-// serve the manifest. Custom API key upstreams keep the old no-failover 401
-// behavior because their /models auth semantics are not authoritative for the
-// account.
+// responses, except 429 and authoritative ChatGPT account errors, are
+// intentionally not retried. A manifest 401 or deactivated-workspace 402 from
+// the ChatGPT Codex backend reflects the selected OAuth account rather than the
+// client request (the client's own API key was already validated locally), so
+// a different account may still serve the manifest. Custom API key upstreams
+// keep the old no-failover behavior because their /models auth semantics are
+// not authoritative for the account.
 func IsRetryableCodexModelsManifestError(err error) bool {
 	var upstreamErr *codexModelsManifestUpstreamError
 	return errors.As(err, &upstreamErr) && upstreamErr.retryable
@@ -329,7 +329,7 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	}
 	manifest, fetchErr := s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
 	if !credAccount.IsOpenAIAgentIdentity() || !isAgentIdentityTaskInvalidCodexModelsError(fetchErr) {
-		s.handleCodexModelsManifestAccountAuthError(ctx, account, credAccount, fetchErr)
+		s.handleCodexModelsManifestAccountError(ctx, account, credAccount, fetchErr)
 		return manifest, fetchErr
 	}
 	expectedTaskID := strings.TrimSpace(credAccount.GetCredential("task_id"))
@@ -357,12 +357,11 @@ func isAgentIdentityTaskInvalidCodexModelsError(err error) bool {
 		isAgentIdentityTaskInvalidHTTPResponse(upstreamErr.statusCode, upstreamErr.body)
 }
 
-// handleCodexModelsManifestAccountAuthError feeds manifest 401s from the
-// ChatGPT Codex backend into the shared upstream-error state machinery
-// (token cache invalidation, temp-unschedulable cooldown, or permanent
-// disable for token_revoked/token_invalidated). Without this, an account
-// whose OAuth token was revoked upstream stays active and schedulable and
-// keeps being selected for every subsequent /models request (#4544).
+// handleCodexModelsManifestAccountError feeds authoritative account failures
+// from the ChatGPT Codex backend into the shared upstream-error state
+// machinery. This covers 401 token failures and 402 deactivated_workspace;
+// otherwise the account remains schedulable and every subsequent /models
+// request selects it again.
 //
 // Scope is deliberately limited to plain OAuth accounts: the manifest
 // endpoint authenticates with the same token as /responses forwarding, so a
@@ -370,7 +369,7 @@ func isAgentIdentityTaskInvalidCodexModelsError(err error) bool {
 // because their 401s can be task-scoped and have a dedicated recovery flow,
 // and API key manifests come from custom upstreams whose /models auth may
 // diverge from their chat endpoints.
-func (s *OpenAIGatewayService) handleCodexModelsManifestAccountAuthError(ctx context.Context, account, credAccount *Account, err error) {
+func (s *OpenAIGatewayService) handleCodexModelsManifestAccountError(ctx context.Context, account, credAccount *Account, err error) {
 	if s == nil || account == nil || err == nil {
 		return
 	}
@@ -378,7 +377,8 @@ func (s *OpenAIGatewayService) handleCodexModelsManifestAccountAuthError(ctx con
 		return
 	}
 	var upstreamErr *codexModelsManifestUpstreamError
-	if !errors.As(err, &upstreamErr) || upstreamErr.statusCode != http.StatusUnauthorized {
+	if !errors.As(err, &upstreamErr) ||
+		(upstreamErr.statusCode != http.StatusUnauthorized && !isCodexModelsDeactivatedWorkspaceResponse(upstreamErr.statusCode, upstreamErr.body)) {
 		return
 	}
 	headers := upstreamErr.headers
@@ -386,6 +386,18 @@ func (s *OpenAIGatewayService) handleCodexModelsManifestAccountAuthError(ctx con
 		headers = http.Header{}
 	}
 	s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.statusCode, headers, upstreamErr.body)
+}
+
+func isCodexModelsDeactivatedWorkspaceResponse(statusCode int, body []byte) bool {
+	if statusCode != http.StatusPaymentRequired {
+		return false
+	}
+	var payload struct {
+		Detail struct {
+			Code string `json:"code"`
+		} `json:"detail"`
+	}
+	return json.Unmarshal(body, &payload) == nil && payload.Detail.Code == "deactivated_workspace"
 }
 
 func (s *OpenAIGatewayService) fetchCachedAPIKeyCodexModelsManifest(ctx context.Context, request codexModelsManifestRequest, ifNoneMatch string) (*CodexModelsManifest, error) {
@@ -491,7 +503,8 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 			statusCode: resp.StatusCode,
 			headers:    resp.Header.Clone(),
 			body:       body,
-			retryable: (resp.StatusCode == http.StatusUnauthorized && !request.useAPIKeyUpstream) ||
+			retryable: (!request.useAPIKeyUpstream && (resp.StatusCode == http.StatusUnauthorized ||
+				isCodexModelsDeactivatedWorkspaceResponse(resp.StatusCode, body))) ||
 				resp.StatusCode == http.StatusTooManyRequests ||
 				(resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode < 600),
 		}
