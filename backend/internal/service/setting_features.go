@@ -834,6 +834,16 @@ func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*O
 		if err := json.Unmarshal([]byte(value), &settings); err != nil {
 			return nil, fmt.Errorf("unmarshal OpenAI OAuth runtime settings: %w", err)
 		}
+		// Settings written before the plan-gated cooldown switch was added do
+		// not contain the field. Preserve the historical enabled behavior for
+		// those records instead of treating the missing field as false.
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(value), &raw); err != nil {
+			return nil, fmt.Errorf("inspect OpenAI OAuth runtime settings: %w", err)
+		}
+		if _, exists := raw["plan_gated_model_cooldown_enabled"]; !exists {
+			settings.PlanGatedModelCooldownEnabled = true
+		}
 		normalized, err := normalizeOpenAIOAuthRuntimeSettings(&settings)
 		if err != nil {
 			return nil, fmt.Errorf("validate OpenAI OAuth runtime settings: %w", err)
@@ -856,11 +866,13 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	noopToolcallInjectionEnabled *bool,
 	dynamic429Scheduling *OpenAIOAuthDynamic429SchedulingSettings,
 	safePreOutputOverloadRetryEnabled *bool,
+	planGatedModelCooldownEnabled ...*bool,
 ) (*OpenAIOAuthRuntimeSettings, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, fmt.Errorf("setting service is unavailable")
 	}
-	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil {
+	planGatedModelCooldownProvided := len(planGatedModelCooldownEnabled) > 0 && planGatedModelCooldownEnabled[0] != nil
+	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil && !planGatedModelCooldownProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -878,6 +890,9 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	}
 	if safePreOutputOverloadRetryEnabled != nil {
 		current.SafePreOutputOverloadRetryEnabled = *safePreOutputOverloadRetryEnabled
+	}
+	if len(planGatedModelCooldownEnabled) > 0 && planGatedModelCooldownEnabled[0] != nil {
+		current.PlanGatedModelCooldownEnabled = *planGatedModelCooldownEnabled[0]
 	}
 	if dynamic429Scheduling != nil {
 		nextRevision := current.Dynamic429Scheduling.Revision + 1

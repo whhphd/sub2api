@@ -149,6 +149,22 @@ func TestSettingHandlerOpenAIOAuthRuntimePatchSafePreOutputRetryIsPartial(t *tes
 	require.True(t, persisted.SafePreOutputOverloadRetryEnabled)
 }
 
+func TestSettingHandlerOpenAIOAuthRuntimePatchPlanGatedCooldownIsPartial(t *testing.T) {
+	handler, repo := newOpenAIOAuthRuntimeHandler()
+
+	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
+		"plan_gated_model_cooldown_enabled": false,
+	})
+	require.Equal(t, http.StatusOK, recorder.Code)
+	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
+	require.False(t, settings.PlanGatedModelCooldownEnabled)
+	require.False(t, settings.NoopToolcallInjectionEnabled)
+
+	var persisted service.OpenAIOAuthRuntimeSettings
+	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
+	require.False(t, persisted.PlanGatedModelCooldownEnabled)
+}
+
 func TestSettingHandlerOpenAIOAuthRuntimePatchDynamicIgnoresClientRevision(t *testing.T) {
 	handler, _ := newOpenAIOAuthRuntimeHandler()
 	dynamic := service.DefaultOpenAIOAuthRuntimeSettings(false).Dynamic429Scheduling

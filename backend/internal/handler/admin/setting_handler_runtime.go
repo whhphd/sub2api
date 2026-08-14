@@ -168,6 +168,7 @@ type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
 	NoopToolcallInjectionEnabled      *bool                                            `json:"noop_toolcall_injection_enabled"`
 	Dynamic429Scheduling              *service.OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
 	SafePreOutputOverloadRetryEnabled *bool                                            `json:"safe_pre_output_overload_retry_enabled"`
+	PlanGatedModelCooldownEnabled     *bool                                            `json:"plan_gated_model_cooldown_enabled"`
 }
 
 // UpdateOpenAIOAuthRuntimeSettings partially updates the global policy.
@@ -184,6 +185,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		req.NoopToolcallInjectionEnabled,
 		req.Dynamic429Scheduling,
 		req.SafePreOutputOverloadRetryEnabled,
+		req.PlanGatedModelCooldownEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
@@ -194,6 +196,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		"noop_toolcall_injection_changed", req.NoopToolcallInjectionEnabled != nil,
 		"dynamic_429_scheduling_changed", req.Dynamic429Scheduling != nil,
 		"safe_pre_output_overload_retry_changed", req.SafePreOutputOverloadRetryEnabled != nil,
+		"plan_gated_model_cooldown_changed", req.PlanGatedModelCooldownEnabled != nil,
 		"dynamic_429_policy_revision", settings.Dynamic429Scheduling.Revision,
 	)
 	response.Success(c, settings)

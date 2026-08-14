@@ -425,6 +425,32 @@ func TestRateLimitService_HandleUpstreamError_CodexPlanGatedTextModelStillCoolsD
 	require.Equal(t, upstreamCodexPlanGatedModelReason, repo.modelRateLimitCalls[0].reason)
 }
 
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedTextModelCooldownCanBeDisabled(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.PlanGatedModelCooldownEnabled = false
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+	svc := &RateLimitService{accountRepo: repo}
+	svc.SetSettingService(NewSettingService(settingsRepo, nil))
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusBadRequest,
+		http.Header{},
+		[]byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}`),
+		"gpt-5.6-sol",
+	)
+
+	require.False(t, handled)
+	require.Empty(t, repo.modelRateLimitCalls)
+	require.Zero(t, repo.tempCalls)
+}
+
 func openAICodexPlanGatedOAuthAccount() *Account {
 	return &Account{
 		ID:          202,
@@ -523,5 +549,31 @@ func TestRateLimitService_HandleUpstreamError_ModelNotFoundImageModelStillCoolsD
 
 	require.True(t, handled)
 	require.Len(t, repo.modelRateLimitCalls, 1, "守卫只作用于 codex plan-gated 分支")
+	require.Equal(t, upstreamModelNotFoundReason, repo.modelRateLimitCalls[0].reason)
+}
+
+func TestRateLimitService_HandleUpstreamError_ModelNotFoundStillCoolsDownWhenPlanGatedCooldownDisabled(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.PlanGatedModelCooldownEnabled = false
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+	svc := &RateLimitService{accountRepo: repo}
+	svc.SetSettingService(NewSettingService(settingsRepo, nil))
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{},
+		[]byte(`{"error":{"code":"model_not_found","message":"model not found"}}`),
+		"gpt-5.6-sol",
+	)
+
+	require.True(t, handled)
+	require.Len(t, repo.modelRateLimitCalls, 1)
 	require.Equal(t, upstreamModelNotFoundReason, repo.modelRateLimitCalls[0].reason)
 }

@@ -2172,6 +2172,12 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	case isUpstreamModelNotFoundError(statusCode, responseBody):
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
+		if !s.isOpenAIOAuthPlanGatedModelCooldownEnabled(ctx) {
+			// This is intentionally allowed to continue through the ordinary
+			// failover path when administrators disable the model cooldown. Some
+			// ChatGPT OAuth accounts intermittently accept the same model.
+			return false
+		}
 		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
 	default:
 		return false
@@ -2190,6 +2196,14 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	}
 	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reason", reason, "reset_at", resetAt)
 	return true
+}
+
+func (s *RateLimitService) isOpenAIOAuthPlanGatedModelCooldownEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return true
+	}
+	settings := s.settingService.GetOpenAIOAuthRuntimeSettings(ctx)
+	return settings == nil || settings.PlanGatedModelCooldownEnabled
 }
 
 // shouldSkipCodexPlanGatedImageModelCooldown 判断这次 Codex plan-gated 400 是否

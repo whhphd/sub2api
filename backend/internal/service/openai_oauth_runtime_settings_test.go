@@ -98,6 +98,7 @@ func TestDefaultOpenAIOAuthRuntimeSettings(t *testing.T) {
 	disabled := DefaultOpenAIOAuthRuntimeSettings(false)
 	require.False(t, disabled.NoopToolcallInjectionEnabled)
 	require.False(t, disabled.SafePreOutputOverloadRetryEnabled)
+	require.True(t, disabled.PlanGatedModelCooldownEnabled)
 	require.False(t, disabled.Dynamic429Scheduling.Enabled)
 	require.Equal(t, 300, disabled.Dynamic429Scheduling.WindowSeconds)
 	require.Equal(t, 20, disabled.Dynamic429Scheduling.MinimumSamples)
@@ -111,6 +112,7 @@ func TestDefaultOpenAIOAuthRuntimeSettings(t *testing.T) {
 	require.True(t, enabled.NoopToolcallInjectionEnabled)
 	require.True(t, enabled.Dynamic429Scheduling.Enabled)
 	require.False(t, enabled.SafePreOutputOverloadRetryEnabled)
+	require.True(t, enabled.PlanGatedModelCooldownEnabled)
 }
 
 func TestNormalizeOpenAIOAuthRuntimeSettingsValidBoundaries(t *testing.T) {
@@ -208,6 +210,15 @@ func TestGetOpenAIOAuthRuntimeSettingsUsesLegacyOnlyWhenNewSettingMissing(t *tes
 	require.False(t, current.Dynamic429Scheduling.Enabled)
 }
 
+func TestGetOpenAIOAuthRuntimeSettingsDefaultsPlanGatedCooldownForLegacyJSON(t *testing.T) {
+	repo := newOpenAIOAuthRuntimeSettingRepo()
+	repo.values[SettingKeyOpenAIOAuthRuntimeSettings] = `{"noop_toolcall_injection_enabled":false,"dynamic_429_scheduling":{"enabled":false}}`
+	svc := NewSettingService(repo, nil)
+
+	settings := svc.GetOpenAIOAuthRuntimeSettings(context.Background())
+	require.True(t, settings.PlanGatedModelCooldownEnabled)
+}
+
 func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *testing.T) {
 	repo := newOpenAIOAuthRuntimeSettingRepo()
 	svc := NewSettingService(repo, nil)
@@ -237,8 +248,16 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	require.NoError(t, err)
 	require.True(t, afterSafeRetry.SafePreOutputOverloadRetryEnabled)
 	require.True(t, afterSafeRetry.NoopToolcallInjectionEnabled)
+	require.True(t, afterSafeRetry.PlanGatedModelCooldownEnabled)
 	require.Equal(t, int64(2), afterSafeRetry.Dynamic429Scheduling.Revision)
-	require.Equal(t, 3, callbackCount)
+
+	disabledPlanCooldown := false
+	afterPlanCooldown, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, nil, &disabledPlanCooldown)
+	require.NoError(t, err)
+	require.False(t, afterPlanCooldown.PlanGatedModelCooldownEnabled)
+	require.True(t, afterPlanCooldown.NoopToolcallInjectionEnabled)
+	require.True(t, afterPlanCooldown.SafePreOutputOverloadRetryEnabled)
+	require.Equal(t, 4, callbackCount)
 }
 
 func TestGetOpenAIOAuthRuntimeSettingsRetainsLastKnownGoodOnReadFailure(t *testing.T) {

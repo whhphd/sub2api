@@ -606,12 +606,14 @@ type OpenAIOAuthRuntimeSettings struct {
 	NoopToolcallInjectionEnabled      bool                                    `json:"noop_toolcall_injection_enabled"`
 	Dynamic429Scheduling              OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
 	SafePreOutputOverloadRetryEnabled bool                                    `json:"safe_pre_output_overload_retry_enabled"`
+	PlanGatedModelCooldownEnabled     bool                                    `json:"plan_gated_model_cooldown_enabled"`
 }
 
 func DefaultOpenAIOAuthRuntimeSettings(enabled bool) *OpenAIOAuthRuntimeSettings {
 	return &OpenAIOAuthRuntimeSettings{
 		NoopToolcallInjectionEnabled:      enabled,
 		SafePreOutputOverloadRetryEnabled: false,
+		PlanGatedModelCooldownEnabled:     true,
 		Dynamic429Scheduling: OpenAIOAuthDynamic429SchedulingSettings{
 			Enabled:           enabled,
 			WindowSeconds:     defaultOpenAIOAuth429WindowSeconds,
