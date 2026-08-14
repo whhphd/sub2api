@@ -353,7 +353,7 @@ func NewOpenAIGatewayHandler(
 }
 
 func shouldEnableOpenAIOAuthDynamic429ForResponses(c *gin.Context) bool {
-	return GetInboundEndpoint(c) == EndpointResponses && !service.IsOpenAIResponsesCompactPathForTest(c)
+	return GetInboundEndpoint(c) == EndpointResponses && !service.IsOpenAIResponsesCompactPath(c)
 }
 
 // Responses handles OpenAI Responses API endpoint
