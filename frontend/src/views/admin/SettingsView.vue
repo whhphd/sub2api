@@ -5582,6 +5582,22 @@
                 <Toggle v-model="form.enable_fingerprint_unification" />
               </div>
 
+              <!-- OpenAI OAuth default Codex fingerprint convergence -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.openaiOAuthDefaultCodexFingerprint") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.openaiOAuthDefaultCodexFingerprintHint") }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.openai_oauth_default_codex_fingerprint_enabled"
+                  data-testid="openai-oauth-default-codex-fingerprint-toggle"
+                />
+              </div>
+
               <!-- Metadata Passthrough -->
               <div class="flex items-center justify-between">
                 <div>
@@ -10012,6 +10028,7 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_session_sticky: "",
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
+  openai_oauth_default_codex_fingerprint_enabled: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_claude_oauth_system_prompt_injection: true,
@@ -11579,6 +11596,8 @@ async function saveSettings() {
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
+      openai_oauth_default_codex_fingerprint_enabled:
+        form.openai_oauth_default_codex_fingerprint_enabled,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
       enable_claude_oauth_system_prompt_injection:

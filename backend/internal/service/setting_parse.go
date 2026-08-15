@@ -232,6 +232,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAILowUpstreamRatePriorityEnabled:               "false",
 		SettingKeyOpenAIOAuthSchedulingRateMultiplier:                "1",
 		SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled:   "false",
+		SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled:          "true",
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
@@ -845,6 +846,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableFingerprintUnification = v == "true"
 	} else {
 		result.EnableFingerprintUnification = true // default: enabled (current behavior)
+	}
+	if v, ok := settings[SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled]; ok && v != "" {
+		result.OpenAIOAuthDefaultCodexFingerprintEnabled = v != "false"
+	} else {
+		result.OpenAIOAuthDefaultCodexFingerprintEnabled = true
 	}
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"

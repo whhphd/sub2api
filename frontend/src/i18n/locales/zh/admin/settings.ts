@@ -459,6 +459,8 @@ export default {
         grokBaseURLModeEUWest1: '区域 API（eu-west-1）',
         fingerprintUnification: '指纹统一化',
         fingerprintUnificationHint: '统一共享同一 OAuth 账号的用户的 X-Stainless-* 请求头。关闭后透传客户端原始请求头。',
+        openaiOAuthDefaultCodexFingerprint: '新 OpenAI OAuth 账号默认指纹收敛',
+        openaiOAuthDefaultCodexFingerprintHint: '默认开启。新建或导入的 OpenAI OAuth 账号若未显式选择档位，将使用“设备+会话”收敛；只影响新增账号，不修改存量账号。',
         metadataPassthrough: 'Metadata 透传',
         metadataPassthroughHint: '透传客户端原始 metadata.user_id，不进行重写。可能提高上游缓存命中率。',
         cchSigning: 'CCH 签名',

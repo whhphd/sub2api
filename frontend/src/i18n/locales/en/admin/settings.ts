@@ -466,6 +466,8 @@ export default {
         grokBaseURLModeEUWest1: 'Regional API (eu-west-1)',
         fingerprintUnification: 'Fingerprint Unification',
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
+        openaiOAuthDefaultCodexFingerprint: 'Default Codex fingerprint for new OpenAI OAuth accounts',
+        openaiOAuthDefaultCodexFingerprintHint: 'Enabled by default. Newly created or imported OpenAI OAuth accounts without an explicit mode use device+session convergence. Existing accounts are unchanged.',
         metadataPassthrough: 'Metadata Passthrough',
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
         cchSigning: 'CCH Signing',

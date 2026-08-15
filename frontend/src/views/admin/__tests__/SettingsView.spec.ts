@@ -466,6 +466,7 @@ const baseSettingsResponse = {
   max_claude_code_version: "",
   allow_ungrouped_key_scheduling: false,
   enable_fingerprint_unification: true,
+  openai_oauth_default_codex_fingerprint_enabled: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_claude_oauth_system_prompt_injection: true,
