@@ -117,6 +117,77 @@ func TestCalculateOpenAI429ResetTime_NoCodexHeaders(t *testing.T) {
 	}
 }
 
+func TestIsOpenAIUsageLimit429Response(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "structured usage limit",
+			body: `{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}`,
+			want: true,
+		},
+		{
+			name: "nested streaming usage limit",
+			body: `{"type":"error","error":{"type":"usage_limit_reached"}}`,
+			want: true,
+		},
+		{
+			name: "short rate limit is excluded",
+			body: `{"detail":"Rate limit exceeded"}`,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isOpenAIUsageLimit429Response([]byte(tt.body)))
+		})
+	}
+}
+
+func TestHandleOpenAIAccountUpstreamErrorFiltersDynamic429Observations(t *testing.T) {
+	dynamic := DefaultOpenAIOAuthRuntimeSettings(true).Dynamic429Scheduling
+	account := &Account{ID: 1234, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	ctx := WithOpenAIOAuth429ThresholdPolicy(context.Background())
+
+	t.Run("short rate limit bypasses dynamic observer", func(t *testing.T) {
+		counter := &openAIOAuth429CounterStub{}
+		rateLimitService, _, _, _ := newOpenAIOAuth429PolicyService(t, dynamic, counter)
+		gateway := &OpenAIGatewayService{rateLimitService: rateLimitService}
+
+		gateway.handleOpenAIAccountUpstreamError(
+			ctx,
+			account,
+			http.StatusTooManyRequests,
+			http.Header{},
+			[]byte(`{"detail":"Rate limit exceeded"}`),
+		)
+
+		require.Empty(t, counter.observed)
+	})
+
+	t.Run("usage exhaustion reaches dynamic observer", func(t *testing.T) {
+		counter := &openAIOAuth429CounterStub{results: []OpenAIOAuth429ObservationResult{{
+			Active: true, TotalSamples: 1, Count429: 1,
+		}}}
+		rateLimitService, _, _, _ := newOpenAIOAuth429PolicyService(t, dynamic, counter)
+		gateway := &OpenAIGatewayService{rateLimitService: rateLimitService}
+
+		gateway.handleOpenAIAccountUpstreamError(
+			ctx,
+			account,
+			http.StatusTooManyRequests,
+			http.Header{},
+			[]byte(`{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}`),
+		)
+
+		require.Len(t, counter.observed, 1)
+		require.True(t, counter.observed[0].Is429)
+	})
+}
+
 func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 	svc := &RateLimitService{}
 

@@ -77,25 +77,32 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	}
 	stateCtx = withTempUnschedulableModel(stateCtx, canonicalModel)
 	if isOpenAIOAuth429ThresholdPolicyEligible(ctx) && isOpenAIOAuthAccount(account) && s.rateLimitService != nil {
-		resetAt := time.Time{}
-		if statusCode == http.StatusTooManyRequests {
-			if headerResetAt := s.rateLimitService.calculateOpenAI429ResetTime(headers); headerResetAt != nil && headerResetAt.After(time.Now()) {
-				resetAt = *headerResetAt
-			} else if resetUnix := parseOpenAIRateLimitResetTime(responseBody); resetUnix != nil {
-				bodyResetAt := time.Unix(*resetUnix, 0)
-				if bodyResetAt.After(time.Now()) {
-					resetAt = bodyResetAt
+		is429 := statusCode == http.StatusTooManyRequests
+		observe429 := is429 && isOpenAIUsageLimit429Response(responseBody)
+		// Dynamic scheduling is reserved for long-window usage exhaustion. A
+		// short-lived rate-limit 429 must stay on the legacy failover path and
+		// must not be recorded as a successful sample in the Redis window.
+		if !is429 || observe429 {
+			resetAt := time.Time{}
+			if observe429 {
+				if headerResetAt := s.rateLimitService.calculateOpenAI429ResetTime(headers); headerResetAt != nil && headerResetAt.After(time.Now()) {
+					resetAt = *headerResetAt
+				} else if resetUnix := parseOpenAIRateLimitResetTime(responseBody); resetUnix != nil {
+					bodyResetAt := time.Unix(*resetUnix, 0)
+					if bodyResetAt.After(time.Now()) {
+						resetAt = bodyResetAt
+					}
 				}
 			}
-		}
-		decision := s.rateLimitService.observeOpenAIOAuthDynamic429(
-			stateCtx,
-			account,
-			statusCode == http.StatusTooManyRequests,
-			resetAt,
-		)
-		if statusCode == http.StatusTooManyRequests {
-			stateCtx = withOpenAIOAuth429CooldownSuppressed(stateCtx, decision.SuppressCooldown)
+			decision := s.rateLimitService.observeOpenAIOAuthDynamic429(
+				stateCtx,
+				account,
+				observe429,
+				resetAt,
+			)
+			if observe429 {
+				stateCtx = withOpenAIOAuth429CooldownSuppressed(stateCtx, decision.SuppressCooldown)
+			}
 		}
 	}
 	if s.rateLimitService != nil && len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {

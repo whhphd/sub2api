@@ -1636,6 +1636,43 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 	return nil
 }
 
+// isOpenAIUsageLimit429Response identifies usage exhaustion by its provider
+// error semantics while excluding short-lived rate-limit responses such as
+// {"detail":"Rate limit exceeded"}. Do not infer this from named quota windows:
+// OpenAI accounts may expose 5h, 7d, 30d, or future window shapes.
+func isOpenAIUsageLimit429Response(body []byte) bool {
+	var payload any
+	return len(body) > 0 && json.Unmarshal(body, &payload) == nil && containsOpenAIUsageLimitMarker(payload)
+}
+
+func containsOpenAIUsageLimitMarker(value any) bool {
+	switch current := value.(type) {
+	case map[string]any:
+		for key, nested := range current {
+			switch strings.ToLower(strings.TrimSpace(key)) {
+			case "type":
+				if text, ok := nested.(string); ok && strings.EqualFold(strings.TrimSpace(text), "usage_limit_reached") {
+					return true
+				}
+			case "message", "detail":
+				if text, ok := nested.(string); ok && strings.Contains(strings.ToLower(text), "usage limit has been reached") {
+					return true
+				}
+			}
+			if containsOpenAIUsageLimitMarker(nested) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range current {
+			if containsOpenAIUsageLimitMarker(nested) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func parseOpenAIRateLimitPlanType(body []byte) string {
 	var parsed map[string]any
 	if err := json.Unmarshal(body, &parsed); err != nil {
