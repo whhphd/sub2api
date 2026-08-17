@@ -866,13 +866,14 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	noopToolcallInjectionEnabled *bool,
 	dynamic429Scheduling *OpenAIOAuthDynamic429SchedulingSettings,
 	safePreOutputOverloadRetryEnabled *bool,
-	planGatedModelCooldownEnabled ...*bool,
+	planGatedModelCooldownEnabled *bool,
+	rateLimitSameAccountRetryEnabled ...*bool,
 ) (*OpenAIOAuthRuntimeSettings, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, fmt.Errorf("setting service is unavailable")
 	}
-	planGatedModelCooldownProvided := len(planGatedModelCooldownEnabled) > 0 && planGatedModelCooldownEnabled[0] != nil
-	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil && !planGatedModelCooldownProvided {
+	rateLimitSameAccountRetryProvided := len(rateLimitSameAccountRetryEnabled) > 0 && rateLimitSameAccountRetryEnabled[0] != nil
+	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -891,8 +892,11 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	if safePreOutputOverloadRetryEnabled != nil {
 		current.SafePreOutputOverloadRetryEnabled = *safePreOutputOverloadRetryEnabled
 	}
-	if len(planGatedModelCooldownEnabled) > 0 && planGatedModelCooldownEnabled[0] != nil {
-		current.PlanGatedModelCooldownEnabled = *planGatedModelCooldownEnabled[0]
+	if planGatedModelCooldownEnabled != nil {
+		current.PlanGatedModelCooldownEnabled = *planGatedModelCooldownEnabled
+	}
+	if rateLimitSameAccountRetryProvided {
+		current.OpenAIRateLimitSameAccountRetryEnabled = *rateLimitSameAccountRetryEnabled[0]
 	}
 	if dynamic429Scheduling != nil {
 		nextRevision := current.Dynamic429Scheduling.Revision + 1

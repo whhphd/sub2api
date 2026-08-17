@@ -169,6 +169,7 @@ type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
 	Dynamic429Scheduling              *service.OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
 	SafePreOutputOverloadRetryEnabled *bool                                            `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled     *bool                                            `json:"plan_gated_model_cooldown_enabled"`
+	RateLimitSameAccountRetryEnabled  *bool                                            `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
 }
 
 // UpdateOpenAIOAuthRuntimeSettings partially updates the global policy.
@@ -186,6 +187,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		req.Dynamic429Scheduling,
 		req.SafePreOutputOverloadRetryEnabled,
 		req.PlanGatedModelCooldownEnabled,
+		req.RateLimitSameAccountRetryEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
@@ -197,6 +199,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		"dynamic_429_scheduling_changed", req.Dynamic429Scheduling != nil,
 		"safe_pre_output_overload_retry_changed", req.SafePreOutputOverloadRetryEnabled != nil,
 		"plan_gated_model_cooldown_changed", req.PlanGatedModelCooldownEnabled != nil,
+		"rate_limit_same_account_retry_changed", req.RateLimitSameAccountRetryEnabled != nil,
 		"dynamic_429_policy_revision", settings.Dynamic429Scheduling.Revision,
 	)
 	response.Success(c, settings)

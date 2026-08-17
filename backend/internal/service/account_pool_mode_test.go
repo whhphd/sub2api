@@ -10,6 +10,8 @@ import (
 )
 
 func TestGetPoolModeRetryCount(t *testing.T) {
+	require.Equal(t, 5, defaultPoolModeRetryCount)
+
 	tests := []struct {
 		name     string
 		account  *Account

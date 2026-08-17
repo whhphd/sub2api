@@ -643,6 +643,32 @@ func (s *OpenAIGatewayService) GetOpenAIOAuthRuntimeSettings(ctx context.Context
 	return s.settingService.GetOpenAIOAuthRuntimeSettings(ctx)
 }
 
+// ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy enables the existing
+// same-account retry loop for short-lived OAuth rate limits. Usage exhaustion
+// remains on the dynamic reset/pause path and is deliberately excluded.
+func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
+	ctx context.Context,
+	account *Account,
+	failoverErr *UpstreamFailoverError,
+) {
+	if s == nil || account == nil || failoverErr == nil || !account.IsOpenAIOAuth() ||
+		failoverErr.StatusCode != http.StatusTooManyRequests || isOpenAIUsageLimit429Response(failoverErr.ResponseBody) {
+		return
+	}
+	settings := s.GetOpenAIOAuthRuntimeSettings(ctx)
+	if settings == nil || !settings.OpenAIRateLimitSameAccountRetryEnabled {
+		return
+	}
+	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(failoverErr.ResponseBody)))
+	body := strings.ToLower(string(failoverErr.ResponseBody))
+	if !strings.Contains(message, "rate limit exceeded") &&
+		!strings.Contains(message, "rate_limit_exceeded") &&
+		!strings.Contains(body, "rate_limit_exceeded") {
+		return
+	}
+	failoverErr.RetryableOnSameAccount = true
+}
+
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
 	if s != nil && s.codexSnapshotThrottle != nil {
 		return s.codexSnapshotThrottle

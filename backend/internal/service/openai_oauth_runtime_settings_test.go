@@ -226,7 +226,7 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	svc.SetOnUpdateCallback(func() { callbackCount++ })
 
 	enabled := true
-	afterInjection, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), &enabled, nil, nil)
+	afterInjection, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), &enabled, nil, nil, nil)
 	require.NoError(t, err)
 	require.True(t, afterInjection.NoopToolcallInjectionEnabled)
 	require.False(t, afterInjection.Dynamic429Scheduling.Enabled)
@@ -236,7 +236,7 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	dynamic.Enabled = true
 	dynamic.WindowSeconds = 600
 	dynamic.Revision = 999
-	afterDynamic, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, &dynamic, nil)
+	afterDynamic, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, &dynamic, nil, nil)
 	require.NoError(t, err)
 	require.True(t, afterDynamic.NoopToolcallInjectionEnabled)
 	require.True(t, afterDynamic.Dynamic429Scheduling.Enabled)
@@ -244,7 +244,7 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	require.Equal(t, int64(2), afterDynamic.Dynamic429Scheduling.Revision)
 
 	safeRetryEnabled := true
-	afterSafeRetry, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, &safeRetryEnabled)
+	afterSafeRetry, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, &safeRetryEnabled, nil)
 	require.NoError(t, err)
 	require.True(t, afterSafeRetry.SafePreOutputOverloadRetryEnabled)
 	require.True(t, afterSafeRetry.NoopToolcallInjectionEnabled)
@@ -258,6 +258,13 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	require.True(t, afterPlanCooldown.NoopToolcallInjectionEnabled)
 	require.True(t, afterPlanCooldown.SafePreOutputOverloadRetryEnabled)
 	require.Equal(t, 4, callbackCount)
+
+	rateLimitRetryEnabled := true
+	afterRateLimitRetry, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, nil, nil, &rateLimitRetryEnabled)
+	require.NoError(t, err)
+	require.True(t, afterRateLimitRetry.OpenAIRateLimitSameAccountRetryEnabled)
+	require.False(t, afterRateLimitRetry.PlanGatedModelCooldownEnabled)
+	require.Equal(t, 5, callbackCount)
 }
 
 func TestGetOpenAIOAuthRuntimeSettingsRetainsLastKnownGoodOnReadFailure(t *testing.T) {

@@ -731,6 +731,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					h.gatewayService.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(c.Request.Context(), account, failoverErr)
 					if failoverClientGone(c) {
 						reqLog.Info("openai.failover_aborted_client_disconnected",
 							zap.Int64("account_id", account.ID),
@@ -1296,6 +1297,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					h.gatewayService.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(c.Request.Context(), account, failoverErr)
 					if failoverClientGone(c) {
 						reqLog.Info("openai_messages.failover_aborted_client_disconnected",
 							zap.Int64("account_id", account.ID),
@@ -2182,6 +2184,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
+				h.gatewayService.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(ctx, account, failoverErr)
 				if handleWSFailover(account, failoverErr) {
 					continue
 				}
@@ -2415,6 +2418,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
+				h.gatewayService.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(ctx, account, failoverErr)
 				if handleWSFailover(account, failoverErr) {
 					continue
 				}

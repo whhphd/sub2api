@@ -521,6 +521,61 @@
             </div>
           </div>
 
+          <!-- OpenAI OAuth short rate-limit same-account retry -->
+          <div class="card" data-testid="openai-oauth-rate-limit-same-account-retry-card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.openaiOauthRuntime.rateLimitSameAccountRetryTitle") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.openaiOauthRuntime.rateLimitSameAccountRetryDescription") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="openAIOAuthRuntimeLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-6">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.openaiOauthRuntime.rateLimitSameAccountRetryEnabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiOauthRuntime.rateLimitSameAccountRetryEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="openAIOAuthRuntimeForm.openai_oauth_rate_limit_same_account_retry_enabled"
+                    :disabled="openAIOAuthRateLimitSameAccountRetrySaving"
+                    data-testid="openai-oauth-rate-limit-same-account-retry-toggle"
+                  />
+                </div>
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="openAIOAuthRateLimitSameAccountRetrySaving"
+                    data-testid="openai-oauth-rate-limit-same-account-retry-save"
+                    @click="saveOpenAIOAuthRateLimitSameAccountRetrySettings"
+                  >
+                    {{ openAIOAuthRateLimitSameAccountRetrySaving ? t("common.saving") : t("common.save") }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- OpenAI OAuth Plan-Gated Model Cooldown -->
           <div class="card" data-testid="openai-oauth-plan-gated-cooldown-card">
             <div
@@ -9238,11 +9293,13 @@ const rateLimit429CooldownForm = reactive({
 const openAIOAuthRuntimeLoading = ref(true);
 const openAIOAuthInjectionSaving = ref(false);
 const openAIOAuthSafeRetrySaving = ref(false);
+const openAIOAuthRateLimitSameAccountRetrySaving = ref(false);
 const openAIOAuthPlanGatedCooldownSaving = ref(false);
 const openAIOAuthDynamic429Saving = ref(false);
 const openAIOAuthRuntimeForm = reactive({
   noop_toolcall_injection_enabled: false,
   safe_pre_output_overload_retry_enabled: false,
+  openai_oauth_rate_limit_same_account_retry_enabled: false,
   plan_gated_model_cooldown_enabled: true,
   dynamic_429_scheduling: {
     enabled: false,
@@ -12174,6 +12231,8 @@ async function loadOpenAIOAuthRuntimeSettings() {
       settings.noop_toolcall_injection_enabled;
     openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
       settings.safe_pre_output_overload_retry_enabled;
+    openAIOAuthRuntimeForm.openai_oauth_rate_limit_same_account_retry_enabled =
+      settings.openai_oauth_rate_limit_same_account_retry_enabled;
     openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
       settings.plan_gated_model_cooldown_enabled;
     Object.assign(
@@ -12214,6 +12273,30 @@ async function saveOpenAIOAuthSafeRetrySettings() {
     );
   } finally {
     openAIOAuthSafeRetrySaving.value = false;
+  }
+}
+
+async function saveOpenAIOAuthRateLimitSameAccountRetrySettings() {
+  openAIOAuthRateLimitSameAccountRetrySaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({
+      openai_oauth_rate_limit_same_account_retry_enabled:
+        openAIOAuthRuntimeForm.openai_oauth_rate_limit_same_account_retry_enabled,
+    });
+    openAIOAuthRuntimeForm.openai_oauth_rate_limit_same_account_retry_enabled =
+      updated.openai_oauth_rate_limit_same_account_retry_enabled;
+    appStore.showSuccess(
+      t("admin.settings.openaiOauthRuntime.rateLimitSameAccountRetrySaved"),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.openaiOauthRuntime.rateLimitSameAccountRetrySaveFailed"),
+      ),
+    );
+  } finally {
+    openAIOAuthRateLimitSameAccountRetrySaving.value = false;
   }
 }
 

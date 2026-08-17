@@ -687,6 +687,7 @@ describe("admin SettingsView payment visible method controls", () => {
     const openAIOAuthRuntimeSettings = {
       noop_toolcall_injection_enabled: true,
       safe_pre_output_overload_retry_enabled: false,
+      openai_oauth_rate_limit_same_account_retry_enabled: false,
       dynamic_429_scheduling: {
         enabled: false,
         window_seconds: 300,
@@ -706,6 +707,9 @@ describe("admin SettingsView payment visible method controls", () => {
       safe_pre_output_overload_retry_enabled:
         payload.safe_pre_output_overload_retry_enabled ??
         openAIOAuthRuntimeSettings.safe_pre_output_overload_retry_enabled,
+      openai_oauth_rate_limit_same_account_retry_enabled:
+        payload.openai_oauth_rate_limit_same_account_retry_enabled ??
+        openAIOAuthRuntimeSettings.openai_oauth_rate_limit_same_account_retry_enabled,
       dynamic_429_scheduling:
         payload.dynamic_429_scheduling ??
         openAIOAuthRuntimeSettings.dynamic_429_scheduling,
@@ -1480,6 +1484,27 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
       safe_pre_output_overload_retry_enabled: true,
+    });
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("independently saves the OpenAI OAuth short rate-limit same-account retry switch", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const toggle = wrapper.get('[data-testid="openai-oauth-rate-limit-same-account-retry-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper
+      .get('[data-testid="openai-oauth-rate-limit-same-account-retry-save"]')
+      .trigger("click");
+    await flushPromises();
+
+    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
+      openai_oauth_rate_limit_same_account_retry_enabled: true,
     });
     expect(updateSettings).not.toHaveBeenCalled();
   });
