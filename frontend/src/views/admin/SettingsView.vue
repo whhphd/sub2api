@@ -5728,6 +5728,136 @@
                 </div>
               </div>
 
+              <!-- Random proxy pool for new OpenAI OAuth accounts -->
+              <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPool") }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="form.openai_oauth_new_account_proxy_pool_enabled"
+                    data-testid="openai-oauth-new-account-proxy-pool-toggle"
+                  />
+                </div>
+
+                <div
+                  v-if="form.openai_oauth_new_account_proxy_pool_enabled"
+                  class="mt-4 space-y-3"
+                  data-testid="openai-oauth-new-account-proxy-pool"
+                >
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="relative min-w-0 flex-1 sm:max-w-md">
+                      <Icon
+                        name="search"
+                        size="sm"
+                        class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                      />
+                      <input
+                        v-model.trim="openAIOAuthProxyPoolSearch"
+                        type="search"
+                        class="input w-full pl-9"
+                        :placeholder="t('admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolSearch')"
+                        data-testid="openai-oauth-new-account-proxy-pool-search"
+                      />
+                    </div>
+                    <div class="flex items-center gap-3 text-xs">
+                      <span class="text-gray-500 dark:text-gray-400">
+                        {{
+                          t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolSelected", {
+                            selected: form.openai_oauth_new_account_proxy_pool_ids.length,
+                            total: openAIOAuthProxyPoolProxies.length,
+                          })
+                        }}
+                      </span>
+                      <button
+                        type="button"
+                        class="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                        :disabled="filteredOpenAIOAuthProxyPoolProxies.length === 0"
+                        @click="selectAllFilteredOpenAIOAuthProxyPoolProxies"
+                      >
+                        {{ t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolSelectResults") }}
+                      </button>
+                      <button
+                        type="button"
+                        class="font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                        :disabled="form.openai_oauth_new_account_proxy_pool_ids.length === 0"
+                        @click="clearOpenAIOAuthProxyPoolSelection"
+                      >
+                        {{ t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolClear") }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="unavailableOpenAIOAuthProxyPoolIDs.length > 0"
+                    class="flex items-center justify-between gap-3 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+                  >
+                    <span>
+                      {{
+                        t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolUnavailable", {
+                          count: unavailableOpenAIOAuthProxyPoolIDs.length,
+                        })
+                      }}
+                    </span>
+                    <button
+                      type="button"
+                      class="shrink-0 font-medium underline"
+                      @click="clearUnavailableOpenAIOAuthProxyPoolIDs"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolClearUnavailable") }}
+                    </button>
+                  </div>
+
+                  <div class="max-h-64 overflow-y-auto border border-gray-200 dark:border-dark-600">
+                    <p
+                      v-if="openAIOAuthProxyPoolLoading"
+                      class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+                    >
+                      {{ t("common.loading") }}
+                    </p>
+                    <p
+                      v-else-if="filteredOpenAIOAuthProxyPoolProxies.length === 0"
+                      class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+                    >
+                      {{
+                        openAIOAuthProxyPoolSearch
+                          ? t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolNoResults")
+                          : t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolEmpty")
+                      }}
+                    </p>
+                    <label
+                      v-for="proxy in filteredOpenAIOAuthProxyPoolProxies"
+                      v-else
+                      :key="proxy.id"
+                      class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/50"
+                      :data-testid="`openai-oauth-new-account-proxy-option-${proxy.id}`"
+                    >
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        :checked="form.openai_oauth_new_account_proxy_pool_ids.includes(proxy.id)"
+                        @change="updateOpenAIOAuthProxyPoolSelection(proxy.id, $event)"
+                      />
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
+                          {{ proxy.name }}
+                        </span>
+                        <span class="block truncate text-xs text-gray-500 dark:text-gray-400">
+                          {{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}
+                          <template v-if="proxy.ip_address"> · {{ proxy.ip_address }}</template>
+                        </span>
+                      </span>
+                      <span class="shrink-0 text-xs text-gray-400">#{{ proxy.id }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               <!-- Metadata Passthrough -->
               <div class="flex items-center justify-between">
                 <div>
@@ -10194,6 +10324,8 @@ const form = reactive<SettingsForm>({
   enable_fingerprint_unification: true,
   openai_oauth_default_codex_fingerprint_enabled: true,
   openai_oauth_default_codex_fingerprint_mode: "session",
+  openai_oauth_new_account_proxy_pool_enabled: false,
+  openai_oauth_new_account_proxy_pool_ids: [],
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_claude_oauth_system_prompt_injection: true,
@@ -10449,6 +10581,88 @@ const authSourceDefaultsMeta = computed(() => [
 
 // Proxies for web search emulation ProxySelector
 const webSearchProxies = ref<Proxy[]>([]);
+
+const openAIOAuthProxyPoolProxies = ref<Proxy[]>([]);
+const openAIOAuthProxyPoolLoading = ref(false);
+const openAIOAuthProxyPoolSearch = ref("");
+
+const filteredOpenAIOAuthProxyPoolProxies = computed(() => {
+  const query = openAIOAuthProxyPoolSearch.value.trim().toLocaleLowerCase();
+  if (!query) return openAIOAuthProxyPoolProxies.value;
+
+  return openAIOAuthProxyPoolProxies.value.filter((proxy) =>
+    [
+      proxy.name,
+      proxy.host,
+      proxy.port,
+      proxy.protocol,
+      proxy.ip_address,
+      proxy.country,
+      proxy.region,
+      proxy.city,
+      proxy.id,
+    ]
+      .filter((value) => value !== null && value !== undefined)
+      .some((value) => String(value).toLocaleLowerCase().includes(query)),
+  );
+});
+
+const unavailableOpenAIOAuthProxyPoolIDs = computed(() => {
+  const availableIDs = new Set(
+    openAIOAuthProxyPoolProxies.value.map((proxy) => proxy.id),
+  );
+  return form.openai_oauth_new_account_proxy_pool_ids.filter(
+    (proxyID) => !availableIDs.has(proxyID),
+  );
+});
+
+function updateOpenAIOAuthProxyPoolSelection(proxyID: number, event: Event): void {
+  const selected = (event.target as HTMLInputElement).checked;
+  const nextIDs = new Set(form.openai_oauth_new_account_proxy_pool_ids);
+  if (selected) nextIDs.add(proxyID);
+  else nextIDs.delete(proxyID);
+  form.openai_oauth_new_account_proxy_pool_ids = [...nextIDs].sort(
+    (left, right) => left - right,
+  );
+}
+
+function selectAllFilteredOpenAIOAuthProxyPoolProxies(): void {
+  const nextIDs = new Set(form.openai_oauth_new_account_proxy_pool_ids);
+  for (const proxy of filteredOpenAIOAuthProxyPoolProxies.value) {
+    nextIDs.add(proxy.id);
+  }
+  form.openai_oauth_new_account_proxy_pool_ids = [...nextIDs].sort(
+    (left, right) => left - right,
+  );
+}
+
+function clearOpenAIOAuthProxyPoolSelection(): void {
+  form.openai_oauth_new_account_proxy_pool_ids = [];
+}
+
+function clearUnavailableOpenAIOAuthProxyPoolIDs(): void {
+  const unavailableIDs = new Set(unavailableOpenAIOAuthProxyPoolIDs.value);
+  form.openai_oauth_new_account_proxy_pool_ids =
+    form.openai_oauth_new_account_proxy_pool_ids.filter(
+      (proxyID) => !unavailableIDs.has(proxyID),
+    );
+}
+
+async function loadOpenAIOAuthProxyPoolProxies(): Promise<void> {
+  openAIOAuthProxyPoolLoading.value = true;
+  try {
+    openAIOAuthProxyPoolProxies.value = await adminAPI.proxies.getAll();
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolLoadFailed"),
+      ),
+    );
+  } finally {
+    openAIOAuthProxyPoolLoading.value = false;
+  }
+}
 
 // Web Search Emulation config (loaded/saved separately)
 const DEFAULT_WEB_SEARCH_QUOTA_LIMIT = 1000;
@@ -11435,6 +11649,16 @@ function findDuplicateDefaultSubscription(
 async function saveSettings() {
   saving.value = true;
   try {
+    if (
+      form.openai_oauth_new_account_proxy_pool_enabled &&
+      form.openai_oauth_new_account_proxy_pool_ids.length === 0
+    ) {
+      appStore.showError(
+        t("admin.settings.gatewayForwarding.openaiOAuthNewAccountProxyPoolRequired"),
+      );
+      return;
+    }
+
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -11769,6 +11993,10 @@ async function saveSettings() {
         form.openai_oauth_default_codex_fingerprint_enabled,
       openai_oauth_default_codex_fingerprint_mode:
         form.openai_oauth_default_codex_fingerprint_mode,
+      openai_oauth_new_account_proxy_pool_enabled:
+        form.openai_oauth_new_account_proxy_pool_enabled,
+      openai_oauth_new_account_proxy_pool_ids:
+        form.openai_oauth_new_account_proxy_pool_ids,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
       enable_claude_oauth_system_prompt_injection:
@@ -13144,6 +13372,7 @@ async function handleDeleteProvider() {
 
 onMounted(() => {
   loadSettings();
+  loadOpenAIOAuthProxyPoolProxies();
   loadSubscriptionGroups();
   loadAdminApiKey();
   loadUpstreamBillingProbeSettings();

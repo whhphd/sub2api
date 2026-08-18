@@ -2,6 +2,7 @@ package admin
 
 import (
 	"log/slog"
+	"slices"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -457,6 +458,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIOAuthDefaultCodexFingerprintMode != after.OpenAIOAuthDefaultCodexFingerprintMode {
 		changed = append(changed, "openai_oauth_default_codex_fingerprint_mode")
+	}
+	if before.OpenAIOAuthNewAccountProxyPoolEnabled != after.OpenAIOAuthNewAccountProxyPoolEnabled {
+		changed = append(changed, "openai_oauth_new_account_proxy_pool_enabled")
+	}
+	if !slices.Equal(before.OpenAIOAuthNewAccountProxyPoolIDs, after.OpenAIOAuthNewAccountProxyPoolIDs) {
+		changed = append(changed, "openai_oauth_new_account_proxy_pool_ids")
 	}
 	if before.EnableMetadataPassthrough != after.EnableMetadataPassthrough {
 		changed = append(changed, "enable_metadata_passthrough")

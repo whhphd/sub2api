@@ -30,6 +30,7 @@ const {
   updateOllamaCloudUsageSettings,
   getGroups,
   listProxies,
+  getAllProxies,
   getProviders,
   updateProvider,
   createProvider,
@@ -73,6 +74,7 @@ const {
   updateOllamaCloudUsageSettings: vi.fn().mockImplementation(async (payload) => payload),
   getGroups: vi.fn(),
   listProxies: vi.fn(),
+  getAllProxies: vi.fn(),
   getProviders: vi.fn(),
   updateProvider: vi.fn(),
   createProvider: vi.fn(),
@@ -115,6 +117,7 @@ vi.mock("@/api", () => ({
     },
     proxies: {
       list: listProxies,
+      getAll: getAllProxies,
     },
     payment: {
       getProviders,
@@ -474,6 +477,8 @@ const baseSettingsResponse = {
   enable_fingerprint_unification: true,
   openai_oauth_default_codex_fingerprint_enabled: true,
   openai_oauth_default_codex_fingerprint_mode: "session",
+  openai_oauth_new_account_proxy_pool_enabled: false,
+  openai_oauth_new_account_proxy_pool_ids: [],
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_claude_oauth_system_prompt_injection: true,
@@ -655,6 +660,7 @@ describe("admin SettingsView payment visible method controls", () => {
     updateOllamaCloudUsageSettings.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
+    getAllProxies.mockReset();
     getProviders.mockReset();
     updateProvider.mockReset();
     createProvider.mockReset();
@@ -753,6 +759,7 @@ describe("admin SettingsView payment visible method controls", () => {
     listProxies.mockResolvedValue({
       items: [],
     });
+    getAllProxies.mockResolvedValue([]);
     getProviders.mockResolvedValue({
       data: [],
     });
@@ -776,6 +783,61 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         openai_oauth_default_codex_fingerprint_mode: "full",
+      }),
+    );
+  });
+
+  it("filters and saves the random proxy pool for new OpenAI OAuth accounts", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      openai_oauth_new_account_proxy_pool_enabled: true,
+      openai_oauth_new_account_proxy_pool_ids: [11],
+    });
+    getAllProxies.mockResolvedValue([
+      {
+        id: 11,
+        name: "Tokyo primary",
+        protocol: "http",
+        host: "tokyo.example.com",
+        port: 8080,
+        status: "active",
+      },
+      {
+        id: 22,
+        name: "Singapore backup",
+        protocol: "socks5",
+        host: "10.0.0.22",
+        port: 1080,
+        ip_address: "203.0.113.22",
+        status: "active",
+      },
+    ]);
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const search = wrapper.get(
+      '[data-testid="openai-oauth-new-account-proxy-pool-search"]',
+    );
+    await search.setValue("singapore");
+    expect(
+      wrapper.find(
+        '[data-testid="openai-oauth-new-account-proxy-option-11"]',
+      ).exists(),
+    ).toBe(false);
+
+    const singapore = wrapper.get(
+      '[data-testid="openai-oauth-new-account-proxy-option-22"] input',
+    );
+    await singapore.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_oauth_new_account_proxy_pool_enabled: true,
+        openai_oauth_new_account_proxy_pool_ids: [11, 22],
       }),
     );
   });
@@ -1723,6 +1785,7 @@ describe("admin SettingsView wechat connect controls", () => {
     getBetaPolicySettings.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
+    getAllProxies.mockReset();
     getProviders.mockReset();
     updateProvider.mockReset();
     createProvider.mockReset();
@@ -1783,6 +1846,7 @@ describe("admin SettingsView wechat connect controls", () => {
     listProxies.mockResolvedValue({
       items: [],
     });
+    getAllProxies.mockResolvedValue([]);
     getProviders.mockResolvedValue({
       data: [],
     });
@@ -1969,6 +2033,7 @@ describe("admin SettingsView platform quota matrix", () => {
     getBetaPolicySettings.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
+    getAllProxies.mockReset();
     getProviders.mockReset();
     updateProvider.mockReset();
     createProvider.mockReset();
@@ -1995,6 +2060,7 @@ describe("admin SettingsView platform quota matrix", () => {
     getBetaPolicySettings.mockResolvedValue({});
     getGroups.mockResolvedValue([]);
     listProxies.mockResolvedValue({ items: [] });
+    getAllProxies.mockResolvedValue([]);
     getProviders.mockResolvedValue({ data: [] });
   });
 

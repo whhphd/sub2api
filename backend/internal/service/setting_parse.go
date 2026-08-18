@@ -235,6 +235,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled:   "false",
 		SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled:          "true",
 		SettingKeyOpenAIOAuthDefaultCodexFingerprintMode:             string(codexFingerprintSession),
+		SettingKeyOpenAIOAuthNewAccountProxyPoolEnabled:              "false",
+		SettingKeyOpenAIOAuthNewAccountProxyPoolIDs:                  "[]",
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
@@ -859,6 +861,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.OpenAIOAuthDefaultCodexFingerprintMode = NormalizeOpenAIOAuthDefaultCodexFingerprintMode(
 		settings[SettingKeyOpenAIOAuthDefaultCodexFingerprintMode],
+	)
+	result.OpenAIOAuthNewAccountProxyPoolEnabled = settings[SettingKeyOpenAIOAuthNewAccountProxyPoolEnabled] == "true"
+	result.OpenAIOAuthNewAccountProxyPoolIDs = ParseOpenAIOAuthNewAccountProxyPoolIDs(
+		settings[SettingKeyOpenAIOAuthNewAccountProxyPoolIDs],
 	)
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"

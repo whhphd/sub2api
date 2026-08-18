@@ -291,6 +291,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableFingerprintUnification:                           settings.EnableFingerprintUnification,
 		OpenAIOAuthDefaultCodexFingerprintEnabled:              settings.OpenAIOAuthDefaultCodexFingerprintEnabled,
 		OpenAIOAuthDefaultCodexFingerprintMode:                 settings.OpenAIOAuthDefaultCodexFingerprintMode,
+		OpenAIOAuthNewAccountProxyPoolEnabled:                  settings.OpenAIOAuthNewAccountProxyPoolEnabled,
+		OpenAIOAuthNewAccountProxyPoolIDs:                      settings.OpenAIOAuthNewAccountProxyPoolIDs,
 		EnableMetadataPassthrough:                              settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       settings.EnableCCHSigning,
 		EnableClaudeOAuthSystemPromptInjection:                 settings.EnableClaudeOAuthSystemPromptInjection,

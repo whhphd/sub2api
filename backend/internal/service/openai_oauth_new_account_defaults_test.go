@@ -4,16 +4,19 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 type openAIOAuthNewAccountDefaultsRepo struct {
 	SettingRepository
-	value string
-	mode  string
-	err   error
-	reads int
+	value            string
+	mode             string
+	err              error
+	reads            int
+	proxyPoolEnabled string
+	proxyPoolIDs     string
 }
 
 func (r *openAIOAuthNewAccountDefaultsRepo) GetValue(_ context.Context, key string) (string, error) {
@@ -22,6 +25,28 @@ func (r *openAIOAuthNewAccountDefaultsRepo) GetValue(_ context.Context, key stri
 		return r.mode, r.err
 	}
 	return r.value, r.err
+}
+
+func (r *openAIOAuthNewAccountDefaultsRepo) GetMultiple(_ context.Context, _ []string) (map[string]string, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	return map[string]string{
+		SettingKeyOpenAIOAuthNewAccountProxyPoolEnabled: r.proxyPoolEnabled,
+		SettingKeyOpenAIOAuthNewAccountProxyPoolIDs:     r.proxyPoolIDs,
+	}, nil
+}
+
+type openAIOAuthNewAccountProxyRepo struct {
+	ProxyRepository
+	proxies []Proxy
+	err     error
+	reads   int
+}
+
+func (r *openAIOAuthNewAccountProxyRepo) ListByIDs(_ context.Context, _ []int64) ([]Proxy, error) {
+	r.reads++
+	return r.proxies, r.err
 }
 
 func TestApplyOpenAIOAuthNewAccountDefaultsDefaultsToSession(t *testing.T) {
@@ -98,4 +123,55 @@ func TestApplyOpenAIOAuthNewAccountDefaultsUsesConfiguredMode(t *testing.T) {
 			require.Equal(t, expected, account.Extra[codexFingerprintModeExtraKey])
 		})
 	}
+}
+
+func TestApplyOpenAIOAuthNewAccountDefaultsAssignsRandomActiveProxy(t *testing.T) {
+	expiredAt := time.Now().Add(-time.Minute)
+	settings := &openAIOAuthNewAccountDefaultsRepo{
+		value:            "true",
+		mode:             string(codexFingerprintSession),
+		proxyPoolEnabled: "true",
+		proxyPoolIDs:     `[11,22,33,44,22,-1]`,
+	}
+	proxies := &openAIOAuthNewAccountProxyRepo{proxies: []Proxy{
+		{ID: 11, Status: StatusActive},
+		{ID: 22, Status: StatusActive},
+		{ID: 33, Status: "inactive"},
+		{ID: 44, Status: StatusActive, ExpiresAt: &expiredAt},
+	}}
+	svc := NewSettingService(settings, nil)
+	svc.SetProxyRepository(proxies)
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintOff)},
+	}
+
+	require.NoError(t, svc.ApplyOpenAIOAuthNewAccountDefaults(context.Background(), account))
+	require.NotNil(t, account.ProxyID)
+	require.Contains(t, []int64{11, 22}, *account.ProxyID)
+	require.Equal(t, 1, proxies.reads)
+	require.Equal(t, string(codexFingerprintOff), account.Extra[codexFingerprintModeExtraKey])
+}
+
+func TestApplyOpenAIOAuthNewAccountDefaultsPreservesExplicitProxy(t *testing.T) {
+	explicitProxyID := int64(99)
+	settings := &openAIOAuthNewAccountDefaultsRepo{
+		value:            "true",
+		proxyPoolEnabled: "true",
+		proxyPoolIDs:     `[11]`,
+	}
+	proxies := &openAIOAuthNewAccountProxyRepo{proxies: []Proxy{{ID: 11, Status: StatusActive}}}
+	svc := NewSettingService(settings, nil)
+	svc.SetProxyRepository(proxies)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &explicitProxyID}
+
+	require.NoError(t, svc.ApplyOpenAIOAuthNewAccountDefaults(context.Background(), account))
+	require.Equal(t, explicitProxyID, *account.ProxyID)
+	require.Zero(t, proxies.reads)
+}
+
+func TestParseOpenAIOAuthNewAccountProxyPoolIDs(t *testing.T) {
+	require.Equal(t, []int64{2, 3}, ParseOpenAIOAuthNewAccountProxyPoolIDs(`[3,2,3,0,-1]`))
+	require.Empty(t, ParseOpenAIOAuthNewAccountProxyPoolIDs(`not-json`))
 }

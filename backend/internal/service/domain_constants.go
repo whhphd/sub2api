@@ -599,6 +599,11 @@ const (
 	// SettingKeyOpenAIOAuthDefaultCodexFingerprintMode selects the convergence
 	// mode applied to newly-created OpenAI OAuth accounts without an explicit mode.
 	SettingKeyOpenAIOAuthDefaultCodexFingerprintMode = "openai_oauth_default_codex_fingerprint_mode"
+	// SettingKeyOpenAIOAuthNewAccountProxyPoolEnabled controls random proxy
+	// assignment for newly-created OpenAI OAuth accounts without an explicit proxy.
+	SettingKeyOpenAIOAuthNewAccountProxyPoolEnabled = "openai_oauth_new_account_proxy_pool_enabled"
+	// SettingKeyOpenAIOAuthNewAccountProxyPoolIDs stores the candidate proxy IDs.
+	SettingKeyOpenAIOAuthNewAccountProxyPoolIDs = "openai_oauth_new_account_proxy_pool_ids"
 	// SettingKeyOpenAIOAuthRuntimeSettings stores the global runtime policy for
 	// OpenAI OAuth noop tool-call injection and dynamic 429 scheduling.
 	SettingKeyOpenAIOAuthRuntimeSettings = "openai_oauth_runtime_settings"

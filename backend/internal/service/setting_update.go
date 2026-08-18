@@ -462,6 +462,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled] = strconv.FormatBool(settings.OpenAIOAuthDefaultCodexFingerprintEnabled)
 	updates[SettingKeyOpenAIOAuthDefaultCodexFingerprintMode] = NormalizeOpenAIOAuthDefaultCodexFingerprintMode(settings.OpenAIOAuthDefaultCodexFingerprintMode)
+	updates[SettingKeyOpenAIOAuthNewAccountProxyPoolEnabled] = strconv.FormatBool(settings.OpenAIOAuthNewAccountProxyPoolEnabled)
+	proxyPoolIDsJSON, err := json.Marshal(NormalizeOpenAIOAuthNewAccountProxyPoolIDs(settings.OpenAIOAuthNewAccountProxyPoolIDs))
+	if err != nil {
+		return nil, fmt.Errorf("marshal OpenAI OAuth new account proxy pool IDs: %w", err)
+	}
+	updates[SettingKeyOpenAIOAuthNewAccountProxyPoolIDs] = string(proxyPoolIDsJSON)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
 	updates[SettingKeyEnableClaudeOAuthSystemPromptInjection] = strconv.FormatBool(settings.EnableClaudeOAuthSystemPromptInjection)
