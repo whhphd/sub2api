@@ -234,6 +234,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIOAuthSchedulingRateMultiplier:                "1",
 		SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled:   "false",
 		SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled:          "true",
+		SettingKeyOpenAIOAuthDefaultCodexFingerprintMode:             string(codexFingerprintSession),
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
@@ -856,6 +857,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.OpenAIOAuthDefaultCodexFingerprintEnabled = true
 	}
+	result.OpenAIOAuthDefaultCodexFingerprintMode = NormalizeOpenAIOAuthDefaultCodexFingerprintMode(
+		settings[SettingKeyOpenAIOAuthDefaultCodexFingerprintMode],
+	)
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
 	if v, ok := settings[SettingKeyEnableClaudeOAuthSystemPromptInjection]; ok && v != "" {

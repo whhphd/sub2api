@@ -2,7 +2,21 @@ package service
 
 import (
 	"context"
+	"strings"
 )
+
+const defaultOpenAIOAuthCodexFingerprintMode = string(codexFingerprintSession)
+
+// NormalizeOpenAIOAuthDefaultCodexFingerprintMode keeps the persisted global
+// setting aligned with the four modes supported by the account-level logic.
+func NormalizeOpenAIOAuthDefaultCodexFingerprintMode(value string) string {
+	switch codexFingerprintMode(strings.TrimSpace(value)) {
+	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+		return strings.TrimSpace(value)
+	default:
+		return defaultOpenAIOAuthCodexFingerprintMode
+	}
+}
 
 // IsOpenAIOAuthDefaultCodexFingerprintEnabled reports the system default for
 // newly-created OpenAI OAuth accounts. Missing/invalid settings intentionally
@@ -13,6 +27,17 @@ func (s *SettingService) IsOpenAIOAuthDefaultCodexFingerprintEnabled(ctx context
 		return true
 	}
 	return value != "false"
+}
+
+// OpenAIOAuthDefaultCodexFingerprintMode returns the normalized mode for new
+// OpenAI OAuth accounts. Missing or invalid values preserve the historical
+// device+session default.
+func (s *SettingService) OpenAIOAuthDefaultCodexFingerprintMode(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIOAuthDefaultCodexFingerprintMode)
+	if err != nil {
+		return defaultOpenAIOAuthCodexFingerprintMode
+	}
+	return NormalizeOpenAIOAuthDefaultCodexFingerprintMode(value)
 }
 
 // ApplyOpenAIOAuthNewAccountDefaults is called by every account creation/import
@@ -33,6 +58,6 @@ func (s *SettingService) ApplyOpenAIOAuthNewAccountDefaults(ctx context.Context,
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
 	}
-	account.Extra[codexFingerprintModeExtraKey] = string(codexFingerprintSession)
+	account.Extra[codexFingerprintModeExtraKey] = s.OpenAIOAuthDefaultCodexFingerprintMode(ctx)
 	return nil
 }

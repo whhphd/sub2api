@@ -455,6 +455,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAIOAuthDefaultCodexFingerprintEnabled != after.OpenAIOAuthDefaultCodexFingerprintEnabled {
 		changed = append(changed, "openai_oauth_default_codex_fingerprint_enabled")
 	}
+	if before.OpenAIOAuthDefaultCodexFingerprintMode != after.OpenAIOAuthDefaultCodexFingerprintMode {
+		changed = append(changed, "openai_oauth_default_codex_fingerprint_mode")
+	}
 	if before.EnableMetadataPassthrough != after.EnableMetadataPassthrough {
 		changed = append(changed, "enable_metadata_passthrough")
 	}

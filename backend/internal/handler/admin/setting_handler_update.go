@@ -245,6 +245,7 @@ type UpdateSettingsRequest struct {
 	// Gateway forwarding behavior
 	EnableFingerprintUnification              *bool   `json:"enable_fingerprint_unification"`
 	OpenAIOAuthDefaultCodexFingerprintEnabled *bool   `json:"openai_oauth_default_codex_fingerprint_enabled"`
+	OpenAIOAuthDefaultCodexFingerprintMode    *string `json:"openai_oauth_default_codex_fingerprint_mode"`
 	EnableMetadataPassthrough                 *bool   `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                          *bool   `json:"enable_cch_signing"`
 	EnableClaudeOAuthSystemPromptInjection    *bool   `json:"enable_claude_oauth_system_prompt_injection"`
@@ -1688,6 +1689,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIOAuthDefaultCodexFingerprintEnabled
 		}(),
+		OpenAIOAuthDefaultCodexFingerprintMode: func() string {
+			if req.OpenAIOAuthDefaultCodexFingerprintMode != nil {
+				return service.NormalizeOpenAIOAuthDefaultCodexFingerprintMode(*req.OpenAIOAuthDefaultCodexFingerprintMode)
+			}
+			return previousSettings.OpenAIOAuthDefaultCodexFingerprintMode
+		}(),
 		EnableMetadataPassthrough: func() bool {
 			if req.EnableMetadataPassthrough != nil {
 				return *req.EnableMetadataPassthrough
@@ -2280,6 +2287,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		BackendModeEnabled:                                     updatedSettings.BackendModeEnabled,
 		EnableFingerprintUnification:                           updatedSettings.EnableFingerprintUnification,
 		OpenAIOAuthDefaultCodexFingerprintEnabled:              updatedSettings.OpenAIOAuthDefaultCodexFingerprintEnabled,
+		OpenAIOAuthDefaultCodexFingerprintMode:                 updatedSettings.OpenAIOAuthDefaultCodexFingerprintMode,
 		EnableMetadataPassthrough:                              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       updatedSettings.EnableCCHSigning,
 		EnableClaudeOAuthSystemPromptInjection:                 updatedSettings.EnableClaudeOAuthSystemPromptInjection,

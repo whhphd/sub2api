@@ -622,6 +622,7 @@ export interface SystemSettings {
   // Gateway forwarding behavior
   enable_fingerprint_unification: boolean;
   openai_oauth_default_codex_fingerprint_enabled: boolean;
+  openai_oauth_default_codex_fingerprint_mode: "off" | "device" | "session" | "full" | string;
   enable_metadata_passthrough: boolean;
   enable_cch_signing: boolean;
   enable_claude_oauth_system_prompt_injection: boolean;
@@ -938,6 +939,7 @@ export interface UpdateSettingsRequest {
   allow_ungrouped_key_scheduling?: boolean;
   enable_fingerprint_unification?: boolean;
   openai_oauth_default_codex_fingerprint_enabled?: boolean;
+  openai_oauth_default_codex_fingerprint_mode?: "off" | "device" | "session" | "full" | string;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
   enable_claude_oauth_system_prompt_injection?: boolean;

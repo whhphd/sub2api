@@ -290,6 +290,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		BackendModeEnabled:                                     settings.BackendModeEnabled,
 		EnableFingerprintUnification:                           settings.EnableFingerprintUnification,
 		OpenAIOAuthDefaultCodexFingerprintEnabled:              settings.OpenAIOAuthDefaultCodexFingerprintEnabled,
+		OpenAIOAuthDefaultCodexFingerprintMode:                 settings.OpenAIOAuthDefaultCodexFingerprintMode,
 		EnableMetadataPassthrough:                              settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       settings.EnableCCHSigning,
 		EnableClaudeOAuthSystemPromptInjection:                 settings.EnableClaudeOAuthSystemPromptInjection,

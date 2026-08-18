@@ -11,12 +11,16 @@ import (
 type openAIOAuthNewAccountDefaultsRepo struct {
 	SettingRepository
 	value string
+	mode  string
 	err   error
 	reads int
 }
 
-func (r *openAIOAuthNewAccountDefaultsRepo) GetValue(context.Context, string) (string, error) {
+func (r *openAIOAuthNewAccountDefaultsRepo) GetValue(_ context.Context, key string) (string, error) {
 	r.reads++
+	if key == SettingKeyOpenAIOAuthDefaultCodexFingerprintMode {
+		return r.mode, r.err
+	}
 	return r.value, r.err
 }
 
@@ -31,7 +35,7 @@ func TestApplyOpenAIOAuthNewAccountDefaultsDefaultsToSession(t *testing.T) {
 
 	require.NoError(t, svc.ApplyOpenAIOAuthNewAccountDefaults(context.Background(), account))
 	require.Equal(t, string(codexFingerprintSession), account.Extra[codexFingerprintModeExtraKey])
-	require.Equal(t, 1, repo.reads)
+	require.Equal(t, 2, repo.reads)
 	require.NotNil(t, account.Extra["preserved"])
 	require.NoError(t, svc.ApplyOpenAIOAuthNewAccountDefaults(context.Background(), nil))
 }
@@ -68,4 +72,30 @@ func TestApplyOpenAIOAuthNewAccountDefaultsReadErrorFailsOpen(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	require.NoError(t, svc.ApplyOpenAIOAuthNewAccountDefaults(context.Background(), account))
 	require.Equal(t, string(codexFingerprintSession), account.Extra[codexFingerprintModeExtraKey])
+}
+
+func TestApplyOpenAIOAuthNewAccountDefaultsUsesConfiguredMode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+	}{
+		{name: "off", mode: string(codexFingerprintOff)},
+		{name: "device", mode: string(codexFingerprintDevice)},
+		{name: "session", mode: string(codexFingerprintSession)},
+		{name: "full", mode: string(codexFingerprintFull)},
+		{name: "invalid falls back", mode: "unexpected"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &openAIOAuthNewAccountDefaultsRepo{value: "true", mode: tc.mode}
+			svc := NewSettingService(repo, nil)
+			account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+			require.NoError(t, svc.ApplyOpenAIOAuthNewAccountDefaults(context.Background(), account))
+			expected := tc.mode
+			if tc.name == "invalid falls back" {
+				expected = string(codexFingerprintSession)
+			}
+			require.Equal(t, expected, account.Extra[codexFingerprintModeExtraKey])
+		})
+	}
 }

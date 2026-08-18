@@ -5704,7 +5704,7 @@
               </div>
 
               <!-- OpenAI OAuth default Codex fingerprint convergence -->
-              <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
                     {{ t("admin.settings.gatewayForwarding.openaiOAuthDefaultCodexFingerprint") }}
@@ -5713,10 +5713,19 @@
                     {{ t("admin.settings.gatewayForwarding.openaiOAuthDefaultCodexFingerprintHint") }}
                   </p>
                 </div>
-                <Toggle
-                  v-model="form.openai_oauth_default_codex_fingerprint_enabled"
-                  data-testid="openai-oauth-default-codex-fingerprint-toggle"
-                />
+                <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                  <Select
+                    v-model="form.openai_oauth_default_codex_fingerprint_mode"
+                    :options="openaiOAuthCodexFingerprintModeOptions"
+                    class="w-44"
+                    :disabled="!form.openai_oauth_default_codex_fingerprint_enabled"
+                    data-testid="openai-oauth-default-codex-fingerprint-mode"
+                  />
+                  <Toggle
+                    v-model="form.openai_oauth_default_codex_fingerprint_enabled"
+                    data-testid="openai-oauth-default-codex-fingerprint-toggle"
+                  />
+                </div>
               </div>
 
               <!-- Metadata Passthrough -->
@@ -9732,6 +9741,25 @@ const claudeOAuthSystemPromptBlocks = ref<ClaudeOAuthSystemPromptBlock[]>(
   createDefaultClaudeOAuthSystemPromptBlocks(),
 );
 
+const openaiOAuthCodexFingerprintModeOptions = computed(() => [
+  {
+    value: "off",
+    label: t("admin.settings.gatewayForwarding.openaiOAuthCodexFingerprintModeOff"),
+  },
+  {
+    value: "device",
+    label: t("admin.settings.gatewayForwarding.openaiOAuthCodexFingerprintModeDevice"),
+  },
+  {
+    value: "session",
+    label: t("admin.settings.gatewayForwarding.openaiOAuthCodexFingerprintModeSession"),
+  },
+  {
+    value: "full",
+    label: t("admin.settings.gatewayForwarding.openaiOAuthCodexFingerprintModeFull"),
+  },
+]);
+
 const claudeOAuthSystemPromptPresetOptions = computed(() => [
   {
     value: "billing",
@@ -10165,6 +10193,7 @@ const form = reactive<SettingsForm>({
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   openai_oauth_default_codex_fingerprint_enabled: true,
+  openai_oauth_default_codex_fingerprint_mode: "session",
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_claude_oauth_system_prompt_injection: true,
@@ -11738,6 +11767,8 @@ async function saveSettings() {
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       openai_oauth_default_codex_fingerprint_enabled:
         form.openai_oauth_default_codex_fingerprint_enabled,
+      openai_oauth_default_codex_fingerprint_mode:
+        form.openai_oauth_default_codex_fingerprint_mode,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
       enable_claude_oauth_system_prompt_injection:

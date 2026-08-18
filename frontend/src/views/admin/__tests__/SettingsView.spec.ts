@@ -305,7 +305,7 @@ const SelectStub = defineComponent({
     },
   },
   emits: ["update:modelValue", "change"],
-  setup(props, { emit }) {
+  setup(props, { attrs, emit }) {
     const onChange = (event: Event) => {
       const target = event.target as HTMLSelectElement;
       emit("update:modelValue", target.value);
@@ -320,6 +320,7 @@ const SelectStub = defineComponent({
       h(
         "select",
         {
+          ...attrs,
           class: "select-stub",
           value: props.modelValue ?? "",
           "data-placeholder": props.placeholder,
@@ -472,6 +473,7 @@ const baseSettingsResponse = {
   allow_ungrouped_key_scheduling: false,
   enable_fingerprint_unification: true,
   openai_oauth_default_codex_fingerprint_enabled: true,
+  openai_oauth_default_codex_fingerprint_mode: "session",
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_claude_oauth_system_prompt_injection: true,
@@ -756,6 +758,26 @@ describe("admin SettingsView payment visible method controls", () => {
     });
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
+  });
+
+  it("renders the four built-in modes and submits the selected mode", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const mode = wrapper.get('[data-testid="openai-oauth-default-codex-fingerprint-mode"]');
+    expect((mode.element as HTMLSelectElement).value).toBe("session");
+    expect(mode.findAll("option")).toHaveLength(4);
+
+    await mode.setValue("full");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_oauth_default_codex_fingerprint_mode: "full",
+      }),
+    );
   });
 
   it("submits the compact home page toggle", async () => {
