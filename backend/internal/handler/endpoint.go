@@ -20,8 +20,8 @@ const (
 	EndpointEmbeddings           = "/v1/embeddings"
 	EndpointAlphaSearch          = "/v1/alpha/search"
 	EndpointResponses            = "/v1/responses"
-	EndpointResponsesInputTokens = "/v1/responses/input_tokens"
 	EndpointResponsesCompact     = "/v1/responses/compact"
+	EndpointResponsesInputTokens = "/v1/responses/input_tokens"
 	EndpointImagesGenerations    = "/v1/images/generations"
 	EndpointImagesEdits          = "/v1/images/edits"
 	EndpointImageTasks           = "/v1/images/tasks"
@@ -81,6 +81,8 @@ const (
 func NormalizeInboundEndpoint(path string) string {
 	path = strings.TrimSpace(path)
 	switch {
+	case strings.Contains(path, EndpointResponsesInputTokens) || isResponsesInputTokensAliasPath(path):
+		return EndpointResponsesInputTokens
 	case strings.Contains(path, EndpointEmbeddings):
 		return EndpointEmbeddings
 	case strings.Contains(path, EndpointAlphaSearch) || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/alpha/search") || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/backend-api/codex/alpha/search"):
@@ -124,8 +126,8 @@ func isResponsesInputTokensAliasPath(path string) bool {
 	if trimmed == "" {
 		return false
 	}
-	return trimmed == "/responses/input_tokens" ||
-		trimmed == "/backend-api/codex/responses/input_tokens"
+	return isBareOrSubpathOf(trimmed, "/responses/input_tokens") ||
+		isBareOrSubpathOf(trimmed, "/backend-api/codex/responses/input_tokens")
 }
 
 // isResponsesCompactAliasPath reports whether path is the bare/alias

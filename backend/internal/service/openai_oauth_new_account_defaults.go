@@ -27,6 +27,9 @@ func NormalizeOpenAIOAuthDefaultCodexFingerprintMode(value string) string {
 // newly-created OpenAI OAuth accounts. Missing/invalid settings intentionally
 // default to enabled so an upgrade preserves the prior behavior for new users.
 func (s *SettingService) IsOpenAIOAuthDefaultCodexFingerprintEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+	}
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled)
 	if err != nil {
 		return true
@@ -38,6 +41,9 @@ func (s *SettingService) IsOpenAIOAuthDefaultCodexFingerprintEnabled(ctx context
 // OpenAI OAuth accounts. Missing or invalid values preserve the historical
 // device+session default.
 func (s *SettingService) OpenAIOAuthDefaultCodexFingerprintMode(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return defaultOpenAIOAuthCodexFingerprintMode
+	}
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIOAuthDefaultCodexFingerprintMode)
 	if err != nil {
 		return defaultOpenAIOAuthCodexFingerprintMode
@@ -75,7 +81,7 @@ func ParseOpenAIOAuthNewAccountProxyPoolIDs(raw string) []int64 {
 }
 
 func (s *SettingService) applyOpenAIOAuthNewAccountProxyDefault(ctx context.Context, account *Account) {
-	if account.ProxyID != nil || s.proxyRepo == nil {
+	if s == nil || s.settingRepo == nil || account.ProxyID != nil || s.proxyRepo == nil {
 		return
 	}
 	settings, err := s.settingRepo.GetMultiple(ctx, []string{
@@ -116,7 +122,7 @@ func (s *SettingService) applyOpenAIOAuthNewAccountProxyDefault(ctx context.Cont
 // path. It only fills an absent fingerprint mode; an explicit account value is
 // preserved, including an explicit "off" value.
 func (s *SettingService) ApplyOpenAIOAuthNewAccountDefaults(ctx context.Context, account *Account) error {
-	if account == nil || !account.IsOpenAIOAuth() {
+	if s == nil || account == nil || !account.IsOpenAIOAuth() {
 		return nil
 	}
 	_, hasExplicitFingerprintMode := account.Extra[codexFingerprintModeExtraKey]
