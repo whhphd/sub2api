@@ -223,7 +223,10 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 	return nil
 }
 
-var easyPayCustomMethodCodePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
+var (
+	easyPayCustomMethodTypePattern         = regexp.MustCompile(`^[a-z0-9_-]+$`)
+	easyPayCustomMethodUpstreamTypePattern = regexp.MustCompile(`^[a-z0-9_.-]+$`)
+)
 
 type easyPayCustomMethodConfig struct {
 	Type         string `json:"type"`
@@ -250,10 +253,10 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 		if method.Type == "" || method.UpstreamType == "" {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods upstreamType is required")
 		}
-		if !easyPayCustomMethodCodePattern.MatchString(method.Type) {
+		if !easyPayCustomMethodTypePattern.MatchString(method.Type) {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods type may only contain lowercase letters, digits, underscores, and hyphens")
 		}
-		if !easyPayCustomMethodCodePattern.MatchString(method.UpstreamType) {
+		if !easyPayCustomMethodUpstreamTypePattern.MatchString(method.UpstreamType) {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods upstreamType may only contain lowercase letters, digits, underscores, and hyphens")
 		}
 		if easyPayCustomMethodTypeConflictsWithBuiltin(method.Type) {
@@ -270,7 +273,7 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 		if supportedType == "" || supportedType == payment.TypeAlipay || supportedType == payment.TypeWxpay {
 			continue
 		}
-		if !easyPayCustomMethodCodePattern.MatchString(supportedType) {
+		if !easyPayCustomMethodTypePattern.MatchString(supportedType) {
 			return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("supported EasyPay custom type %s may only contain lowercase letters, digits, underscores, and hyphens", supportedType))
 		}
 		if _, exists := customTypes[supportedType]; !exists {

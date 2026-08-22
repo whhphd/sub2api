@@ -159,6 +159,11 @@ func TestValidateEasyPayCustomMethods(t *testing.T) {
 			wantErr:        "customMethods upstreamType may only contain lowercase letters",
 		},
 		{
+			name:           "upstream type allows provider network separator",
+			config:         map[string]string{"customMethods": `[{"type":"usdt_bsc","upstreamType":"usdt.binance"}]`},
+			supportedTypes: "alipay,wxpay,usdt_bsc",
+		},
+		{
 			name:           "custom type uses alipay prefix",
 			config:         map[string]string{"customMethods": `[{"type":"alipay_hk","upstreamType":"hkpay"}]`},
 			supportedTypes: "alipay,wxpay,alipay_hk",
