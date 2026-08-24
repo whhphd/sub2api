@@ -1209,9 +1209,14 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	requestedModel string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	logHeaders := resp.Header.Clone()
+	if firstNonEmpty(logHeaders.Get("x-request-id"), logHeaders.Get("xai-request-id")) == "" && strings.TrimSpace(requestIDHeader) != "" {
+		logHeaders.Set("x-request-id", strings.TrimSpace(requestIDHeader))
+	}
+	errorCtx := withGrokTeamRateLimitModel(ctx, requestedModel)
 	// Reconcile readiness before configurable passthrough branches can return;
 	// otherwise a Grok 429 can remain schedulable.
-	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+	s.handleGrokAccountUpstreamError(errorCtx, account, resp.StatusCode, logHeaders, body)
 	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
@@ -1228,16 +1233,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	if isGrokContentPolicyRejection(resp.StatusCode, body) {
 		clientMsg := grokContentPolicyClientMessage(body)
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: resp.StatusCode,
-			UpstreamRequestID:  requestIDHeader,
-			Kind:               "http_error",
-			Message:            clientMsg,
-			Detail:             upstreamDetail,
-		})
+		s.appendGrokUpstreamError(c, account, resp.StatusCode, logHeaders, body, "http_error", clientMsg)
 		MarkResponseCommitted(c)
 		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg)
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
@@ -1258,16 +1254,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	}
 
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: resp.StatusCode,
-			UpstreamRequestID:  requestIDHeader,
-			Kind:               "http_error",
-			Message:            upstreamMsg,
-			Detail:             upstreamDetail,
-		})
+		s.appendGrokUpstreamError(c, account, resp.StatusCode, logHeaders, body, "http_error", upstreamMsg)
 		MarkResponseCommitted(c)
 		writeGrokMediaErrorResponse(c, http.StatusInternalServerError, "upstream_error", "Upstream gateway error")
 		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
@@ -1277,23 +1264,17 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	if s.shouldFailoverGrokUpstreamError(resp.StatusCode, body) {
 		kind = "failover"
 	}
-	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-		Platform:           account.Platform,
-		AccountID:          account.ID,
-		AccountName:        account.Name,
-		UpstreamStatusCode: resp.StatusCode,
-		UpstreamRequestID:  requestIDHeader,
-		Kind:               kind,
-		Message:            upstreamMsg,
-		Detail:             upstreamDetail,
-	})
+	s.appendGrokUpstreamError(c, account, resp.StatusCode, logHeaders, body, kind, upstreamMsg)
 	if kind == "failover" {
-		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
-		}
+		return nil, s.newGrokUpstreamFailoverError(
+			errorCtx,
+			account,
+			resp.StatusCode,
+			logHeaders,
+			body,
+			upstreamMsg,
+			account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+		)
 	}
 
 	MarkResponseCommitted(c)

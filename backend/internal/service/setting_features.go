@@ -858,22 +858,25 @@ func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*O
 	return DefaultOpenAIOAuthRuntimeSettings(strings.TrimSpace(legacyValue) == "true"), nil
 }
 
-// UpdateOpenAIOAuthRuntimeSettings applies an independent partial update. A
-// dynamic-policy update advances its revision so Redis observations from the
-// previous policy cannot be reused.
+// UpdateOpenAIOAuthRuntimeSettings applies an independent partial update. The
+// optional retry settings preserve call compatibility: index 0 is OpenAI OAuth
+// 429 retry and index 1 is Grok OAuth 403 retry. A dynamic-policy update
+// advances its revision so Redis observations from the previous policy cannot
+// be reused.
 func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	ctx context.Context,
 	noopToolcallInjectionEnabled *bool,
 	dynamic429Scheduling *OpenAIOAuthDynamic429SchedulingSettings,
 	safePreOutputOverloadRetryEnabled *bool,
 	planGatedModelCooldownEnabled *bool,
-	rateLimitSameAccountRetryEnabled ...*bool,
+	sameAccountRetrySettings ...*bool,
 ) (*OpenAIOAuthRuntimeSettings, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, fmt.Errorf("setting service is unavailable")
 	}
-	rateLimitSameAccountRetryProvided := len(rateLimitSameAccountRetryEnabled) > 0 && rateLimitSameAccountRetryEnabled[0] != nil
-	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided {
+	rateLimitSameAccountRetryProvided := len(sameAccountRetrySettings) > 0 && sameAccountRetrySettings[0] != nil
+	grokForbiddenSameAccountRetryProvided := len(sameAccountRetrySettings) > 1 && sameAccountRetrySettings[1] != nil
+	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -896,7 +899,10 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 		current.PlanGatedModelCooldownEnabled = *planGatedModelCooldownEnabled
 	}
 	if rateLimitSameAccountRetryProvided {
-		current.OpenAIRateLimitSameAccountRetryEnabled = *rateLimitSameAccountRetryEnabled[0]
+		current.OpenAIRateLimitSameAccountRetryEnabled = *sameAccountRetrySettings[0]
+	}
+	if grokForbiddenSameAccountRetryProvided {
+		current.GrokOAuthForbiddenSameAccountRetryEnabled = *sameAccountRetrySettings[1]
 	}
 	if dynamic429Scheduling != nil {
 		nextRevision := current.Dynamic429Scheduling.Revision + 1

@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -294,6 +295,147 @@ func TestHandleGrokAccountUpstreamErrorEntitlement403KeepsDefaultCooldown(t *tes
 	require.Equal(t, "grok access or entitlement denied", repo.lastTempUnschedReason)
 	require.Greater(t, repo.lastTempUnschedUntil, before.Add(29*time.Minute))
 	require.Less(t, repo.lastTempUnschedUntil, before.Add(31*time.Minute))
+}
+
+func newGrokForbiddenRetryTestService(t *testing.T, accountRepo AccountRepository, enabled bool) *OpenAIGatewayService {
+	t.Helper()
+	settingRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.GrokOAuthForbiddenSameAccountRetryEnabled = enabled
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+	return &OpenAIGatewayService{
+		accountRepo:    accountRepo,
+		settingService: NewSettingService(settingRepo, nil),
+	}
+}
+
+func TestGrokOAuthForbiddenSameAccountRetryPolicy(t *testing.T) {
+	body := []byte(`{"error":{"message":"subscription required"}}`)
+	account := &Account{ID: 4810, Name: "grok-oauth", Platform: PlatformGrok, Type: AccountTypeOAuth}
+
+	t.Run("enabled retries three times and never temp unschedules", func(t *testing.T) {
+		repo := &grokQuotaAccountRepo{}
+		svc := newGrokForbiddenRetryTestService(t, repo, true)
+
+		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+		require.Zero(t, repo.tempUnschedCalls)
+		require.Zero(t, repo.rateLimitedCalls)
+
+		failoverErr := svc.newGrokUpstreamFailoverError(
+			context.Background(), account, http.StatusForbidden, http.Header{}, body,
+			"subscription required", false,
+		)
+		require.True(t, failoverErr.RetryableOnSameAccount)
+		require.Equal(t, 3, failoverErr.SameAccountRetryLimit)
+		require.Equal(t, 3, failoverErr.EffectiveSameAccountRetryLimit(9))
+		require.True(t, failoverErr.RequestScopedTransient)
+		(&GatewayService{accountRepo: repo}).TempUnscheduleRetryableError(context.Background(), account.ID, failoverErr)
+		require.Zero(t, repo.tempUnschedCalls)
+	})
+
+	t.Run("disabled preserves legacy cooldown and failover metadata", func(t *testing.T) {
+		repo := &grokQuotaAccountRepo{}
+		svc := newGrokForbiddenRetryTestService(t, repo, false)
+
+		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+		require.Equal(t, 1, repo.tempUnschedCalls)
+
+		failoverErr := svc.newGrokUpstreamFailoverError(
+			context.Background(), account, http.StatusForbidden, http.Header{}, body,
+			"subscription required", false,
+		)
+		require.False(t, failoverErr.RetryableOnSameAccount)
+		require.Zero(t, failoverErr.SameAccountRetryLimit)
+		require.False(t, failoverErr.RequestScopedTransient)
+	})
+
+	t.Run("content policy rejection is excluded", func(t *testing.T) {
+		repo := &grokQuotaAccountRepo{}
+		svc := newGrokForbiddenRetryTestService(t, repo, true)
+		contentBody := []byte(`{"error":{"code":"new_sensitive","message":"text is sensitive"}}`)
+		require.False(t, svc.shouldRetryGrokOAuthForbidden(context.Background(), account, http.StatusForbidden, contentBody))
+	})
+
+	t.Run("API key and non-403 responses are unaffected", func(t *testing.T) {
+		repo := &grokQuotaAccountRepo{}
+		svc := newGrokForbiddenRetryTestService(t, repo, true)
+		apiKeyAccount := &Account{ID: 4811, Platform: PlatformGrok, Type: AccountTypeAPIKey}
+		require.False(t, svc.shouldRetryGrokOAuthForbidden(context.Background(), apiKeyAccount, http.StatusForbidden, body))
+		require.False(t, svc.shouldRetryGrokOAuthForbidden(context.Background(), account, http.StatusUnauthorized, body))
+	})
+}
+
+func TestAppendGrokUpstreamErrorPreservesSanitizedDiagnostics(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 4812, Name: "grok-oauth", Platform: PlatformGrok, Type: AccountTypeOAuth}
+	body := []byte(`{"error":{"message":"subscription required","url":"https://x.ai/check?access_token=secret-token"}}`)
+	headers := http.Header{"Xai-Request-Id": []string{"xai-request-403"}}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	svc.appendGrokUpstreamError(c, account, http.StatusForbidden, headers, body, "failover", "subscription required")
+
+	rawEvents, exists := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, exists)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "xai-request-403", events[0].UpstreamRequestID)
+	require.Equal(t, http.StatusForbidden, events[0].UpstreamStatusCode)
+	require.Contains(t, events[0].UpstreamResponseBody, "subscription required")
+	require.Contains(t, events[0].UpstreamResponseBody, "access_token=***")
+	require.NotContains(t, events[0].UpstreamResponseBody, "secret-token")
+}
+
+func TestGrokMediaForbiddenRetryPolicyReturnsThreeRetryFailoverWithoutCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &grokQuotaAccountRepo{}
+	svc := newGrokForbiddenRetryTestService(t, repo, true)
+	account := &Account{
+		ID: 4813, Name: "grok-oauth", Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Credentials: map[string]any{
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusForbidden),
+				"keywords":         []any{"subscription required"},
+				"duration_minutes": float64(7),
+			}},
+		},
+	}
+	body := `{"error":{"message":"subscription required","code":"entitlement_required"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "Xai-Request-Id": []string{"xai-forbidden-403"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	result, err := svc.handleGrokMediaErrorResponse(
+		context.Background(), resp, c, account, "xai-forbidden-403", "grok-imagine",
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusForbidden, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.Equal(t, 3, failoverErr.SameAccountRetryLimit)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+
+	rawEvents, exists := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, exists)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "xai-forbidden-403", events[0].UpstreamRequestID)
+	require.JSONEq(t, body, events[0].UpstreamResponseBody)
 }
 
 func TestHandleGrokAccountUpstreamErrorDefaultCooldownsRespectPoolMode(t *testing.T) {

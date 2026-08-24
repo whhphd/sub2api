@@ -375,9 +375,16 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
 		if account.Platform == PlatformGrok {
 			shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
-			s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, resolveGrokWSUpstreamModel(account, body, originalModel)), account, resp.StatusCode, resp.Header, respBody)
-			if shouldFailover && (turn == 1 || resp.StatusCode == http.StatusTooManyRequests) {
-				return nil, newOpenAIAccountUpstreamFailoverError(account, resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
+			errCtx := withGrokTeamRateLimitModel(ctx, resolveGrokWSUpstreamModel(account, body, originalModel))
+			kind := "http_error"
+			if shouldFailover {
+				kind = "failover"
+			}
+			s.appendGrokUpstreamError(c, account, resp.StatusCode, resp.Header, respBody, kind, upstreamMsg)
+			s.handleGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody)
+			retryForbidden := s.shouldRetryGrokOAuthForbidden(errCtx, account, resp.StatusCode, respBody)
+			if shouldFailover && (turn == 1 || resp.StatusCode == http.StatusTooManyRequests || retryForbidden) {
+				return nil, s.newGrokUpstreamFailoverError(errCtx, account, resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
 			}
 		} else if shouldFailover && (turn == 1 || resp.StatusCode == http.StatusTooManyRequests) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, respBody)
@@ -546,6 +553,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 					shouldFailover = false
 				} else {
 					shouldFailover = s.shouldFailoverGrokUpstreamError(statusCode, upstreamMessage)
+					kind := "http_error"
+					if shouldFailover {
+						kind = "failover"
+					}
+					s.appendGrokUpstreamError(c, account, statusCode, resp.Header, upstreamMessage, kind, errMessage)
 					s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
 				}
 			} else if eventType == "error" && shouldFailover && !requestScopedCapacity {
@@ -556,9 +568,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
 				s.handleOpenAIAccountUpstreamError(ctx, account, accountStatus, resp.Header, upstreamMessage, canonicalModel)
 			}
-			if !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests) {
+			retryGrokForbidden := account.Platform == PlatformGrok && s.shouldRetryGrokOAuthForbidden(ctx, account, statusCode, upstreamMessage)
+			if !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests || retryGrokForbidden) {
 				if account.Platform == PlatformGrok {
-					return nil, newOpenAIUpstreamFailoverError(statusCode, resp.Header, upstreamMessage, errMessage, false)
+					return nil, s.newGrokUpstreamFailoverError(ctx, account, statusCode, resp.Header, upstreamMessage, errMessage, false)
 				}
 				return nil, s.newOpenAIStreamFailoverError(c, account, true, resp.Header.Get("x-request-id"), upstreamMessage, errMessage, resp.Header)
 			}

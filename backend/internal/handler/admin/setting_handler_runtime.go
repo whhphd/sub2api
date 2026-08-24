@@ -165,11 +165,12 @@ func (h *SettingHandler) GetOpenAIOAuthRuntimeSettings(c *gin.Context) {
 // UpdateOpenAIOAuthRuntimeSettingsRequest supports independent saves from the
 // the System Settings cards. Pointer fields distinguish omission from false.
 type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
-	NoopToolcallInjectionEnabled      *bool                                            `json:"noop_toolcall_injection_enabled"`
-	Dynamic429Scheduling              *service.OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
-	SafePreOutputOverloadRetryEnabled *bool                                            `json:"safe_pre_output_overload_retry_enabled"`
-	PlanGatedModelCooldownEnabled     *bool                                            `json:"plan_gated_model_cooldown_enabled"`
-	RateLimitSameAccountRetryEnabled  *bool                                            `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
+	NoopToolcallInjectionEnabled         *bool                                            `json:"noop_toolcall_injection_enabled"`
+	Dynamic429Scheduling                 *service.OpenAIOAuthDynamic429SchedulingSettings `json:"dynamic_429_scheduling"`
+	SafePreOutputOverloadRetryEnabled    *bool                                            `json:"safe_pre_output_overload_retry_enabled"`
+	PlanGatedModelCooldownEnabled        *bool                                            `json:"plan_gated_model_cooldown_enabled"`
+	RateLimitSameAccountRetryEnabled     *bool                                            `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
+	GrokForbiddenSameAccountRetryEnabled *bool                                            `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 
 // UpdateOpenAIOAuthRuntimeSettings partially updates the global policy.
@@ -188,6 +189,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		req.SafePreOutputOverloadRetryEnabled,
 		req.PlanGatedModelCooldownEnabled,
 		req.RateLimitSameAccountRetryEnabled,
+		req.GrokForbiddenSameAccountRetryEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
@@ -200,6 +202,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		"safe_pre_output_overload_retry_changed", req.SafePreOutputOverloadRetryEnabled != nil,
 		"plan_gated_model_cooldown_changed", req.PlanGatedModelCooldownEnabled != nil,
 		"rate_limit_same_account_retry_changed", req.RateLimitSameAccountRetryEnabled != nil,
+		"grok_forbidden_same_account_retry_changed", req.GrokForbiddenSameAccountRetryEnabled != nil,
 		"dynamic_429_policy_revision", settings.Dynamic429Scheduling.Revision,
 	)
 	response.Success(c, settings)

@@ -3,10 +3,136 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
+
+const grokOAuthForbiddenSameAccountRetryLimit = 3
+
+// shouldRetryGrokOAuthForbidden keeps the legacy behavior unless the global
+// switch is enabled. Content-policy rejections remain request errors because
+// retrying the same prompt cannot produce a different account-health outcome.
+func (s *OpenAIGatewayService) shouldRetryGrokOAuthForbidden(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	responseBody []byte,
+) bool {
+	if s == nil || account == nil || !account.IsGrokOAuth() || statusCode != http.StatusForbidden ||
+		isGrokContentPolicyRejection(statusCode, responseBody) {
+		return false
+	}
+	settings := s.GetOpenAIOAuthRuntimeSettings(ctx)
+	return settings != nil && settings.GrokOAuthForbiddenSameAccountRetryEnabled
+}
+
+func (s *OpenAIGatewayService) applyGrokOAuthForbiddenRetryPolicy(
+	ctx context.Context,
+	account *Account,
+	failoverErr *UpstreamFailoverError,
+) {
+	if failoverErr == nil || !s.shouldRetryGrokOAuthForbidden(ctx, account, failoverErr.StatusCode, failoverErr.ResponseBody) {
+		return
+	}
+	failoverErr.RetryableOnSameAccount = true
+	failoverErr.SameAccountRetryLimit = grokOAuthForbiddenSameAccountRetryLimit
+	// The 403 may be tied to the request/session rather than durable account
+	// health. This also prevents the generic retry-exhaustion path from cooling
+	// the account after the third retry.
+	failoverErr.RequestScopedTransient = true
+}
+
+func (s *OpenAIGatewayService) newGrokUpstreamFailoverError(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	responseHeaders http.Header,
+	responseBody []byte,
+	upstreamMsg string,
+	retryableOnSameAccount bool,
+) *UpstreamFailoverError {
+	failoverErr := newOpenAIAccountUpstreamFailoverError(
+		account,
+		statusCode,
+		responseHeaders,
+		responseBody,
+		upstreamMsg,
+		retryableOnSameAccount,
+	)
+	s.applyGrokOAuthForbiddenRetryPolicy(ctx, account, failoverErr)
+	return failoverErr
+}
+
+func (s *OpenAIGatewayService) grokUpstreamErrorBodyPreview(responseBody []byte) string {
+	maxBytes := 2048
+	if s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+		maxBytes = s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+	}
+	preview, _ := sanitizeErrorBodyForStorage(string(responseBody), maxBytes)
+	return sanitizeUpstreamErrorMessage(strings.TrimSpace(preview))
+}
+
+func (s *OpenAIGatewayService) logGrokUpstreamError(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	headers http.Header,
+	responseBody []byte,
+) {
+	if account == nil {
+		return
+	}
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	if message == "" {
+		message = http.StatusText(statusCode)
+	}
+	slog.WarnContext(ctx, "grok_upstream_http_error",
+		"account_id", account.ID,
+		"account_name", account.Name,
+		"status_code", statusCode,
+		"model", grokRequestedModelFromCtx(ctx),
+		"upstream_request_id", firstNonEmpty(headers.Get("x-request-id"), headers.Get("xai-request-id")),
+		"upstream_message", message,
+		"upstream_response_body", s.grokUpstreamErrorBodyPreview(responseBody),
+	)
+}
+
+func (s *OpenAIGatewayService) appendGrokUpstreamError(
+	c *gin.Context,
+	account *Account,
+	statusCode int,
+	headers http.Header,
+	responseBody []byte,
+	kind string,
+	message string,
+) {
+	if account == nil {
+		return
+	}
+	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
+	if message == "" {
+		message = sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	}
+	if message == "" {
+		message = http.StatusText(statusCode)
+	}
+	preview := s.grokUpstreamErrorBodyPreview(responseBody)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:             account.Platform,
+		AccountID:            account.ID,
+		AccountName:          account.Name,
+		UpstreamStatusCode:   statusCode,
+		UpstreamRequestID:    firstNonEmpty(headers.Get("x-request-id"), headers.Get("xai-request-id")),
+		UpstreamResponseBody: preview,
+		Kind:                 kind,
+		Message:              message,
+		Detail:               preview,
+	})
+}
 
 // isGrokContentPolicyRejection identifies request-scoped safety refusals from
 // xAI. These failures are caused by the prompt or media, so retrying another

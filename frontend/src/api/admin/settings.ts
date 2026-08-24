@@ -1339,6 +1339,7 @@ export interface OpenAIOAuthRuntimeSettings {
   safe_pre_output_overload_retry_enabled: boolean;
   plan_gated_model_cooldown_enabled: boolean;
   openai_oauth_rate_limit_same_account_retry_enabled: boolean;
+  grok_oauth_forbidden_same_account_retry_enabled: boolean;
 }
 
 export type UpdateOpenAIOAuthRuntimeSettingsRequest = Partial<
@@ -1349,6 +1350,7 @@ export type UpdateOpenAIOAuthRuntimeSettingsRequest = Partial<
     | "safe_pre_output_overload_retry_enabled"
     | "plan_gated_model_cooldown_enabled"
     | "openai_oauth_rate_limit_same_account_retry_enabled"
+    | "grok_oauth_forbidden_same_account_retry_enabled"
   >
 >;
 

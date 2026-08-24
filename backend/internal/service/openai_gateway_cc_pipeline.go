@@ -95,15 +95,15 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	}
 	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
 	tempUnscheduled := false
+	grokErrorCtx := ctx
 	if c != nil && account != nil && account.Platform != PlatformGrok && !shouldFailover && !IsResponseCommitted(c) && s.rateLimitService != nil {
 		tempUnscheduled = s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody, upstreamModel) == ErrorPolicyTempUnscheduled
 		shouldFailover = tempUnscheduled
 	}
 	if account != nil && account.Platform == PlatformGrok {
 		shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
-	}
-	if account != nil && account.Platform == PlatformGrok {
-		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		grokErrorCtx = withGrokTeamRateLimitModel(ctx, upstreamModel)
+		s.handleGrokAccountUpstreamError(grokErrorCtx, account, resp.StatusCode, resp.Header, respBody)
 	}
 	if !shouldFailover {
 		return nil
@@ -116,28 +116,29 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		}
 		upstreamDetail = truncateString(string(respBody), maxBytes)
 	}
-	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-		Platform:           account.Platform,
-		AccountID:          account.ID,
-		AccountName:        account.Name,
-		UpstreamStatusCode: resp.StatusCode,
-		UpstreamRequestID:  resp.Header.Get("x-request-id"),
-		Kind:               "failover",
-		Message:            upstreamMsg,
-		Detail:             upstreamDetail,
-	})
+	if account.Platform == PlatformGrok {
+		s.appendGrokUpstreamError(c, account, resp.StatusCode, resp.Header, respBody, "failover", upstreamMsg)
+	} else {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "failover",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+		})
+	}
 	shouldDisable := tempUnscheduled
 	if account.Platform != PlatformGrok && !tempUnscheduled {
 		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
-	return newOpenAIAccountUpstreamFailoverError(
-		account,
-		resp.StatusCode,
-		resp.Header,
-		respBody,
-		upstreamMsg,
-		!shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
-	)
+	retryableOnSameAccount := !shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody))
+	if account.Platform == PlatformGrok {
+		return s.newGrokUpstreamFailoverError(grokErrorCtx, account, resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
+	}
+	return newOpenAIAccountUpstreamFailoverError(account, resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
 }
 
 // openAIChatCompletionsTargetURL 解析账号的（非 Grok）Chat Completions 上游端点。

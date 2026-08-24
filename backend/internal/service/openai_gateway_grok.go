@@ -156,15 +156,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			kind = "failover"
 		}
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: resp.StatusCode,
-			UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
-			Kind:               kind,
-			Message:            upstreamMsg,
-		})
+		s.appendGrokUpstreamError(c, account, resp.StatusCode, resp.Header, respBody, kind, upstreamMsg)
 		errCtx := withGrokTeamRateLimitModel(ctx, upstreamModel)
 		s.handleGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody)
 		// 429 / free-usage: stamp team+model cool so sibling accounts skip this model.
@@ -173,12 +165,15 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			markGrokTeamModelRateLimit(account, upstreamModel, resolveGrokTeamRateLimitUntil(time.Now().Add(grokTeamRateLimitDefaultTTL), time.Now()))
 		}
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
-			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
-			}
+			return nil, s.newGrokUpstreamFailoverError(
+				errCtx,
+				account,
+				resp.StatusCode,
+				resp.Header,
+				respBody,
+				upstreamMsg,
+				account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			)
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
 	}
@@ -1162,23 +1157,19 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			kind = "failover"
 		}
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: resp.StatusCode,
-			UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
-			Kind:               kind,
-			Message:            upstreamMsg,
-		})
-		s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.StatusCode, resp.Header, respBody)
+		s.appendGrokUpstreamError(c, account, resp.StatusCode, resp.Header, respBody, kind, upstreamMsg)
+		errCtx := withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel)
+		s.handleGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
-			return "", OpenAIUsage{}, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
-			}
+			return "", OpenAIUsage{}, s.newGrokUpstreamFailoverError(
+				errCtx,
+				account,
+				resp.StatusCode,
+				resp.Header,
+				respBody,
+				upstreamMsg,
+				account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			)
 		}
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
 	}
@@ -1745,7 +1736,11 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	if s == nil || account == nil {
 		return
 	}
+	s.logGrokUpstreamError(ctx, account, statusCode, headers, responseBody)
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
+		return
+	}
+	if s.shouldRetryGrokOAuthForbidden(ctx, account, statusCode, responseBody) {
 		return
 	}
 	now := time.Now()

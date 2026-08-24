@@ -701,6 +701,8 @@ describe("admin SettingsView payment visible method controls", () => {
       noop_toolcall_injection_enabled: true,
       safe_pre_output_overload_retry_enabled: false,
       openai_oauth_rate_limit_same_account_retry_enabled: false,
+      grok_oauth_forbidden_same_account_retry_enabled: false,
+      plan_gated_model_cooldown_enabled: true,
       dynamic_429_scheduling: {
         enabled: false,
         window_seconds: 300,
@@ -723,6 +725,12 @@ describe("admin SettingsView payment visible method controls", () => {
       openai_oauth_rate_limit_same_account_retry_enabled:
         payload.openai_oauth_rate_limit_same_account_retry_enabled ??
         openAIOAuthRuntimeSettings.openai_oauth_rate_limit_same_account_retry_enabled,
+      grok_oauth_forbidden_same_account_retry_enabled:
+        payload.grok_oauth_forbidden_same_account_retry_enabled ??
+        openAIOAuthRuntimeSettings.grok_oauth_forbidden_same_account_retry_enabled,
+      plan_gated_model_cooldown_enabled:
+        payload.plan_gated_model_cooldown_enabled ??
+        openAIOAuthRuntimeSettings.plan_gated_model_cooldown_enabled,
       dynamic_429_scheduling:
         payload.dynamic_429_scheduling ??
         openAIOAuthRuntimeSettings.dynamic_429_scheduling,
@@ -1631,6 +1639,29 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
       openai_oauth_rate_limit_same_account_retry_enabled: true,
+    });
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("independently saves the Grok OAuth 403 same-account retry switch", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const toggle = wrapper.get(
+      '[data-testid="grok-oauth-403-same-account-retry-toggle"]',
+    );
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper
+      .get('[data-testid="grok-oauth-403-same-account-retry-save"]')
+      .trigger("click");
+    await flushPromises();
+
+    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
+      grok_oauth_forbidden_same_account_retry_enabled: true,
     });
     expect(updateSettings).not.toHaveBeenCalled();
   });

@@ -99,6 +99,7 @@ func TestDefaultOpenAIOAuthRuntimeSettings(t *testing.T) {
 	require.False(t, disabled.NoopToolcallInjectionEnabled)
 	require.False(t, disabled.SafePreOutputOverloadRetryEnabled)
 	require.True(t, disabled.PlanGatedModelCooldownEnabled)
+	require.False(t, disabled.GrokOAuthForbiddenSameAccountRetryEnabled)
 	require.False(t, disabled.Dynamic429Scheduling.Enabled)
 	require.Equal(t, 300, disabled.Dynamic429Scheduling.WindowSeconds)
 	require.Equal(t, 20, disabled.Dynamic429Scheduling.MinimumSamples)
@@ -113,6 +114,7 @@ func TestDefaultOpenAIOAuthRuntimeSettings(t *testing.T) {
 	require.True(t, enabled.Dynamic429Scheduling.Enabled)
 	require.False(t, enabled.SafePreOutputOverloadRetryEnabled)
 	require.True(t, enabled.PlanGatedModelCooldownEnabled)
+	require.False(t, enabled.GrokOAuthForbiddenSameAccountRetryEnabled)
 }
 
 func TestNormalizeOpenAIOAuthRuntimeSettingsValidBoundaries(t *testing.T) {
@@ -265,6 +267,21 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartialAndAdvancesDynamicRevision(t *
 	require.True(t, afterRateLimitRetry.OpenAIRateLimitSameAccountRetryEnabled)
 	require.False(t, afterRateLimitRetry.PlanGatedModelCooldownEnabled)
 	require.Equal(t, 5, callbackCount)
+
+	grokForbiddenRetryEnabled := true
+	afterGrokForbiddenRetry, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, nil, nil, nil, &grokForbiddenRetryEnabled)
+	require.NoError(t, err)
+	require.True(t, afterGrokForbiddenRetry.GrokOAuthForbiddenSameAccountRetryEnabled)
+	require.True(t, afterGrokForbiddenRetry.OpenAIRateLimitSameAccountRetryEnabled)
+	require.False(t, afterGrokForbiddenRetry.PlanGatedModelCooldownEnabled)
+	require.Equal(t, 6, callbackCount)
+
+	disabledInjection := false
+	afterUnrelatedUpdate, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), &disabledInjection, nil, nil, nil)
+	require.NoError(t, err)
+	require.True(t, afterUnrelatedUpdate.GrokOAuthForbiddenSameAccountRetryEnabled)
+	require.False(t, afterUnrelatedUpdate.NoopToolcallInjectionEnabled)
+	require.Equal(t, 7, callbackCount)
 }
 
 func TestGetOpenAIOAuthRuntimeSettingsRetainsLastKnownGoodOnReadFailure(t *testing.T) {

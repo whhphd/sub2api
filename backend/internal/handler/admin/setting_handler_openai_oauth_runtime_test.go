@@ -181,6 +181,23 @@ func TestSettingHandlerOpenAIOAuthRuntimePatchRateLimitSameAccountRetryIsPartial
 	require.True(t, persisted.OpenAIRateLimitSameAccountRetryEnabled)
 }
 
+func TestSettingHandlerOpenAIOAuthRuntimePatchGrokForbiddenSameAccountRetryIsPartial(t *testing.T) {
+	handler, repo := newOpenAIOAuthRuntimeHandler()
+
+	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
+		"grok_oauth_forbidden_same_account_retry_enabled": true,
+	})
+	require.Equal(t, http.StatusOK, recorder.Code)
+	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
+	require.True(t, settings.GrokOAuthForbiddenSameAccountRetryEnabled)
+	require.False(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
+	require.False(t, settings.NoopToolcallInjectionEnabled)
+
+	var persisted service.OpenAIOAuthRuntimeSettings
+	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
+	require.True(t, persisted.GrokOAuthForbiddenSameAccountRetryEnabled)
+}
+
 func TestSettingHandlerOpenAIOAuthRuntimePatchDynamicIgnoresClientRevision(t *testing.T) {
 	handler, _ := newOpenAIOAuthRuntimeHandler()
 	dynamic := service.DefaultOpenAIOAuthRuntimeSettings(false).Dynamic429Scheduling
