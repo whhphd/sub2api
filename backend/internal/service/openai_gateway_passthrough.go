@@ -1867,9 +1867,6 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	})
 	retryableOnSameAccount := openAIStreamFailedEventRetryableOnSameAccount(account, payload, message)
 	failoverErr := s.newOpenAIAccountFailoverError(account, statusCode, headers, payload, message, shouldDisable, retryableOnSameAccount)
-	if failoverErr.IsCredentialFailure() || failoverErr.RequestScopedTransient {
-		return failoverErr
-	}
 	failoverErr.StatusCode = statusCode
 	failoverErr.ResponseHeaders = headers
 	// Preserve an OAuth 429 retry window derived by
@@ -1879,6 +1876,9 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	failoverErr.SameAccountRetryLimit = sameAccountRetryLimit
 	failoverErr.SameAccountRetryDelay = sameAccountRetryDelay
 	failoverErr.RequestScopedTransient = requestScopedTransient
+	if failoverErr.IsCredentialFailure() || failoverErr.RequestScopedTransient {
+		return failoverErr
+	}
 	// Preserve the existing generic envelope for unclassified stream failures;
 	// only typed access/capacity failures need the original payload downstream.
 	failoverErr.ResponseBody = body
