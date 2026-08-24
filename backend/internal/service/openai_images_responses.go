@@ -949,6 +949,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 	if len(requestedModel) > 0 {
 		modelForCooldown = strings.TrimSpace(requestedModel[0])
 	}
+	imageRateLimited := isOpenAIImageRateLimitError(resp.StatusCode, body)
 	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, modelForCooldown)
 	failoverErr := s.newOpenAIAccountFailoverError(
 		account,
@@ -959,7 +960,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		shouldDisable,
 		false,
 	)
-	shouldFailover := shouldDisable || (account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests && failoverErr.RetryableOnSameAccount)
+	shouldFailover := shouldDisable || (account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests &&
+		(imageRateLimited || failoverErr.RetryableOnSameAccount))
 	kind := "http_error"
 	if shouldFailover {
 		kind = "failover"

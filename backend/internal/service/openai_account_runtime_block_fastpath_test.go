@@ -143,6 +143,9 @@ func TestOpenAI429FastPath_NoopPolicyRequiresExplicitCooldownSuppression(t *test
 			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
 		},
 	}
+	expiredRetryWindow := time.Now().Add(-openAIOAuth429RetryWindow - time.Second)
+	svc.openaiOAuth429RetryStartedAt.Store(outOfScopeAccount.ID, expiredRetryWindow)
+	svc.openaiOAuth429RetryStartedAt.Store(childOnlyAccount.ID, expiredRetryWindow)
 
 	svc.markOpenAIOAuth429RateLimited(withOpenAIOAuth429CooldownSuppressed(context.Background(), true), enabledAccount, http.Header{}, nil)
 	svc.markOpenAIOAuth429RateLimited(context.Background(), outOfScopeAccount, http.Header{}, nil)
