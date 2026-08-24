@@ -1049,17 +1049,17 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				// Once Anthropic output has started, switching accounts would splice
 				// two model streams together. Surface a proper Anthropic error event
 				// instead of returning a failover error that the handler cannot retry.
-			shouldFailover := openAIStreamFailedEventShouldFailover(payloadBytes, message)
-			if isBareErrorEvent {
-				shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message)
-			}
-			if !clientOutputStarted && shouldFailover {
-				streamFailoverErr = attachOpenAIOverloadDiagnostics(
+				shouldFailover := openAIStreamFailedEventShouldFailover(payloadBytes, message)
+				if isBareErrorEvent {
+					shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message)
+				}
+				if !clientOutputStarted && shouldFailover {
+					streamFailoverErr = attachOpenAIOverloadDiagnostics(
 						safeOverloadObservability,
 						s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message, resp.Header),
 						overloadTracker,
-					false,
-				)
+						false,
+					)
 					return true
 				}
 				message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)

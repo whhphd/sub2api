@@ -190,8 +190,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-					cls := h.classifyOpenAISelectionNoAccountError(c, apiKey, reqModel, reqModel, requestPlatform, err)
-					cls = classifySelectionFailureError(err, cls)
+				cls := h.classifyOpenAISelectionNoAccountError(c, apiKey, reqModel, reqModel, requestPlatform, err)
+				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}

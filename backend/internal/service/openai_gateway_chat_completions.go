@@ -655,7 +655,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
 	var overloadTracker *openAIOverloadStreamTracker
 	if safeOverloadObservability {
-			overloadTracker = newOpenAIOverloadStreamTracker()
+		overloadTracker = newOpenAIOverloadStreamTracker()
 	}
 	terminalEventType := ""
 	// Grok chat bridge reuses Responses SSE; count native search tools for surcharge.

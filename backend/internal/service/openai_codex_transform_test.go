@@ -59,10 +59,13 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 		reqBody := userInput()
 		require.True(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, true, false))
 
-		input := reqBody["input"].([]any)
+		input, ok := reqBody["input"].([]any)
+		require.True(t, ok)
 		require.Len(t, input, 3)
-		call := input[1].(map[string]any)
-		output := input[2].(map[string]any)
+		call, ok := input[1].(map[string]any)
+		require.True(t, ok)
+		output, ok := input[2].(map[string]any)
+		require.True(t, ok)
 		require.Equal(t, "custom_tool_call", call["type"])
 		require.Equal(t, "exec", call["name"])
 		require.Equal(t, openAIOAuthNoopExecInput, call["input"])
@@ -77,7 +80,7 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 		// The appended output is no longer a user message, so retrying the
 		// transformation cannot duplicate the pair.
 		require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, enabledAccount, true, false))
-		require.Len(t, reqBody["input"].([]any), 3)
+		require.Len(t, reqBody["input"], 3)
 	})
 
 	tests := []struct {
