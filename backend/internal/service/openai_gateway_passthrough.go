@@ -1416,11 +1416,6 @@ func isOpenAIUpstreamCapacityShedEvent(payload []byte) bool {
 	case "server_is_overloaded", "slow_down":
 		return true
 	}
-	for _, path := range []string{"response.error.message", "error.message", "message"} {
-		if isOpenAICapacityShedMessage(gjson.GetBytes(payload, path).String()) {
-			return true
-		}
-	}
 	return false
 }
 
@@ -1877,7 +1872,10 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	}
 	failoverErr.StatusCode = statusCode
 	failoverErr.ResponseHeaders = headers
-	failoverErr.RetryableOnSameAccount = retryableOnSameAccount
+	// Preserve an OAuth 429 retry window derived by
+	// newOpenAIAccountFailoverError even when the raw stream classifier did
+	// not mark the event as pool-mode retryable.
+	failoverErr.RetryableOnSameAccount = failoverErr.RetryableOnSameAccount || retryableOnSameAccount
 	failoverErr.SameAccountRetryLimit = sameAccountRetryLimit
 	failoverErr.SameAccountRetryDelay = sameAccountRetryDelay
 	failoverErr.RequestScopedTransient = requestScopedTransient
@@ -2386,6 +2384,9 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
 		if msg == "" {
 			msg = "Upstream compact response failed"
+		}
+		if isOpenAIUpstreamCapacityShedSignal(terminalPayload, msg) {
+			return nil, s.newOpenAIStreamFailoverError(c, account, true, resp.Header.Get("x-request-id"), terminalPayload, msg, resp.Header)
 		}
 		if compactErr := newOpenAICompactFallbackSignal(c, terminalPayload, msg); compactErr != nil {
 			return nil, compactErr

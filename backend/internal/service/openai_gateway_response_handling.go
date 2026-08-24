@@ -1699,6 +1699,15 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		if msg == "" {
 			msg = "Upstream compact response failed"
 		}
+		if isOpenAIUpstreamCapacityShedSignal(terminalPayload, msg) {
+			enabled := account != nil && account.IsOpenAIOAuth() && s.settingService != nil &&
+				s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
+			return nil, attachOpenAIBufferedOverloadDiagnostics(
+				enabled,
+				s.newOpenAIStreamFailoverError(c, account, false, resp.Header.Get("x-request-id"), terminalPayload, msg, resp.Header),
+				extractOpenAIResponseIDFromJSONBytes(terminalPayload),
+			)
+		}
 		if compactErr := newOpenAICompactFallbackSignal(c, terminalPayload, msg); compactErr != nil {
 			return nil, compactErr
 		}
