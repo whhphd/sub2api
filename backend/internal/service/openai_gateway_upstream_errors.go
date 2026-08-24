@@ -189,6 +189,7 @@ func isOpenAICapacityShedMessage(text string) bool {
 
 func isOpenAIRequestScopedCapacityShed(upstreamMsg string, upstreamBody []byte) bool {
 	return isOpenAIUpstreamCapacityShedEvent(upstreamBody) ||
+		isOpenAIUpstreamCapacityShedPayloadMessage(upstreamBody) ||
 		isOpenAICapacityShedMessage(upstreamMsg) ||
 		(!gjson.ValidBytes(upstreamBody) && isOpenAICapacityShedMessage(string(upstreamBody)))
 }

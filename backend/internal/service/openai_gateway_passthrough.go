@@ -1450,8 +1450,26 @@ func isOpenAIUpstreamCapacityShedMessage(message string) bool {
 		strings.HasPrefix(normalized, "our servers are currently overloaded.")
 }
 
+// isOpenAIUpstreamCapacityShedPayloadMessage recognizes message-only capacity
+// errors in the standard JSON error fields. Keep this separate from
+// isOpenAIUpstreamCapacityShedEvent: message-only errors retain their 502
+// downstream status while still receiving request-scoped retry semantics.
+func isOpenAIUpstreamCapacityShedPayloadMessage(payload []byte) bool {
+	if len(payload) == 0 || !gjson.ValidBytes(payload) {
+		return false
+	}
+	for _, path := range []string{"response.error.message", "error.message", "message"} {
+		if isOpenAICapacityShedMessage(gjson.GetBytes(payload, path).String()) {
+			return true
+		}
+	}
+	return false
+}
+
 func isOpenAIUpstreamCapacityShedSignal(payload []byte, message string) bool {
-	return isOpenAIUpstreamCapacityShedEvent(payload) || isOpenAIUpstreamCapacityShedMessage(message)
+	return isOpenAIUpstreamCapacityShedEvent(payload) ||
+		isOpenAIUpstreamCapacityShedPayloadMessage(payload) ||
+		isOpenAIUpstreamCapacityShedMessage(message)
 }
 
 // openAICapacityShedRetryableClientCode 是把上游容量降载错误转发给客户端时改写
@@ -1473,7 +1491,8 @@ const (
 // 的原始 payload，不受影响。rate_limit 等其他错误码一律不动（客户端依赖
 // rate_limit_exceeded 原码解析重试延时）。
 func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool) {
-	if len(payload) == 0 || !gjson.ValidBytes(payload) || !isOpenAIUpstreamCapacityShedEvent(payload) {
+	if len(payload) == 0 || !gjson.ValidBytes(payload) ||
+		(!isOpenAIUpstreamCapacityShedEvent(payload) && !isOpenAIUpstreamCapacityShedPayloadMessage(payload)) {
 		return payload, false
 	}
 	updated := payload
@@ -1929,7 +1948,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	semanticOutputSeen := false
 	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
-clientOutputStarted := false
+	clientOutputStarted := false
 	safePreOutputOverloadRetry := account != nil && account.IsOpenAIOAuth() &&
 		s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(ctx).SafePreOutputOverloadRetryEnabled
 	var overloadTracker *openAIOverloadStreamTracker
