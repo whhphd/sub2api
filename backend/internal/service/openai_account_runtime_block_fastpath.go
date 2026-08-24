@@ -18,6 +18,7 @@ const (
 	openAIOAuth429MaxAccountAttempts      = 3
 	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
 	openAIOAuth429StormWindow             = 10 * time.Second
+	openAIOAuth429StormThreshold          = 20
 	openAIOAuth429StormMaxAccountSwitches = 1
 )
 
@@ -455,6 +456,17 @@ func (s *OpenAIGatewayService) recordOpenAIOAuth429() {
 		}
 	}
 	s.openaiOAuth429WindowCount.Add(1)
+}
+
+func (s *OpenAIGatewayService) isOpenAIOAuth429Storm() bool {
+	if s == nil {
+		return false
+	}
+	windowStart := s.openaiOAuth429WindowStartUnixNano.Load()
+	if windowStart == 0 || time.Since(time.Unix(0, windowStart)) >= openAIOAuth429StormWindow {
+		return false
+	}
+	return s.openaiOAuth429WindowCount.Load() >= openAIOAuth429StormThreshold
 }
 
 func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int, state *OpenAIOAuth429FailoverState) bool {
