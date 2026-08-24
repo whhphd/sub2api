@@ -510,26 +510,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		s.noteOpenAICodexTurnStateProvenance(c, account)
 	}
 
-	if reqStream {
-		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
-		if err != nil {
-			return nil, err
-		}
-		usage = result.usage
-		firstTokenMs = result.firstTokenMs
-		responseID = strings.TrimSpace(result.responseID)
-		imageCount = result.imageCount
-		imageOutputSizes = result.imageOutputSizes
-	} else {
-		result, err := s.handleNonStreamingResponsePassthroughForAccount(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
-		if err != nil {
-			return nil, err
-		}
-		usage = result.usage
-		responseID = strings.TrimSpace(result.responseID)
-		imageCount = result.imageCount
-		imageOutputSizes = result.imageOutputSizes
-	}
 	s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
 	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
