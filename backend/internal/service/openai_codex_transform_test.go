@@ -88,23 +88,32 @@ func TestInjectOpenAIOAuthNoopToolCall(t *testing.T) {
 		account         *Account
 		globallyEnabled bool
 		compact         bool
-		mutate          func(map[string]any)
+		mutate          func(*testing.T, map[string]any)
 	}{
 		{name: "global policy disabled ignores legacy account extra", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{openAIOAuthInjectNoopToolCallExtraKey: true}}},
 		{name: "API key account", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, globallyEnabled: true},
 		{name: "other platform OAuth", account: &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth}, globallyEnabled: true},
 		{name: "compact request", account: enabledAccount, globallyEnabled: true, compact: true},
-		{name: "empty input", account: enabledAccount, globallyEnabled: true, mutate: func(body map[string]any) { body["input"] = []any{} }},
-		{name: "last item is assistant", account: enabledAccount, globallyEnabled: true, mutate: func(body map[string]any) { body["input"].([]any)[0].(map[string]any)["role"] = "assistant" }},
-		{name: "last item is tool output", account: enabledAccount, globallyEnabled: true, mutate: func(body map[string]any) {
-			body["input"] = append(body["input"].([]any), map[string]any{"type": "custom_tool_call_output", "call_id": "call_old"})
+		{name: "empty input", account: enabledAccount, globallyEnabled: true, mutate: func(_ *testing.T, body map[string]any) { body["input"] = []any{} }},
+		{name: "last item is assistant", account: enabledAccount, globallyEnabled: true, mutate: func(t *testing.T, body map[string]any) {
+			input, ok := body["input"].([]any)
+			require.True(t, ok)
+			require.NotEmpty(t, input)
+			message, ok := input[0].(map[string]any)
+			require.True(t, ok)
+			message["role"] = "assistant"
+		}},
+		{name: "last item is tool output", account: enabledAccount, globallyEnabled: true, mutate: func(t *testing.T, body map[string]any) {
+			input, ok := body["input"].([]any)
+			require.True(t, ok)
+			body["input"] = append(input, map[string]any{"type": "custom_tool_call_output", "call_id": "call_old"})
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reqBody := userInput()
 			if tt.mutate != nil {
-				tt.mutate(reqBody)
+				tt.mutate(t, reqBody)
 			}
 			require.False(t, injectOpenAIOAuthNoopToolCall(reqBody, tt.account, tt.globallyEnabled, tt.compact))
 		})
