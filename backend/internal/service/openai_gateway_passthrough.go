@@ -402,39 +402,35 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			expectedTaskID := account.GetCredential("task_id")
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); recoveryErr != nil {
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
-			if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, probeBody) {
-				agentTaskRecoveryTried = true
-				expectedTaskID := account.GetCredential("task_id")
-				if recoveryErr := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); recoveryErr != nil {
-					return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
-				}
-				continue
 			}
-			upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(probeBody)))
-			if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
-				c, account, requestedModel, body, resp.StatusCode, upstreamMsg, probeBody, compactModelFallbackRetried,
-			); retry {
-				s.appendOpenAICompactFallbackRetryOps(c, account, resp, probeBody, upstreamMsg, true)
-				fromModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-				body = retryBody
-				upstreamPassthroughModel = fallbackModel
-				compactModelFallbackRetried = true
-				SetOpsUpstreamModel(c, fallbackModel)
-				logger.LegacyPrintf(
-					"service.openai_gateway",
-					"[OpenAI passthrough] Retrying explicit compact request once with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
-					account.Name, fromModel, fallbackModel, extractUpstreamErrorCode(probeBody),
-				)
-				continue
-			}
+			continue
+		}
+		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(probeBody)))
+		if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
+			c, account, requestedModel, body, resp.StatusCode, upstreamMsg, probeBody, compactModelFallbackRetried,
+		); retry {
+			s.appendOpenAICompactFallbackRetryOps(c, account, resp, probeBody, upstreamMsg, true)
+			fromModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+			body = retryBody
+			upstreamPassthroughModel = fallbackModel
+			compactModelFallbackRetried = true
+			SetOpsUpstreamModel(c, fallbackModel)
+			logger.LegacyPrintf(
+				"service.openai_gateway",
+				"[OpenAI passthrough] Retrying explicit compact request once with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
+				account.Name, fromModel, fallbackModel, extractUpstreamErrorCode(probeBody),
+			)
+			continue
+		}
 
-			// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
-			// 5xx 应先触发多账号 failover，且此时尚未写入下游响应。
-			// probeBody 已在上方任务探测时读取过一次，直接复用避免重复读取。
-			if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
-				return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
-			}
-			return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
+		// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
+		// 5xx 应先触发多账号 failover，且此时尚未写入下游响应。
+		// probeBody 已在上方任务探测时读取过一次，直接复用避免重复读取。
+		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
+			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
+		}
+		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
+		}
 
 		if mapping, ok := openAIResponsesClientToolMapping(c); ok && isEventStreamResponse(resp.Header) {
 			maxLineSize := defaultMaxLineSize
