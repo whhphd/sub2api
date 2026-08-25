@@ -336,8 +336,11 @@ func TestHandle429_OpenAIOAuthRateLimitRotatesProxyWhenEnabled(t *testing.T) {
 	currentProxyID := int64(1)
 	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &currentProxyID}
 
-	gateway := &OpenAIGatewayService{rateLimitService: svc}
-	gateway.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`))
+	gateway := &OpenAIGatewayService{rateLimitService: svc, settingService: svc.settingService}
+	gateway.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(context.Background(), account, &UpstreamFailoverError{
+		StatusCode:   http.StatusTooManyRequests,
+		ResponseBody: []byte(`{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`),
+	})
 
 	require.Equal(t, []int64{123}, repo.bulkUpdatedIDs)
 	require.NotNil(t, repo.bulkUpdatedPayload.ProxyID)
@@ -380,11 +383,15 @@ func TestHandleUpstreamError_OpenAIOAuthShort429BypassesTempUnschedulableRule(t 
 		},
 	}
 
-	gateway := &OpenAIGatewayService{rateLimitService: svc}
+	gateway := &OpenAIGatewayService{rateLimitService: svc, settingService: svc.settingService}
 	shouldDisable := gateway.handleOpenAIAccountUpstreamError(
 		context.Background(), account, http.StatusTooManyRequests, http.Header{},
 		[]byte(`{"detail":"Rate limit exceeded"}`), "gpt-5.6",
 	)
+	gateway.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(context.Background(), account, &UpstreamFailoverError{
+		StatusCode:   http.StatusTooManyRequests,
+		ResponseBody: []byte(`{"detail":"Rate limit exceeded"}`),
+	})
 
 	require.False(t, shouldDisable)
 	require.Equal(t, 0, repo.tempCalls)

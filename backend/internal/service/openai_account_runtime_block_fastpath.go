@@ -55,9 +55,6 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return false
 	}
 	shortOpenAIOAuth429 := isOpenAIOAuthShortRateLimitExceeded(account, statusCode, responseBody)
-	if shortOpenAIOAuth429 && s != nil && s.rateLimitService != nil {
-		s.rateLimitService.rotateOpenAIOAuthProxyOnShort429(ctx, account, responseBody)
-	}
 	// Any non-2xx upstream HTTP response means the model request was actually sent.
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)

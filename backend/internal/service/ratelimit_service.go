@@ -1747,13 +1747,22 @@ func isOpenAIOAuthShortRateLimitExceeded(account *Account, statusCode int, body 
 }
 
 func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context, account *Account, responseBody []byte) {
-	if s == nil || account == nil || !account.IsOpenAIOAuth() ||
-		s.proxyRepo == nil || s.accountRepo == nil || s.settingService == nil ||
-		!isOpenAIShortRateLimitExceededResponse(responseBody) {
+	if s == nil || account == nil || !account.IsOpenAIOAuth() || !isOpenAIShortRateLimitExceededResponse(responseBody) {
+		return
+	}
+	if s.proxyRepo == nil || s.accountRepo == nil || s.settingService == nil {
+		slog.Warn("openai_oauth_rate_limit_proxy_rotation_skipped",
+			"account_id", account.ID,
+			"reason", "dependency_unavailable",
+			"proxy_repo_available", s.proxyRepo != nil,
+			"account_repo_available", s.accountRepo != nil,
+			"setting_service_available", s.settingService != nil,
+		)
 		return
 	}
 	settings := s.settingService.GetOpenAIOAuthRuntimeSettings(ctx)
 	if settings == nil || !settings.OpenAIRateLimitProxyRotationEnabled {
+		slog.Info("openai_oauth_rate_limit_proxy_rotation_skipped", "account_id", account.ID, "reason", "setting_disabled")
 		return
 	}
 
