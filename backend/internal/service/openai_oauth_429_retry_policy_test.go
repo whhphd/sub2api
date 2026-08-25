@@ -55,14 +55,14 @@ func TestApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(t *testing.T) {
 
 	t.Run("exhausted quota headers override transient body", func(t *testing.T) {
 		svc := newOpenAI429SameAccountRetryTestService(t, true)
+		headers := http.Header{}
+		headers.Set("x-codex-primary-used-percent", "100")
+		headers.Set("x-codex-primary-reset-after-seconds", "18000")
+		headers.Set("x-codex-primary-window-minutes", "300")
 		err := &UpstreamFailoverError{
-			StatusCode: http.StatusTooManyRequests,
-			ResponseHeaders: http.Header{
-				"x-codex-primary-used-percent":        []string{"100"},
-				"x-codex-primary-reset-after-seconds": []string{"18000"},
-				"x-codex-primary-window-minutes":      []string{"300"},
-			},
-			ResponseBody: []byte(`{"detail":"Rate limit exceeded"}`),
+			StatusCode:      http.StatusTooManyRequests,
+			ResponseHeaders: headers,
+			ResponseBody:    []byte(`{"detail":"Rate limit exceeded"}`),
 		}
 		svc.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(context.Background(), account, err)
 		require.False(t, err.RetryableOnSameAccount)
