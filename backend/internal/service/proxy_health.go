@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"log/slog"
 )
 
 const (
@@ -180,7 +179,7 @@ func (s *ProxyHealthService) HandleTransportFailure(ctx context.Context, account
 	if state == nil {
 		return false, false
 	}
-	if state == nil || state.OpenUntil == nil || !state.OpenUntil.After(now) {
+	if state.OpenUntil == nil || !state.OpenUntil.After(now) {
 		slog.Warn("openai.proxy_health_failure", "account_id", account.ID, "proxy_id", *account.ProxyID, "failure_class", failureClass, "consecutive_failures", state.ConsecutiveFailures)
 		return false, true
 	}
@@ -256,6 +255,7 @@ func (s *ProxyHealthService) runProbeCycle(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	failedProxyIDs := make([]int64, 0)
 	for i := range proxies {
 		proxy := &proxies[i]
 		if proxy.ID <= 0 || proxy.IsExpired(time.Now()) {
@@ -271,7 +271,7 @@ func (s *ProxyHealthService) runProbeCycle(ctx context.Context) {
 		if probeErr != nil {
 			state, recordErr := s.healthCache.RecordProxyFailure(ctx, proxy.ID, time.Now(), proxyHealthFailureWindow, 1, proxyHealthCooldown, "active_probe", sanitizeUpstreamErrorMessage(probeErr.Error()))
 			if recordErr == nil && state != nil && state.OpenUntil != nil {
-				s.recoverProxyAccounts(ctx, proxy.ID)
+				failedProxyIDs = append(failedProxyIDs, proxy.ID)
 			}
 			continue
 		}
@@ -279,27 +279,65 @@ func (s *ProxyHealthService) runProbeCycle(ctx context.Context) {
 			continue
 		}
 		if before != nil && (before.OpenUntil != nil || before.ConsecutiveFailures > 0) {
-			s.recoverProxyAccounts(ctx, proxy.ID)
+			s.clearRecoveredProxyAccounts(ctx, proxy.ID)
 		}
+	}
+	// Rebind only after every proxy has been probed. Otherwise a failed proxy
+	// early in the list could move accounts onto a later dead proxy whose state
+	// has not been updated yet.
+	for _, proxyID := range failedProxyIDs {
+		s.recoverProxyAccounts(ctx, proxyID)
 	}
 }
 
-func (s *ProxyHealthService) recoverProxyAccounts(ctx context.Context, proxyID int64) {
+func (s *ProxyHealthService) listTransportQuarantinedAccounts(ctx context.Context, proxyID int64) ([]Account, error) {
 	if s.accountRepo == nil {
-		return
+		return nil, nil
 	}
 	accounts, err := s.accountRepo.ListAllWithFilters(ctx, PlatformOpenAI, AccountTypeOAuth, StatusActive, "", 0, "")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Account, 0)
+	for i := range accounts {
+		account := accounts[i]
+		if account.ProxyID != nil && *account.ProxyID == proxyID && strings.HasPrefix(account.TempUnschedulableReason, proxyTransportUnschedReasonPrefix) {
+			result = append(result, account)
+		}
+	}
+	return result, nil
+}
+
+func (s *ProxyHealthService) recoverProxyAccounts(ctx context.Context, proxyID int64) {
+	accounts, err := s.listTransportQuarantinedAccounts(ctx, proxyID)
 	if err != nil {
 		return
 	}
 	for i := range accounts {
 		account := &accounts[i]
-		if account.ProxyID == nil || *account.ProxyID != proxyID || !strings.HasPrefix(account.TempUnschedulableReason, proxyTransportUnschedReasonPrefix) {
-			continue
-		}
 		if s.rebindAccount(ctx, account) {
 			slog.Info("openai.proxy_account_recovered", "account_id", account.ID, "failed_proxy_id", proxyID)
 		}
+	}
+}
+
+func (s *ProxyHealthService) clearRecoveredProxyAccounts(ctx context.Context, proxyID int64) {
+	accounts, err := s.listTransportQuarantinedAccounts(ctx, proxyID)
+	if err != nil {
+		return
+	}
+	for i := range accounts {
+		account := &accounts[i]
+		stateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIAccountStateUpdateTimeout)
+		err := s.accountRepo.ClearTempUnschedulable(stateCtx, account.ID)
+		cancel()
+		if err != nil {
+			continue
+		}
+		if s.runtimeBlocker != nil {
+			s.runtimeBlocker.ClearAccountSchedulingBlock(account.ID)
+		}
+		slog.Info("openai.proxy_account_recovered", "account_id", account.ID, "proxy_id", proxyID, "action", "clear_transport_quarantine")
 	}
 }
 
