@@ -297,13 +297,11 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
-	// Rotate before any account-level policy gate. A short OpenAI OAuth 429 is
-	// request-scoped and must not be swallowed by a broad temporary-unschedulable
-	// rule before the same-account retry path can use the new egress proxy.
+	// A short OpenAI OAuth 429 is request-scoped and must not be swallowed by a
+	// broad temporary-unschedulable rule. Proxy rotation happens at the OpenAI
+	// gateway's upstream-error entry point so earlier overdraft gates cannot
+	// bypass it and this generic layer cannot rotate the same request twice.
 	shortOpenAIOAuth429 := isOpenAIOAuthShortRateLimitExceeded(account, statusCode, responseBody)
-	if shortOpenAIOAuth429 {
-		s.rotateOpenAIOAuthProxyOnShort429(ctx, account, responseBody)
-	}
 	// Team 联动熔断必须先于池模式/自定义错误码/临时不可调度的各类早退；
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)

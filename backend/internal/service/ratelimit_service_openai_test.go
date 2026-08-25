@@ -379,7 +379,8 @@ func TestHandleUpstreamError_OpenAIOAuthShort429BypassesTempUnschedulableRule(t 
 		},
 	}
 
-	shouldDisable := svc.HandleUpstreamError(
+	gateway := &OpenAIGatewayService{rateLimitService: svc}
+	shouldDisable := gateway.handleOpenAIAccountUpstreamError(
 		context.Background(), account, http.StatusTooManyRequests, http.Header{},
 		[]byte(`{"detail":"Rate limit exceeded"}`), "gpt-5.6",
 	)

@@ -54,6 +54,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if isOpenAICloudflareForbiddenResponse(account, statusCode, headers, responseBody) {
 		return false
 	}
+	shortOpenAIOAuth429 := isOpenAIOAuthShortRateLimitExceeded(account, statusCode, responseBody)
+	if shortOpenAIOAuth429 && s != nil && s.rateLimitService != nil {
+		s.rateLimitService.rotateOpenAIOAuthProxyOnShort429(ctx, account, responseBody)
+	}
 	// Any non-2xx upstream HTTP response means the model request was actually sent.
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
@@ -119,7 +123,6 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// Isolate a custom temporary-unschedulable match to the known upstream
 	// model before entering the generic account error path. This keeps the
 	// account available to other models and avoids the account runtime blocker.
-	shortOpenAIOAuth429 := isOpenAIOAuthShortRateLimitExceeded(account, statusCode, responseBody)
 	if s.rateLimitService != nil && !shortOpenAIOAuth429 && statusCode != http.StatusUnauthorized && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
 		s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, responseBody, canonicalModel[0]) {
 		return true
