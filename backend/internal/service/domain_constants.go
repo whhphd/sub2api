@@ -609,8 +609,8 @@ const (
 	SettingKeyOpenAIOAuthNewAccountProxyPoolEnabled = "openai_oauth_new_account_proxy_pool_enabled"
 	// SettingKeyOpenAIOAuthNewAccountProxyPoolIDs stores the candidate proxy IDs.
 	SettingKeyOpenAIOAuthNewAccountProxyPoolIDs = "openai_oauth_new_account_proxy_pool_ids"
-	// SettingKeyOpenAIOAuthRuntimeSettings stores the global runtime policy for
-	// OpenAI OAuth noop tool-call injection and dynamic 429 scheduling.
+	// SettingKeyOpenAIOAuthRuntimeSettings stores the global OpenAI/Grok OAuth
+	// retry and cooldown policy.
 	SettingKeyOpenAIOAuthRuntimeSettings = "openai_oauth_runtime_settings"
 	// SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled OpenAI 高级调度下是否启用粘性加权。
 	SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled = "openai_advanced_scheduler_sticky_weighted_enabled"
