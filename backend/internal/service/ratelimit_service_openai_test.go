@@ -336,7 +336,8 @@ func TestHandle429_OpenAIOAuthRateLimitRotatesProxyWhenEnabled(t *testing.T) {
 	currentProxyID := int64(1)
 	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &currentProxyID}
 
-	svc.HandleUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`))
+	gateway := &OpenAIGatewayService{rateLimitService: svc}
+	gateway.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`))
 
 	require.Equal(t, []int64{123}, repo.bulkUpdatedIDs)
 	require.NotNil(t, repo.bulkUpdatedPayload.ProxyID)
