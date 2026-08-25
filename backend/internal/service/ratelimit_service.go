@@ -1793,7 +1793,9 @@ func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context,
 		selectedProxyID := selected.ID
 		updated, err := s.accountRepo.BulkUpdate(stateCtx, []int64{account.ID}, AccountBulkUpdate{ProxyID: &selectedProxyID})
 		if err != nil || updated != 1 {
-			if err == nil { err = fmt.Errorf("updated %d accounts, want 1", updated) }
+			if err == nil {
+				err = fmt.Errorf("updated %d accounts, want 1", updated)
+			}
 			slog.Warn("openai_oauth_rate_limit_proxy_rotation_update_failed", "account_id", account.ID, "proxy_id", selectedProxyID, "error", err)
 			return
 		}

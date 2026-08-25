@@ -75,12 +75,12 @@ func NewProxyHealthService(accountRepo AccountRepository, proxyRepo ProxyReposit
 	}
 	return &ProxyHealthService{
 		accountRepo: accountRepo,
-		proxyRepo: proxyRepo,
-		prober: prober,
+		proxyRepo:   proxyRepo,
+		prober:      prober,
 		healthCache: healthCache,
-		leaderLock: leaderLock,
-		instanceID: fmt.Sprintf("%s-%d", host, time.Now().UnixNano()),
-		stop:       make(chan struct{}),
+		leaderLock:  leaderLock,
+		instanceID:  fmt.Sprintf("%s-%d", host, time.Now().UnixNano()),
+		stop:        make(chan struct{}),
 	}
 }
 
