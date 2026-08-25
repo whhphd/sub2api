@@ -105,7 +105,7 @@ func (c *proxyHealthCache) RecordProxySuccess(ctx context.Context, proxyID int64
 	_, err := c.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.HSet(ctx, key, "last_success_at", now.Unix(), "consecutive_failures", 0)
 		pipe.HDel(ctx, key, "failure_window_start", "open_until", "last_failure_at", "last_failure_class", "last_error")
-		pipe.Expire(ctx, key, 7200)
+		pipe.Expire(ctx, key, 2*time.Hour)
 		return nil
 	})
 	return err

@@ -42,4 +42,6 @@ func TestProxyHealthCacheTripsAtThresholdAndSuccessResetsCircuit(t *testing.T) {
 	require.Zero(t, stored.ConsecutiveFailures)
 	require.Nil(t, stored.OpenUntil)
 	require.False(t, stored.LastSuccessAt.IsZero())
+	ttl := server.TTL(proxyHealthKey(42))
+	require.Greater(t, ttl, time.Hour)
 }
