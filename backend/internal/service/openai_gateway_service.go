@@ -659,8 +659,23 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	account *Account,
 	failoverErr *UpstreamFailoverError,
 ) {
-	if s == nil || account == nil || failoverErr == nil || !account.IsOpenAIOAuth() ||
-		failoverErr.StatusCode != http.StatusTooManyRequests || isOpenAIUsageLimit429Response(failoverErr.ResponseBody) {
+	if s == nil || account == nil || failoverErr == nil || !account.IsOpenAIOAuth() || failoverErr.StatusCode != http.StatusTooManyRequests {
+		return
+	}
+	currentProxyID := int64(0)
+	if account.ProxyID != nil {
+		currentProxyID = *account.ProxyID
+	}
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"openai_oauth_rate_limit_retry_policy_observed account_id=%d current_proxy_id=%d retryable=%t body_bytes=%d",
+		account.ID,
+		currentProxyID,
+		failoverErr.RetryableOnSameAccount,
+		len(failoverErr.ResponseBody),
+	)
+	if isOpenAIUsageLimit429Response(failoverErr.ResponseBody) {
+		logger.LegacyPrintf("service.openai_gateway", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=usage_limit_reached", account.ID)
 		return
 	}
 	// Some streaming and compatibility paths normalize the original upstream
