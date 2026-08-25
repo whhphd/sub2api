@@ -675,6 +675,10 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	if account.ProxyID != nil {
 		currentProxyID = *account.ProxyID
 	}
+	if disposition, _ := classifyOpenAIOAuth429(failoverErr.ResponseHeaders, failoverErr.ResponseBody); disposition != openAIOAuth429Transient {
+		logger.LegacyPrintf("service.openai_gateway", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=quota_exhausted", account.ID)
+		return
+	}
 	if isOpenAIUsageLimit429Response(failoverErr.ResponseBody) {
 		logger.LegacyPrintf("service.openai_gateway", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=usage_limit_reached", account.ID)
 		return
