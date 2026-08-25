@@ -659,34 +659,6 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	account *Account,
 	failoverErr *UpstreamFailoverError,
 ) {
-	var accountID int64
-	var platform, accountType string
-	if account != nil {
-		accountID = account.ID
-		platform = account.Platform
-		accountType = account.Type
-	}
-	var statusCode int
-	var retryable bool
-	var bodyBytes int
-	if failoverErr != nil {
-		statusCode = failoverErr.StatusCode
-		retryable = failoverErr.RetryableOnSameAccount
-		bodyBytes = len(failoverErr.ResponseBody)
-	}
-	logger.LegacyPrintf(
-		"service.openai_gateway",
-		"Warning: openai_oauth_rate_limit_retry_policy_enter account_id=%d platform=%s account_type=%s service_nil=%t account_nil=%t failover_nil=%t status_code=%d retryable=%t body_bytes=%d",
-		accountID,
-		platform,
-		accountType,
-		s == nil,
-		account == nil,
-		failoverErr == nil,
-		statusCode,
-		retryable,
-		bodyBytes,
-	)
 	if s == nil || account == nil || failoverErr == nil || !account.IsOpenAIOAuth() || failoverErr.StatusCode != http.StatusTooManyRequests {
 		return
 	}
@@ -694,14 +666,6 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	if account.ProxyID != nil {
 		currentProxyID = *account.ProxyID
 	}
-	logger.LegacyPrintf(
-		"service.openai_gateway",
-		"openai_oauth_rate_limit_retry_policy_observed account_id=%d current_proxy_id=%d retryable=%t body_bytes=%d",
-		account.ID,
-		currentProxyID,
-		failoverErr.RetryableOnSameAccount,
-		len(failoverErr.ResponseBody),
-	)
 	if isOpenAIUsageLimit429Response(failoverErr.ResponseBody) {
 		logger.LegacyPrintf("service.openai_gateway", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=usage_limit_reached", account.ID)
 		return
@@ -715,6 +679,13 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 		logger.LegacyPrintf("service.openai_gateway", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=not_same_account_retryable", account.ID)
 		return
 	}
+	slog.Warn(
+		"openai_oauth_rate_limit_retry_policy_applied",
+		"account_id", account.ID,
+		"current_proxy_id", currentProxyID,
+		"retryable_on_same_account", failoverErr.RetryableOnSameAccount,
+		"response_body_bytes", len(failoverErr.ResponseBody),
+	)
 	// This policy is applied by every handler immediately before its bounded
 	// same-account retry loop, including HTTP, SSE, and compatibility paths.
 	// Rotate here so endpoint-specific upstream side-effect branches cannot

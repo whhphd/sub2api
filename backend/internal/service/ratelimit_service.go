@@ -1754,12 +1754,6 @@ func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context,
 	if account.ProxyID != nil {
 		currentProxyID = *account.ProxyID
 	}
-	logger.LegacyPrintf(
-		"service.ratelimit",
-		"openai_oauth_rate_limit_proxy_rotation_attempt account_id=%d current_proxy_id=%d",
-		account.ID,
-		currentProxyID,
-	)
 	if s.proxyRepo == nil || s.accountRepo == nil || s.settingService == nil {
 		slog.Warn("openai_oauth_rate_limit_proxy_rotation_skipped",
 			"account_id", account.ID,
@@ -1812,14 +1806,7 @@ func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context,
 	}
 	account.ProxyID = &selectedProxyID
 	account.Proxy = &selected
-	slog.Info("openai_oauth_rate_limit_proxy_rotated", "account_id", account.ID, "from_proxy_id", currentProxyID, "to_proxy_id", selectedProxyID)
-	logger.LegacyPrintf(
-		"service.ratelimit",
-		"openai_oauth_rate_limit_proxy_rotated account_id=%d from_proxy_id=%d to_proxy_id=%d",
-		account.ID,
-		currentProxyID,
-		selectedProxyID,
-	)
+	slog.Warn("openai_oauth_rate_limit_proxy_rotated", "account_id", account.ID, "from_proxy_id", currentProxyID, "to_proxy_id", selectedProxyID)
 }
 
 func containsOpenAIUsageLimitMarker(value any) bool {
