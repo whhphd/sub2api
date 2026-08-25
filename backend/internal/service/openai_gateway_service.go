@@ -669,6 +669,7 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	// the handler is about to execute.
 	if !isOpenAIShortRateLimitExceededResponse(failoverErr.ResponseBody) && !failoverErr.RetryableOnSameAccount {
 		slog.Info("openai_oauth_rate_limit_proxy_rotation_skipped", "account_id", account.ID, "reason", "not_same_account_retryable")
+		logger.LegacyPrintf("service.openai_gateway", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=not_same_account_retryable", account.ID)
 		return
 	}
 	// This policy is applied by every handler immediately before its bounded
@@ -679,6 +680,7 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 		s.rateLimitService.rotateOpenAIOAuthProxyOnShort429(ctx, account, failoverErr.ResponseBody)
 	} else {
 		slog.Warn("openai_oauth_rate_limit_proxy_rotation_skipped", "account_id", account.ID, "reason", "rate_limit_service_unavailable")
+		logger.LegacyPrintf("service.openai_gateway", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=rate_limit_service_unavailable", account.ID)
 	}
 	settings := s.GetOpenAIOAuthRuntimeSettings(ctx)
 	if settings == nil || !settings.OpenAIRateLimitSameAccountRetryEnabled {
