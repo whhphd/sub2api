@@ -659,6 +659,34 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	account *Account,
 	failoverErr *UpstreamFailoverError,
 ) {
+	var accountID int64
+	var platform, accountType string
+	if account != nil {
+		accountID = account.ID
+		platform = account.Platform
+		accountType = account.Type
+	}
+	var statusCode int
+	var retryable bool
+	var bodyBytes int
+	if failoverErr != nil {
+		statusCode = failoverErr.StatusCode
+		retryable = failoverErr.RetryableOnSameAccount
+		bodyBytes = len(failoverErr.ResponseBody)
+	}
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"openai_oauth_rate_limit_retry_policy_enter account_id=%d platform=%s account_type=%s service_nil=%t account_nil=%t failover_nil=%t status_code=%d retryable=%t body_bytes=%d",
+		accountID,
+		platform,
+		accountType,
+		s == nil,
+		account == nil,
+		failoverErr == nil,
+		statusCode,
+		retryable,
+		bodyBytes,
+	)
 	if s == nil || account == nil || failoverErr == nil || !account.IsOpenAIOAuth() || failoverErr.StatusCode != http.StatusTooManyRequests {
 		return
 	}
