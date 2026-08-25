@@ -166,21 +166,6 @@ function buildAccount() {
   } as any
 }
 
-function buildOpenAIOAuthAccount() {
-  return {
-    ...buildAccount(),
-    name: 'OpenAI OAuth',
-    type: 'oauth',
-    credentials: {
-      access_token: 'oauth-access-token',
-      refresh_token: 'oauth-refresh-token',
-      model_mapping: {
-        'gpt-5.2': 'gpt-5.2'
-      }
-    }
-  } as any
-}
-
 function buildOpenAISparkShadowAccount() {
   const account = buildAccount()
   return {
