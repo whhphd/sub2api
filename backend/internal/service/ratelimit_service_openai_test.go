@@ -227,6 +227,8 @@ type openAI429SnapshotRepo struct {
 	updatedExtra       map[string]any
 	bulkUpdatedIDs     []int64
 	bulkUpdatedPayload AccountBulkUpdate
+	tempCalls          int
+	modelRateLimitCalls int
 }
 
 type openAIOAuthRateLimitProxyRepo struct {
@@ -253,6 +255,16 @@ func (r *openAI429SnapshotRepo) BulkUpdate(_ context.Context, ids []int64, updat
 	r.bulkUpdatedIDs = append([]int64(nil), ids...)
 	r.bulkUpdatedPayload = updates
 	return int64(len(ids)), nil
+}
+
+func (r *openAI429SnapshotRepo) SetTempUnschedulable(_ context.Context, _ int64, _ time.Time, _ string) error {
+	r.tempCalls++
+	return nil
+}
+
+func (r *openAI429SnapshotRepo) SetModelRateLimit(_ context.Context, _ int64, _ string, _ time.Time, _ ...string) error {
+	r.modelRateLimitCalls++
+	return nil
 }
 
 func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
@@ -324,7 +336,7 @@ func TestHandle429_OpenAIOAuthRateLimitRotatesProxyWhenEnabled(t *testing.T) {
 	currentProxyID := int64(1)
 	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &currentProxyID}
 
-	svc.handle429(context.Background(), account, http.Header{}, []byte(`{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`))
+	svc.HandleUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`))
 
 	require.Equal(t, []int64{123}, repo.bulkUpdatedIDs)
 	require.NotNil(t, repo.bulkUpdatedPayload.ProxyID)
@@ -333,6 +345,49 @@ func TestHandle429_OpenAIOAuthRateLimitRotatesProxyWhenEnabled(t *testing.T) {
 	require.Equal(t, int64(2), *account.ProxyID)
 	require.NotNil(t, account.Proxy)
 	require.Equal(t, int64(2), account.Proxy.ID)
+}
+
+func TestHandleUpstreamError_OpenAIOAuthShort429BypassesTempUnschedulableRule(t *testing.T) {
+	settingRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.OpenAIRateLimitProxyRotationEnabled = true
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+
+	currentProxyID := int64(1)
+	repo := &openAI429SnapshotRepo{}
+	proxyRepo := &openAIOAuthRateLimitProxyRepo{proxies: []Proxy{
+		{ID: 1, Status: StatusActive},
+		{ID: 2, Status: StatusActive},
+	}}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	svc.SetSettingService(NewSettingService(settingRepo, nil))
+	svc.SetProxyRepository(proxyRepo)
+	account := &Account{
+		ID:       124,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		ProxyID:  &currentProxyID,
+		Credentials: map[string]any{
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusTooManyRequests),
+				"keywords":         []any{"rate limit exceeded"},
+				"duration_minutes": float64(30),
+			}},
+		},
+	}
+
+	shouldDisable := svc.HandleUpstreamError(
+		context.Background(), account, http.StatusTooManyRequests, http.Header{},
+		[]byte(`{"detail":"Rate limit exceeded"}`), "gpt-5.6",
+	)
+
+	require.False(t, shouldDisable)
+	require.Equal(t, 0, repo.tempCalls)
+	require.Equal(t, 0, repo.modelRateLimitCalls)
+	require.NotEqual(t, currentProxyID, *account.ProxyID)
 }
 
 func TestHandle429_OpenAIOAuthRateLimitProxyRotationSkipsDisabledAndUsageLimit(t *testing.T) {

@@ -297,6 +297,13 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	// Rotate before any account-level policy gate. A short OpenAI OAuth 429 is
+	// request-scoped and must not be swallowed by a broad temporary-unschedulable
+	// rule before the same-account retry path can use the new egress proxy.
+	shortOpenAIOAuth429 := isOpenAIOAuthShortRateLimitExceeded(account, statusCode, responseBody)
+	if shortOpenAIOAuth429 {
+		s.rotateOpenAIOAuthProxyOnShort429(ctx, account, responseBody)
+	}
 	// Team 联动熔断必须先于池模式/自定义错误码/临时不可调度的各类早退；
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
@@ -353,7 +360,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 
 	// 先尝试临时不可调度规则（401除外）
 	// 如果匹配成功，直接返回，不执行后续禁用逻辑
-	if statusCode != 401 {
+	if statusCode != 401 && !shortOpenAIOAuth429 {
 		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 			return true
 		}
@@ -1095,11 +1102,6 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
-	// A short-lived OpenAI OAuth rate limit may indicate that the current egress
-	// IP is throttled. Rotate the account's proxy before the existing bounded
-	// same-account retry path checks its state.
-	s.rotateOpenAIOAuthProxyOnShort429(ctx, account, responseBody)
-
 	// OpenAI OAuth stays on the same account for the gateway's bounded retry
 	// window. Persisting a rate-limit reset on the first 429 would make the next
 	// retry ineligible and silently turn same-account recovery into a switch.
@@ -1739,6 +1741,11 @@ func isOpenAIShortRateLimitExceededResponse(body []byte) bool {
 	return strings.Contains(message, "rate limit exceeded") ||
 		strings.Contains(message, "rate_limit_exceeded") ||
 		strings.Contains(raw, "rate_limit_exceeded")
+}
+
+func isOpenAIOAuthShortRateLimitExceeded(account *Account, statusCode int, body []byte) bool {
+	return statusCode == http.StatusTooManyRequests && account != nil && account.IsOpenAIOAuth() &&
+		isOpenAIShortRateLimitExceededResponse(body)
 }
 
 func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context, account *Account, responseBody []byte) {
