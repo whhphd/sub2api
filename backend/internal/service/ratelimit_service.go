@@ -33,6 +33,7 @@ type RateLimitService struct {
 	tokenCacheInvalidator TokenCacheInvalidator
 	runtimeBlocker        AccountRuntimeBlocker
 	proxyRepo             ProxyRepository
+	proxyHealthService    *ProxyHealthService
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
 
@@ -126,6 +127,14 @@ func (s *RateLimitService) SetSettingService(settingService *SettingService) {
 // short-rate-limit rotation.
 func (s *RateLimitService) SetProxyRepository(proxyRepo ProxyRepository) {
 	s.proxyRepo = proxyRepo
+}
+
+// SetProxyHealthService makes short OAuth 429 rotation avoid proxies that are
+// currently in the runtime health circuit.
+func (s *RateLimitService) SetProxyHealthService(health *ProxyHealthService) {
+	if s != nil {
+		s.proxyHealthService = health
+	}
 }
 
 // SetTokenCacheInvalidator 设置 token 缓存清理器（可选依赖）
@@ -1774,6 +1783,25 @@ func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context,
 
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
+	if s.proxyHealthService != nil {
+		selected, ok := s.proxyHealthService.ChooseHealthyProxy(stateCtx, currentProxyID)
+		if !ok {
+			slog.Warn("openai_oauth_rate_limit_proxy_rotation_no_candidate", "account_id", account.ID, "current_proxy_id", currentProxyID, "reason", "no_healthy_proxy")
+			logger.LegacyPrintf("service.ratelimit", "openai_oauth_rate_limit_proxy_rotation_no_candidate account_id=%d current_proxy_id=%d reason=no_healthy_proxy", account.ID, currentProxyID)
+			return
+		}
+		selectedProxyID := selected.ID
+		updated, err := s.accountRepo.BulkUpdate(stateCtx, []int64{account.ID}, AccountBulkUpdate{ProxyID: &selectedProxyID})
+		if err != nil || updated != 1 {
+			if err == nil { err = fmt.Errorf("updated %d accounts, want 1", updated) }
+			slog.Warn("openai_oauth_rate_limit_proxy_rotation_update_failed", "account_id", account.ID, "proxy_id", selectedProxyID, "error", err)
+			return
+		}
+		account.ProxyID = &selectedProxyID
+		account.Proxy = selected
+		slog.Warn("openai_oauth_rate_limit_proxy_rotated", "account_id", account.ID, "from_proxy_id", currentProxyID, "to_proxy_id", selectedProxyID, "selection", "healthy_pool")
+		return
+	}
 	proxies, err := s.proxyRepo.ListActive(stateCtx)
 	if err != nil {
 		slog.Warn("openai_oauth_rate_limit_proxy_rotation_list_failed", "account_id", account.ID, "error", err)

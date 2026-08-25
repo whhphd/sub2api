@@ -499,6 +499,18 @@ func ProvideRateLimitService(
 	return svc
 }
 
+// ProvideProxyHealthService creates the Redis-backed proxy circuit worker. Its
+// runtime bindings are attached after the gateway and rate-limit services exist.
+func ProvideProxyHealthService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	prober ProxyExitInfoProber,
+	healthCache ProxyHealthCache,
+	leaderLock LeaderLockCache,
+) *ProxyHealthService {
+	return NewProxyHealthService(accountRepo, proxyRepo, prober, healthCache, leaderLock)
+}
+
 // ProvideOpsMetricsCollector creates and starts OpsMetricsCollector.
 func ProvideOpsMetricsCollector(
 	opsRepo OpsRepository,
@@ -875,6 +887,8 @@ var ProviderSet = wire.NewSet(
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
+	ProvideProxyHealthService,
+	ProvideProxyHealthBindings,
 	ProvideAccountUsageService,
 	ProvideAccountTestService,
 	ProvideUpstreamBillingProbeService,

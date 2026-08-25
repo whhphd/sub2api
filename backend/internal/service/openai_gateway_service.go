@@ -434,6 +434,7 @@ type OpenAIGatewayService struct {
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
+	proxyHealthService    *ProxyHealthService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
@@ -474,6 +475,14 @@ type OpenAIGatewayService struct {
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
+}
+
+// SetProxyHealthService attaches runtime proxy health handling without changing
+// the gateway constructor used by the extensive unit-test surface.
+func (s *OpenAIGatewayService) SetProxyHealthService(health *ProxyHealthService) {
+	if s != nil {
+		s.proxyHealthService = health
+	}
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService

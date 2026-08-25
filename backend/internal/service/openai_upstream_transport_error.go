@@ -135,6 +135,20 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		return err
 	}
 
+	// OAuth accounts with an assigned proxy use the proxy-health circuit. A
+	// successful rebind asks the existing failover loop to retry this account
+	// with its new egress; when no healthy proxy exists, the service applies the
+	// same temporary transport quarantine as the legacy path.
+	if s != nil && s.proxyHealthService != nil {
+		if retrySameAccount, handled := s.proxyHealthService.HandleTransportFailure(ctx, account, err); handled {
+			return &UpstreamFailoverError{
+				StatusCode:             http.StatusBadGateway,
+				ResponseBody:           openAITransportFailoverBody,
+				RetryableOnSameAccount: retrySameAccount,
+			}
+		}
+	}
+
 	if classifyOpenAITransportError(err).Persistent {
 		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
 	}

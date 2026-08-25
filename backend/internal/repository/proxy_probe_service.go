@@ -115,6 +115,23 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 	return nil, 0, fmt.Errorf("all probe URLs failed, last error: %w", lastErr)
 }
 
+// ProbeProxyIPAPI is the narrow automatic health probe. It intentionally does
+// not fall back to ipify or call any upstream AI endpoint; those remain part of
+// the administrator-triggered quality probe only.
+func (s *proxyProbeService) ProbeProxyIPAPI(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
+	client, err := httpclient.GetClient(httpclient.Options{
+		ProxyURL:           proxyURL,
+		Timeout:            defaultProxyProbeTimeout,
+		InsecureSkipVerify: s.insecureSkipVerify,
+		ValidateResolvedIP: s.validateResolvedIP,
+		AllowPrivateHosts:  s.allowPrivateHosts,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create proxy client: %w", err)
+	}
+	return s.probeWithURL(ctx, client, "http://ip-api.com/json/?lang=zh-CN", "ip-api")
+}
+
 func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Client, url string, parser string) (*service.ProxyExitInfo, int64, error) {
 	startTime := time.Now()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
