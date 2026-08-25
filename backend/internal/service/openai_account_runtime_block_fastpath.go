@@ -10,12 +10,12 @@ import (
 )
 
 const (
-	openAIAccountStateUpdateTimeout       = 5 * time.Second
-	openAIOAuth429FallbackCooldown        = 5 * time.Second
-	openAIOAuth429RetryWindow             = 2 * time.Minute
-	openAIOAuth429RetryDelay              = 500 * time.Millisecond
-	openAIOAuth429MaxRetryDelay           = 8 * time.Second
-	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
+	openAIAccountStateUpdateTimeout    = 5 * time.Second
+	openAIOAuth429FallbackCooldown     = 5 * time.Second
+	openAIOAuth429RetryWindow          = 2 * time.Minute
+	openAIOAuth429RetryDelay           = 500 * time.Millisecond
+	openAIOAuth429MaxRetryDelay        = 8 * time.Second
+	openAIStopSchedulingBridgeCooldown = 2 * time.Minute
 )
 
 // OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
