@@ -399,6 +399,38 @@ func TestHandleUpstreamError_OpenAIOAuthShort429BypassesTempUnschedulableRule(t 
 	require.NotEqual(t, currentProxyID, *account.ProxyID)
 }
 
+func TestOpenAIOAuthRetryable429RotatesProxyAfterResponseBodyNormalization(t *testing.T) {
+	settingRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.OpenAIRateLimitProxyRotationEnabled = true
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+
+	currentProxyID := int64(1)
+	repo := &openAI429SnapshotRepo{}
+	proxyRepo := &openAIOAuthRateLimitProxyRepo{proxies: []Proxy{
+		{ID: 1, Status: StatusActive},
+		{ID: 2, Status: StatusActive},
+	}}
+	rateLimits := NewRateLimitService(repo, nil, nil, nil, nil)
+	settingService := NewSettingService(settingRepo, nil)
+	rateLimits.SetSettingService(settingService)
+	rateLimits.SetProxyRepository(proxyRepo)
+	gateway := &OpenAIGatewayService{rateLimitService: rateLimits, settingService: settingService}
+	account := &Account{ID: 125, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &currentProxyID}
+	failoverErr := &UpstreamFailoverError{
+		StatusCode:             http.StatusTooManyRequests,
+		ResponseBody:           []byte(`{"error":{"type":"rate_limit_error","message":"upstream request failed"}}`),
+		RetryableOnSameAccount: true,
+	}
+
+	gateway.ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(context.Background(), account, failoverErr)
+
+	require.NotNil(t, account.ProxyID)
+	require.Equal(t, int64(2), *account.ProxyID)
+}
+
 func TestHandle429_OpenAIOAuthRateLimitProxyRotationSkipsDisabledAndUsageLimit(t *testing.T) {
 	settingRepo := newOpenAIOAuthRuntimeSettingRepo()
 	settings := DefaultOpenAIOAuthRuntimeSettings(false)

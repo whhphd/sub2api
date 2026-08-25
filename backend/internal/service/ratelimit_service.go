@@ -1747,7 +1747,7 @@ func isOpenAIOAuthShortRateLimitExceeded(account *Account, statusCode int, body 
 }
 
 func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context, account *Account, responseBody []byte) {
-	if s == nil || account == nil || !account.IsOpenAIOAuth() || !isOpenAIShortRateLimitExceededResponse(responseBody) {
+	if s == nil || account == nil || !account.IsOpenAIOAuth() || isOpenAIUsageLimit429Response(responseBody) {
 		return
 	}
 	if s.proxyRepo == nil || s.accountRepo == nil || s.settingService == nil {
