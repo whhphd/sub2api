@@ -223,11 +223,11 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 
 type openAI429SnapshotRepo struct {
 	mockAccountRepoForGemini
-	rateLimitedID      int64
-	updatedExtra       map[string]any
-	bulkUpdatedIDs     []int64
-	bulkUpdatedPayload AccountBulkUpdate
-	tempCalls          int
+	rateLimitedID       int64
+	updatedExtra        map[string]any
+	bulkUpdatedIDs      []int64
+	bulkUpdatedPayload  AccountBulkUpdate
+	tempCalls           int
 	modelRateLimitCalls int
 }
 
