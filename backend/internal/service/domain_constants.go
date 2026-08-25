@@ -598,8 +598,6 @@ const (
 	SettingKeyOpenAILowUpstreamRatePriorityEnabled = "openai_low_upstream_rate_priority_enabled"
 	// SettingKeyOpenAIOAuthSchedulingRateMultiplier OAuth 账号参与成本调度时使用的参考倍率。
 	SettingKeyOpenAIOAuthSchedulingRateMultiplier = "openai_oauth_scheduling_rate_multiplier"
-	// SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled 新建 OpenAI OAuth 账号时默认启用空工具调用注入和 429 调度策略。
-	SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled = "openai_oauth_new_account_noop_toolcall_defaults_enabled"
 	// SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled controls whether
 	// newly-created OpenAI OAuth accounts default to device+session convergence.
 	SettingKeyOpenAIOAuthDefaultCodexFingerprintEnabled = "openai_oauth_default_codex_fingerprint_enabled"

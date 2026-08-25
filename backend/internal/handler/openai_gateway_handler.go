@@ -408,10 +408,6 @@ func NewOpenAIGatewayHandler(
 	}
 }
 
-func shouldEnableOpenAIOAuthDynamic429ForResponses(c *gin.Context) bool {
-	return GetInboundEndpoint(c) == EndpointResponses && !service.IsOpenAIResponsesCompactPath(c)
-}
-
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
@@ -469,9 +465,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	body, ok = h.normalizeOpenAIResponsesCompactRequest(c, reqLog, body)
 	if !ok {
 		return
-	}
-	if shouldEnableOpenAIOAuthDynamic429ForResponses(c) {
-		c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 	}
 	legacyCompact := service.IsOpenAIResponsesCompactPath(c)
 	nativeV2 := isBareOpenAIResponsesPath(c) && isOpenAIRemoteCompactionV2Request(body)
@@ -1162,7 +1155,6 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverAnthropicMessagesPanic(c, &streamStarted)
-	c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 
 	requestStart := time.Now()
 
@@ -1929,7 +1921,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		h.errorResponse(c, http.StatusUpgradeRequired, "invalid_request_error", "WebSocket upgrade required (Upgrade: websocket)")
 		return
 	}
-	c.Request = c.Request.WithContext(service.WithOpenAIOAuth429ThresholdPolicy(c.Request.Context()))
 	setOpenAIClientTransportWS(c)
 
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)

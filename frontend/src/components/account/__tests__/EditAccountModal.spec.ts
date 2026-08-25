@@ -615,28 +615,6 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
-  it('hides account-level OpenAI OAuth runtime controls and preserves stored legacy keys', async () => {
-    const account = buildOpenAIOAuthAccount()
-    account.extra = {
-      openai_oauth_inject_noop_toolcall: true,
-      openai_oauth_inject_noop_toolcall_ignore_429_cooldown: true,
-      openai_oauth_inject_noop_toolcall_429_threshold: 17
-    }
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
-
-    const wrapper = mountModal(account)
-    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-toggle"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-429-retry-toggle"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-429-threshold"]').exists()).toBe(false)
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject(account.extra)
-  })
-
   it('loads and clears the OAuth-only Codex namespace flatten toggle', async () => {
     const account = buildAccount()
     account.type = 'oauth'

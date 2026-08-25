@@ -698,27 +698,13 @@ describe("admin SettingsView payment visible method controls", () => {
     });
     updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
     const openAIOAuthRuntimeSettings = {
-      noop_toolcall_injection_enabled: true,
       safe_pre_output_overload_retry_enabled: false,
       openai_oauth_rate_limit_same_account_retry_enabled: false,
       grok_oauth_forbidden_same_account_retry_enabled: false,
       plan_gated_model_cooldown_enabled: true,
-      dynamic_429_scheduling: {
-        enabled: false,
-        window_seconds: 300,
-        minimum_samples: 20,
-        minimum_429_count: 3,
-        ratio_threshold: 1,
-        pause_mode: "upstream_reset",
-        fixed_pause_seconds: 60,
-        revision: 1,
-      },
     };
     getOpenAIOAuthRuntimeSettings.mockResolvedValue(openAIOAuthRuntimeSettings);
     updateOpenAIOAuthRuntimeSettings.mockImplementation(async (payload) => ({
-      noop_toolcall_injection_enabled:
-        payload.noop_toolcall_injection_enabled ??
-        openAIOAuthRuntimeSettings.noop_toolcall_injection_enabled,
       safe_pre_output_overload_retry_enabled:
         payload.safe_pre_output_overload_retry_enabled ??
         openAIOAuthRuntimeSettings.safe_pre_output_overload_retry_enabled,
@@ -731,9 +717,6 @@ describe("admin SettingsView payment visible method controls", () => {
       plan_gated_model_cooldown_enabled:
         payload.plan_gated_model_cooldown_enabled ??
         openAIOAuthRuntimeSettings.plan_gated_model_cooldown_enabled,
-      dynamic_429_scheduling:
-        payload.dynamic_429_scheduling ??
-        openAIOAuthRuntimeSettings.dynamic_429_scheduling,
     }));
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
@@ -1581,28 +1564,6 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(weightedModeText).toContain("计费倍率");
   });
 
-  it("loads and independently saves the global OpenAI OAuth injection switch", async () => {
-    const wrapper = mountView();
-
-    await flushPromises();
-    await openGatewayTab(wrapper);
-    expect(
-      wrapper.find('[data-testid="openai-oauth-new-account-defaults-toggle"]').exists(),
-    ).toBe(false);
-
-    const toggle = wrapper.get('[data-testid="openai-oauth-injection-toggle"]');
-    expect((toggle.element as HTMLInputElement).checked).toBe(true);
-
-    await toggle.setValue(false);
-    await wrapper.get('[data-testid="openai-oauth-injection-save"]').trigger("click");
-    await flushPromises();
-
-    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
-      noop_toolcall_injection_enabled: false,
-    });
-    expect(updateSettings).not.toHaveBeenCalled();
-  });
-
   it("independently saves the OpenAI OAuth safe streaming retry switch", async () => {
     const wrapper = mountView();
 
@@ -1662,58 +1623,6 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
       grok_oauth_forbidden_same_account_retry_enabled: true,
-    });
-    expect(updateSettings).not.toHaveBeenCalled();
-  });
-
-  it("enables dynamic 429 fields by mode and saves only that global policy", async () => {
-    const wrapper = mountView();
-
-    await flushPromises();
-    await openGatewayTab(wrapper);
-
-    const enabled = wrapper.get('[data-testid="openai-oauth-dynamic-429-toggle"]');
-    const windowInput = wrapper.get('[data-testid="openai-oauth-dynamic-429-window"]');
-    const fixedPauseInput = wrapper.get(
-      '[data-testid="openai-oauth-dynamic-429-fixed-pause"]',
-    );
-    expect((enabled.element as HTMLInputElement).checked).toBe(false);
-    expect(windowInput.attributes("disabled")).toBeDefined();
-    expect(fixedPauseInput.attributes("disabled")).toBeDefined();
-
-    await enabled.setValue(true);
-    expect(windowInput.attributes("disabled")).toBeUndefined();
-    expect(fixedPauseInput.attributes("disabled")).toBeDefined();
-
-    await wrapper
-      .get('[data-testid="openai-oauth-dynamic-429-pause-mode"]')
-      .setValue("fixed");
-    expect(fixedPauseInput.attributes("disabled")).toBeUndefined();
-    await windowInput.setValue("600");
-    await wrapper
-      .get('[data-testid="openai-oauth-dynamic-429-samples"]')
-      .setValue("40");
-    await wrapper
-      .get('[data-testid="openai-oauth-dynamic-429-count"]')
-      .setValue("5");
-    await wrapper
-      .get('[data-testid="openai-oauth-dynamic-429-ratio"]')
-      .setValue("0.25");
-    await fixedPauseInput.setValue("90");
-    await wrapper.get('[data-testid="openai-oauth-dynamic-429-save"]').trigger("click");
-    await flushPromises();
-
-    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
-      dynamic_429_scheduling: {
-        enabled: true,
-        window_seconds: 600,
-        minimum_samples: 40,
-        minimum_429_count: 5,
-        ratio_threshold: 0.25,
-        pause_mode: "fixed",
-        fixed_pause_seconds: 90,
-        revision: 1,
-      },
     });
     expect(updateSettings).not.toHaveBeenCalled();
   });

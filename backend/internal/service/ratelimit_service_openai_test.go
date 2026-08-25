@@ -147,47 +147,6 @@ func TestIsOpenAIUsageLimit429Response(t *testing.T) {
 	}
 }
 
-func TestHandleOpenAIAccountUpstreamErrorFiltersDynamic429Observations(t *testing.T) {
-	dynamic := DefaultOpenAIOAuthRuntimeSettings(true).Dynamic429Scheduling
-	account := &Account{ID: 1234, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	ctx := WithOpenAIOAuth429ThresholdPolicy(context.Background())
-
-	t.Run("short rate limit bypasses dynamic observer", func(t *testing.T) {
-		counter := &openAIOAuth429CounterStub{}
-		rateLimitService, _, _, _ := newOpenAIOAuth429PolicyService(t, dynamic, counter)
-		gateway := &OpenAIGatewayService{rateLimitService: rateLimitService}
-
-		gateway.handleOpenAIAccountUpstreamError(
-			ctx,
-			account,
-			http.StatusTooManyRequests,
-			http.Header{},
-			[]byte(`{"detail":"Rate limit exceeded"}`),
-		)
-
-		require.Empty(t, counter.observed)
-	})
-
-	t.Run("usage exhaustion reaches dynamic observer", func(t *testing.T) {
-		counter := &openAIOAuth429CounterStub{results: []OpenAIOAuth429ObservationResult{{
-			Active: true, TotalSamples: 1, Count429: 1,
-		}}}
-		rateLimitService, _, _, _ := newOpenAIOAuth429PolicyService(t, dynamic, counter)
-		gateway := &OpenAIGatewayService{rateLimitService: rateLimitService}
-
-		gateway.handleOpenAIAccountUpstreamError(
-			ctx,
-			account,
-			http.StatusTooManyRequests,
-			http.Header{},
-			[]byte(`{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}`),
-		)
-
-		require.Len(t, counter.observed, 1)
-		require.True(t, counter.observed[0].Is429)
-	})
-}
-
 func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 	svc := &RateLimitService{}
 
@@ -269,34 +228,6 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
 	}
-}
-
-func TestHandle429_OpenAIDefersCooldownWhenThresholdPolicySuppressesIt(t *testing.T) {
-	repo := &openAI429SnapshotRepo{}
-	svc := NewRateLimitService(repo, nil, nil, nil, nil)
-	account := &Account{
-		ID:          125,
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeOAuth,
-		Credentials: map[string]any{"plan_type": "plus"},
-		Extra: map[string]any{
-			openAIOAuthInjectNoopToolCallExtraKey:                  true,
-			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
-		},
-	}
-	headers := http.Header{}
-	headers.Set("x-codex-primary-used-percent", "100")
-	headers.Set("x-codex-primary-reset-after-seconds", "604800")
-	headers.Set("x-codex-primary-window-minutes", "10080")
-	body := []byte(`{"error":{"type":"usage_limit_reached","plan_type":"free","resets_at":1777283883}}`)
-
-	svc.handle429(withOpenAIOAuth429CooldownSuppressed(context.Background(), true), account, headers, body)
-
-	require.Zero(t, repo.rateLimitedID)
-	require.NotEmpty(t, repo.updatedExtra)
-	require.Equal(t, 100.0, repo.updatedExtra["codex_7d_used_percent"])
-	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
-	require.Equal(t, "free", account.Credentials["plan_type"])
 }
 
 func TestHandle429_OpenAISyncsObservedPlanType(t *testing.T) {

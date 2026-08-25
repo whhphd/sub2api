@@ -104,10 +104,6 @@ func TestOpenAIGatewayServiceForwardImages_ImageRateLimitReturnsFailoverAndCools
 		Name:     "openai-oauth",
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
-		Extra: map[string]any{
-			openAIOAuthInjectNoopToolCallExtraKey:                  true,
-			openAIOAuthInjectNoopToolCallIgnore429CooldownExtraKey: true,
-		},
 		Credentials: map[string]any{
 			"access_token": "token-123",
 		},

@@ -851,22 +851,14 @@ func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*O
 		return normalized, nil
 	}
 
-	legacyValue, legacyErr := s.settingRepo.GetValue(ctx, SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled)
-	if legacyErr != nil && !errors.Is(legacyErr, ErrSettingNotFound) {
-		return nil, fmt.Errorf("get legacy OpenAI OAuth runtime setting: %w", legacyErr)
-	}
-	return DefaultOpenAIOAuthRuntimeSettings(strings.TrimSpace(legacyValue) == "true"), nil
+	return DefaultOpenAIOAuthRuntimeSettings(false), nil
 }
 
 // UpdateOpenAIOAuthRuntimeSettings applies an independent partial update. The
 // optional retry settings preserve call compatibility: index 0 is OpenAI OAuth
-// 429 retry and index 1 is Grok OAuth 403 retry. A dynamic-policy update
-// advances its revision so Redis observations from the previous policy cannot
-// be reused.
+// 429 retry and index 1 is Grok OAuth 403 retry.
 func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	ctx context.Context,
-	noopToolcallInjectionEnabled *bool,
-	dynamic429Scheduling *OpenAIOAuthDynamic429SchedulingSettings,
 	safePreOutputOverloadRetryEnabled *bool,
 	planGatedModelCooldownEnabled *bool,
 	sameAccountRetrySettings ...*bool,
@@ -876,7 +868,7 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	}
 	rateLimitSameAccountRetryProvided := len(sameAccountRetrySettings) > 0 && sameAccountRetrySettings[0] != nil
 	grokForbiddenSameAccountRetryProvided := len(sameAccountRetrySettings) > 1 && sameAccountRetrySettings[1] != nil
-	if noopToolcallInjectionEnabled == nil && dynamic429Scheduling == nil && safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided {
+	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -889,9 +881,6 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	if err != nil {
 		return nil, err
 	}
-	if noopToolcallInjectionEnabled != nil {
-		current.NoopToolcallInjectionEnabled = *noopToolcallInjectionEnabled
-	}
 	if safePreOutputOverloadRetryEnabled != nil {
 		current.SafePreOutputOverloadRetryEnabled = *safePreOutputOverloadRetryEnabled
 	}
@@ -903,14 +892,6 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	}
 	if grokForbiddenSameAccountRetryProvided {
 		current.GrokOAuthForbiddenSameAccountRetryEnabled = *sameAccountRetrySettings[1]
-	}
-	if dynamic429Scheduling != nil {
-		nextRevision := current.Dynamic429Scheduling.Revision + 1
-		if nextRevision < 1 {
-			nextRevision = 1
-		}
-		current.Dynamic429Scheduling = *dynamic429Scheduling
-		current.Dynamic429Scheduling.Revision = nextRevision
 	}
 	normalized, err := normalizeOpenAIOAuthRuntimeSettings(current)
 	if err != nil {

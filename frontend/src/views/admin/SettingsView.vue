@@ -562,61 +562,6 @@
             </div>
           </div>
 
-          <!-- OpenAI OAuth Tool-Call Injection -->
-          <div class="card" data-testid="openai-oauth-injection-card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.openaiOauthRuntime.injectionTitle") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.openaiOauthRuntime.injectionDescription") }}
-              </p>
-            </div>
-            <div class="space-y-5 p-6">
-              <div
-                v-if="openAIOAuthRuntimeLoading"
-                class="flex items-center gap-2 text-gray-500"
-              >
-                <div
-                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
-                ></div>
-                {{ t("common.loading") }}
-              </div>
-              <template v-else>
-                <div class="flex items-center justify-between gap-6">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t("admin.settings.openaiOauthRuntime.injectionEnabled") }}
-                    </label>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.injectionEnabledHint") }}
-                    </p>
-                  </div>
-                  <Toggle
-                    v-model="openAIOAuthRuntimeForm.noop_toolcall_injection_enabled"
-                    :disabled="openAIOAuthInjectionSaving"
-                    data-testid="openai-oauth-injection-toggle"
-                  />
-                </div>
-                <div
-                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
-                >
-                  <button
-                    type="button"
-                    class="btn btn-primary btn-sm"
-                    :disabled="openAIOAuthInjectionSaving"
-                    data-testid="openai-oauth-injection-save"
-                    @click="saveOpenAIOAuthInjectionSettings"
-                  >
-                    {{ openAIOAuthInjectionSaving ? t("common.saving") : t("common.save") }}
-                  </button>
-                </div>
-              </template>
-            </div>
-          </div>
-
           <!-- OpenAI OAuth Safe Stream Retry -->
           <div class="card" data-testid="openai-oauth-safe-retry-card">
             <div
@@ -721,180 +666,6 @@
                     @click="saveOpenAIOAuthPlanGatedCooldownSettings"
                   >
                     {{ openAIOAuthPlanGatedCooldownSaving ? t("common.saving") : t("common.save") }}
-                  </button>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          <!-- OpenAI OAuth Dynamic 429 Scheduling -->
-          <div class="card" data-testid="openai-oauth-dynamic-429-card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.openaiOauthRuntime.dynamic429Title") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.openaiOauthRuntime.dynamic429Description") }}
-              </p>
-            </div>
-            <div class="space-y-5 p-6">
-              <div
-                v-if="openAIOAuthRuntimeLoading"
-                class="flex items-center gap-2 text-gray-500"
-              >
-                <div
-                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
-                ></div>
-                {{ t("common.loading") }}
-              </div>
-              <template v-else>
-                <div class="flex items-center justify-between gap-6">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t("admin.settings.openaiOauthRuntime.dynamic429Enabled") }}
-                    </label>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.dynamic429EnabledHint") }}
-                    </p>
-                  </div>
-                  <Toggle
-                    v-model="openAIOAuthRuntimeForm.dynamic_429_scheduling.enabled"
-                    :disabled="openAIOAuthDynamic429Saving"
-                    data-testid="openai-oauth-dynamic-429-toggle"
-                  />
-                </div>
-
-                <div
-                  class="grid grid-cols-1 gap-x-8 gap-y-5 border-t border-gray-100 pt-5 md:grid-cols-3 dark:border-dark-700"
-                >
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.openaiOauthRuntime.windowSeconds") }}
-                    </label>
-                    <input
-                      v-model.number="openAIOAuthRuntimeForm.dynamic_429_scheduling.window_seconds"
-                      type="number"
-                      min="60"
-                      max="3600"
-                      class="input w-32"
-                      :disabled="!openAIOAuthRuntimeForm.dynamic_429_scheduling.enabled"
-                      data-testid="openai-oauth-dynamic-429-window"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.windowSecondsHint") }}
-                    </p>
-                  </div>
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.openaiOauthRuntime.minimumSamples") }}
-                    </label>
-                    <input
-                      v-model.number="openAIOAuthRuntimeForm.dynamic_429_scheduling.minimum_samples"
-                      type="number"
-                      min="2"
-                      max="10000"
-                      class="input w-32"
-                      :disabled="!openAIOAuthRuntimeForm.dynamic_429_scheduling.enabled"
-                      data-testid="openai-oauth-dynamic-429-samples"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.minimumSamplesHint") }}
-                    </p>
-                  </div>
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.openaiOauthRuntime.minimum429Count") }}
-                    </label>
-                    <input
-                      v-model.number="openAIOAuthRuntimeForm.dynamic_429_scheduling.minimum_429_count"
-                      type="number"
-                      min="1"
-                      :max="openAIOAuthRuntimeForm.dynamic_429_scheduling.minimum_samples"
-                      class="input w-32"
-                      :disabled="!openAIOAuthRuntimeForm.dynamic_429_scheduling.enabled"
-                      data-testid="openai-oauth-dynamic-429-count"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.minimum429CountHint") }}
-                    </p>
-                  </div>
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.openaiOauthRuntime.ratioThreshold") }}
-                    </label>
-                    <input
-                      v-model.number="openAIOAuthRuntimeForm.dynamic_429_scheduling.ratio_threshold"
-                      type="number"
-                      min="0.01"
-                      max="1"
-                      step="0.01"
-                      class="input w-32"
-                      :disabled="!openAIOAuthRuntimeForm.dynamic_429_scheduling.enabled"
-                      data-testid="openai-oauth-dynamic-429-ratio"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.ratioThresholdHint") }}
-                    </p>
-                  </div>
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.openaiOauthRuntime.pauseMode") }}
-                    </label>
-                    <select
-                      v-model="openAIOAuthRuntimeForm.dynamic_429_scheduling.pause_mode"
-                      class="input min-w-56"
-                      :disabled="!openAIOAuthRuntimeForm.dynamic_429_scheduling.enabled"
-                      data-testid="openai-oauth-dynamic-429-pause-mode"
-                    >
-                      <option value="upstream_reset">
-                        {{ t("admin.settings.openaiOauthRuntime.pauseModeUpstreamReset") }}
-                      </option>
-                      <option value="fixed">
-                        {{ t("admin.settings.openaiOauthRuntime.pauseModeFixed") }}
-                      </option>
-                    </select>
-                    <p
-                      v-if="openAIOAuthRuntimeForm.dynamic_429_scheduling.pause_mode === 'upstream_reset'"
-                      class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
-                    >
-                      {{ t("admin.settings.openaiOauthRuntime.pauseModeUpstreamResetHint") }}
-                    </p>
-                    <p v-else class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.fixedPauseSecondsHint") }}
-                    </p>
-                  </div>
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.openaiOauthRuntime.fixedPauseSeconds") }}
-                    </label>
-                    <input
-                      v-model.number="openAIOAuthRuntimeForm.dynamic_429_scheduling.fixed_pause_seconds"
-                      type="number"
-                      min="1"
-                      max="7200"
-                      class="input w-32"
-                      :disabled="!openAIOAuthRuntimeForm.dynamic_429_scheduling.enabled || openAIOAuthRuntimeForm.dynamic_429_scheduling.pause_mode !== 'fixed'"
-                      data-testid="openai-oauth-dynamic-429-fixed-pause"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.openaiOauthRuntime.fixedPauseSecondsHint") }}
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
-                >
-                  <button
-                    type="button"
-                    class="btn btn-primary btn-sm"
-                    :disabled="openAIOAuthDynamic429Saving"
-                    data-testid="openai-oauth-dynamic-429-save"
-                    @click="saveOpenAIOAuthDynamic429Settings"
-                  >
-                    {{ openAIOAuthDynamic429Saving ? t("common.saving") : t("common.save") }}
                   </button>
                 </div>
               </template>
@@ -9406,7 +9177,6 @@ import type {
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
-  OpenAIOAuthDynamic429SchedulingSettings,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -9610,28 +9380,15 @@ const rateLimit429CooldownForm = reactive({
 });
 
 const openAIOAuthRuntimeLoading = ref(true);
-const openAIOAuthInjectionSaving = ref(false);
 const openAIOAuthSafeRetrySaving = ref(false);
 const openAIOAuthRateLimitSameAccountRetrySaving = ref(false);
 const grokOAuthForbiddenSameAccountRetrySaving = ref(false);
 const openAIOAuthPlanGatedCooldownSaving = ref(false);
-const openAIOAuthDynamic429Saving = ref(false);
 const openAIOAuthRuntimeForm = reactive({
-  noop_toolcall_injection_enabled: false,
   safe_pre_output_overload_retry_enabled: false,
   openai_oauth_rate_limit_same_account_retry_enabled: false,
   grok_oauth_forbidden_same_account_retry_enabled: false,
   plan_gated_model_cooldown_enabled: true,
-  dynamic_429_scheduling: {
-    enabled: false,
-    window_seconds: 300,
-    minimum_samples: 20,
-    minimum_429_count: 3,
-    ratio_threshold: 1,
-    pause_mode: "upstream_reset",
-    fixed_pause_seconds: 60,
-    revision: 1,
-  } as OpenAIOAuthDynamic429SchedulingSettings,
 });
 
 // Panel API Rate Limit 状态
@@ -12677,8 +12434,6 @@ async function loadOpenAIOAuthRuntimeSettings() {
   openAIOAuthRuntimeLoading.value = true;
   try {
     const settings = await adminAPI.settings.getOpenAIOAuthRuntimeSettings();
-    openAIOAuthRuntimeForm.noop_toolcall_injection_enabled =
-      settings.noop_toolcall_injection_enabled;
     openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
       settings.safe_pre_output_overload_retry_enabled;
     openAIOAuthRuntimeForm.openai_oauth_rate_limit_same_account_retry_enabled =
@@ -12687,12 +12442,8 @@ async function loadOpenAIOAuthRuntimeSettings() {
       settings.grok_oauth_forbidden_same_account_retry_enabled;
     openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
       settings.plan_gated_model_cooldown_enabled;
-    Object.assign(
-      openAIOAuthRuntimeForm.dynamic_429_scheduling,
-      settings.dynamic_429_scheduling,
-    );
   } catch (_error: unknown) {
-    // Keep both global features disabled if the dedicated setting cannot load.
+    // Keep custom runtime features at their safe defaults if the setting cannot load.
   } finally {
     openAIOAuthRuntimeLoading.value = false;
   }
@@ -12709,12 +12460,6 @@ async function saveOpenAIOAuthSafeRetrySettings() {
       updated.safe_pre_output_overload_retry_enabled;
     openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
       updated.plan_gated_model_cooldown_enabled;
-    openAIOAuthRuntimeForm.noop_toolcall_injection_enabled =
-      updated.noop_toolcall_injection_enabled;
-    Object.assign(
-      openAIOAuthRuntimeForm.dynamic_429_scheduling,
-      updated.dynamic_429_scheduling,
-    );
     appStore.showSuccess(t("admin.settings.openaiOauthRuntime.safeRetrySaved"));
   } catch (error: unknown) {
     appStore.showError(
@@ -12776,36 +12521,6 @@ async function saveGrokOAuthForbiddenSameAccountRetrySettings() {
   }
 }
 
-async function saveOpenAIOAuthInjectionSettings() {
-  openAIOAuthInjectionSaving.value = true;
-  try {
-    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({
-      noop_toolcall_injection_enabled:
-        openAIOAuthRuntimeForm.noop_toolcall_injection_enabled,
-    });
-    openAIOAuthRuntimeForm.noop_toolcall_injection_enabled =
-      updated.noop_toolcall_injection_enabled;
-    openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
-      updated.safe_pre_output_overload_retry_enabled;
-    openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
-      updated.plan_gated_model_cooldown_enabled;
-    Object.assign(
-      openAIOAuthRuntimeForm.dynamic_429_scheduling,
-      updated.dynamic_429_scheduling,
-    );
-    appStore.showSuccess(t("admin.settings.openaiOauthRuntime.injectionSaved"));
-  } catch (error: unknown) {
-    appStore.showError(
-      extractApiErrorMessage(
-        error,
-        t("admin.settings.openaiOauthRuntime.injectionSaveFailed"),
-      ),
-    );
-  } finally {
-    openAIOAuthInjectionSaving.value = false;
-  }
-}
-
 async function saveOpenAIOAuthPlanGatedCooldownSettings() {
   openAIOAuthPlanGatedCooldownSaving.value = true;
   try {
@@ -12813,16 +12528,10 @@ async function saveOpenAIOAuthPlanGatedCooldownSettings() {
       plan_gated_model_cooldown_enabled:
         openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled,
     });
-    openAIOAuthRuntimeForm.noop_toolcall_injection_enabled =
-      updated.noop_toolcall_injection_enabled;
     openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
       updated.safe_pre_output_overload_retry_enabled;
     openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
       updated.plan_gated_model_cooldown_enabled;
-    Object.assign(
-      openAIOAuthRuntimeForm.dynamic_429_scheduling,
-      updated.dynamic_429_scheduling,
-    );
     appStore.showSuccess(
       t("admin.settings.openaiOauthRuntime.planGatedCooldownSaved"),
     );
@@ -12835,37 +12544,6 @@ async function saveOpenAIOAuthPlanGatedCooldownSettings() {
     );
   } finally {
     openAIOAuthPlanGatedCooldownSaving.value = false;
-  }
-}
-
-async function saveOpenAIOAuthDynamic429Settings() {
-  openAIOAuthDynamic429Saving.value = true;
-  try {
-    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({
-      dynamic_429_scheduling: {
-        ...openAIOAuthRuntimeForm.dynamic_429_scheduling,
-      },
-    });
-    openAIOAuthRuntimeForm.noop_toolcall_injection_enabled =
-      updated.noop_toolcall_injection_enabled;
-    openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
-      updated.safe_pre_output_overload_retry_enabled;
-    openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
-      updated.plan_gated_model_cooldown_enabled;
-    Object.assign(
-      openAIOAuthRuntimeForm.dynamic_429_scheduling,
-      updated.dynamic_429_scheduling,
-    );
-    appStore.showSuccess(t("admin.settings.openaiOauthRuntime.dynamic429Saved"));
-  } catch (error: unknown) {
-    appStore.showError(
-      extractApiErrorMessage(
-        error,
-        t("admin.settings.openaiOauthRuntime.dynamic429SaveFailed"),
-      ),
-    );
-  } finally {
-    openAIOAuthDynamic429Saving.value = false;
   }
 }
 

@@ -334,26 +334,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(flow.props('initialInputMethod')).toBe('manual')
   })
 
-  it('does not expose or serialize account-level OpenAI OAuth runtime controls', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'OpenAI')
-    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-toggle"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-429-retry-toggle"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="openai-oauth-noop-toolcall-429-threshold"]').exists()).toBe(false)
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex global policy')
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-
-    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
-    flow.vm.$emit('import-codex-session', 'session-json')
-    await flushPromises()
-
-    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
-    const extra = importCodexSessionMock.mock.calls[0]?.[0]?.extra ?? {}
-    expect(extra).not.toHaveProperty('openai_oauth_inject_noop_toolcall')
-    expect(extra).not.toHaveProperty('openai_oauth_inject_noop_toolcall_ignore_429_cooldown')
-    expect(extra).not.toHaveProperty('openai_oauth_inject_noop_toolcall_429_threshold')
-  })
-
   it.each([
     ['camelCase', { authMode: 'agentIdentity', agentIdentity: { agentRuntimeId: 'runtime' } }],
     ['nested identity without auth_mode', { agent_identity: { agent_runtime_id: 'runtime' } }],

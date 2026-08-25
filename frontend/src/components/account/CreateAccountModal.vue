@@ -5150,12 +5150,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_responses_flatten_namespaces
   }
   extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
-
-  delete extra.openai_oauth_inject_noop_toolcall
-  delete extra.openai_oauth_inject_noop_toolcall_ignore_429_cooldown
-  delete extra.openai_oauth_inject_noop_toolcall_429_threshold
-
-  if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
+	if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
     extra.codex_cli_only = true
   } else {
     delete extra.codex_cli_only

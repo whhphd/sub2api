@@ -15,11 +15,7 @@ const (
 	openAIOAuth429RetryWindow             = 2 * time.Minute
 	openAIOAuth429RetryDelay              = 500 * time.Millisecond
 	openAIOAuth429MaxRetryDelay           = 8 * time.Second
-	openAIOAuth429MaxAccountAttempts      = 3
 	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
-	openAIOAuth429StormWindow             = 10 * time.Second
-	openAIOAuth429StormThreshold          = 20
-	openAIOAuth429StormMaxAccountSwitches = 1
 )
 
 // OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
@@ -179,12 +175,10 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 		return
 	}
 	// Spark 影子：不按 /responses 429 的 global x-codex-* 信号做内存运行时熔断(同 handle429,外审第8轮 P1)。
-	// 同时避免把 spark 的 429 计入全局 429 storm 计数(recordOpenAIOAuth429),否则会误伤母账号 failover 决策。
 	if account.IsShadow() {
 		return
 	}
-	s.recordOpenAIOAuth429()
-	if isOpenAIOAuth429CooldownSuppressed(ctx) || s.openAIOAuth429RetryWindowActive(account) {
+	if s.openAIOAuth429RetryWindowActive(account) {
 		return
 	}
 
@@ -429,34 +423,8 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	return s != nil && (s.isOpenAIAccountRuntimeBlocked(account) || s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel))
 }
 
-func (s *OpenAIGatewayService) recordOpenAIOAuth429() {
-	if s == nil {
-		return
-	}
-	now := time.Now()
-	windowStart := s.openaiOAuth429WindowStartUnixNano.Load()
-	if windowStart == 0 || now.Sub(time.Unix(0, windowStart)) >= openAIOAuth429StormWindow {
-		if s.openaiOAuth429WindowStartUnixNano.CompareAndSwap(windowStart, now.UnixNano()) {
-			s.openaiOAuth429WindowCount.Store(1)
-			return
-		}
-	}
-	s.openaiOAuth429WindowCount.Add(1)
-}
-
-func (s *OpenAIGatewayService) isOpenAIOAuth429Storm() bool {
-	if s == nil {
-		return false
-	}
-	windowStart := s.openaiOAuth429WindowStartUnixNano.Load()
-	if windowStart == 0 || time.Since(time.Unix(0, windowStart)) >= openAIOAuth429StormWindow {
-		return false
-	}
-	return s.openaiOAuth429WindowCount.Load() >= openAIOAuth429StormThreshold
-}
-
 func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int, state *OpenAIOAuth429FailoverState) bool {
-	if failedSwitches < openAIOAuth429StormMaxAccountSwitches {
+	if failedSwitches < 1 {
 		return false
 	}
 	if state != nil && state.grokOAuth429FollowupPending {
@@ -476,18 +444,5 @@ func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account
 		}
 		return false
 	}
-	if statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) {
-		return false
-	}
-	// Dynamic scheduling deliberately lets the current request try other
-	// accounts while the account-local window is still below its pause
-	// threshold. The request's failed-account set still prevents selecting the
-	// same ordinary OAuth account again.
-	if s.settingService != nil && s.settingService.GetOpenAIOAuthRuntimeSettings(context.Background()).Dynamic429Scheduling.Enabled {
-		return false
-	}
-	// Each OpenAI OAuth candidate has already consumed its full same-account
-	// retry window before reaching this switch point. A global storm is useful
-	// telemetry, but must not prevent trying the bounded next-account budget.
-	return s.isOpenAIOAuth429Storm() || failedSwitches >= openAIOAuth429MaxAccountAttempts
+	return false
 }

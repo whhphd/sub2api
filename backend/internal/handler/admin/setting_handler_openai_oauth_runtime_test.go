@@ -103,127 +103,67 @@ func decodeOpenAIOAuthRuntimeResponse(t *testing.T, recorder *httptest.ResponseR
 	return envelope.Data
 }
 
-func TestSettingHandlerOpenAIOAuthRuntimeGetUsesLegacyFallback(t *testing.T) {
-	handler, repo := newOpenAIOAuthRuntimeHandler()
-	repo.values[service.SettingKeyOpenAIOAuthNewAccountNoopToolcallDefaultsEnabled] = "true"
+func TestSettingHandlerOpenAIOAuthRuntimeGetUsesDefaults(t *testing.T) {
+	handler, _ := newOpenAIOAuthRuntimeHandler()
 
 	recorder := performOpenAIOAuthRuntimeRequest(t, handler.GetOpenAIOAuthRuntimeSettings, http.MethodGet, nil)
 	require.Equal(t, http.StatusOK, recorder.Code)
-	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
-	require.True(t, settings.NoopToolcallInjectionEnabled)
-	require.True(t, settings.Dynamic429Scheduling.Enabled)
+	require.Equal(t, *service.DefaultOpenAIOAuthRuntimeSettings(false), decodeOpenAIOAuthRuntimeResponse(t, recorder))
 }
 
 func TestSettingHandlerOpenAIOAuthRuntimePatchIsPartial(t *testing.T) {
-	handler, repo := newOpenAIOAuthRuntimeHandler()
+	tests := []struct {
+		name    string
+		payload map[string]any
+		assert  func(*testing.T, service.OpenAIOAuthRuntimeSettings)
+	}{
+		{
+			name:    "safe pre-output retry",
+			payload: map[string]any{"safe_pre_output_overload_retry_enabled": true},
+			assert: func(t *testing.T, settings service.OpenAIOAuthRuntimeSettings) {
+				require.True(t, settings.SafePreOutputOverloadRetryEnabled)
+				require.True(t, settings.PlanGatedModelCooldownEnabled)
+			},
+		},
+		{
+			name:    "plan-gated cooldown",
+			payload: map[string]any{"plan_gated_model_cooldown_enabled": false},
+			assert: func(t *testing.T, settings service.OpenAIOAuthRuntimeSettings) {
+				require.False(t, settings.PlanGatedModelCooldownEnabled)
+				require.False(t, settings.SafePreOutputOverloadRetryEnabled)
+			},
+		},
+		{
+			name:    "OpenAI rate-limit retry",
+			payload: map[string]any{"openai_oauth_rate_limit_same_account_retry_enabled": true},
+			assert: func(t *testing.T, settings service.OpenAIOAuthRuntimeSettings) {
+				require.True(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
+				require.False(t, settings.GrokOAuthForbiddenSameAccountRetryEnabled)
+			},
+		},
+		{
+			name:    "Grok forbidden retry",
+			payload: map[string]any{"grok_oauth_forbidden_same_account_retry_enabled": true},
+			assert: func(t *testing.T, settings service.OpenAIOAuthRuntimeSettings) {
+				require.True(t, settings.GrokOAuthForbiddenSameAccountRetryEnabled)
+				require.False(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
+			},
+		},
+	}
 
-	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
-		"noop_toolcall_injection_enabled": true,
-	})
-	require.Equal(t, http.StatusOK, recorder.Code)
-	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
-	require.True(t, settings.NoopToolcallInjectionEnabled)
-	require.False(t, settings.Dynamic429Scheduling.Enabled)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, repo := newOpenAIOAuthRuntimeHandler()
+			recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, tt.payload)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
+			tt.assert(t, settings)
 
-	var persisted service.OpenAIOAuthRuntimeSettings
-	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
-	require.True(t, persisted.NoopToolcallInjectionEnabled)
-	require.False(t, persisted.Dynamic429Scheduling.Enabled)
-	require.False(t, persisted.SafePreOutputOverloadRetryEnabled)
-}
-
-func TestSettingHandlerOpenAIOAuthRuntimePatchSafePreOutputRetryIsPartial(t *testing.T) {
-	handler, repo := newOpenAIOAuthRuntimeHandler()
-
-	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
-		"safe_pre_output_overload_retry_enabled": true,
-	})
-	require.Equal(t, http.StatusOK, recorder.Code)
-	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
-	require.True(t, settings.SafePreOutputOverloadRetryEnabled)
-	require.False(t, settings.NoopToolcallInjectionEnabled)
-	require.False(t, settings.Dynamic429Scheduling.Enabled)
-
-	var persisted service.OpenAIOAuthRuntimeSettings
-	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
-	require.True(t, persisted.SafePreOutputOverloadRetryEnabled)
-}
-
-func TestSettingHandlerOpenAIOAuthRuntimePatchPlanGatedCooldownIsPartial(t *testing.T) {
-	handler, repo := newOpenAIOAuthRuntimeHandler()
-
-	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
-		"plan_gated_model_cooldown_enabled": false,
-	})
-	require.Equal(t, http.StatusOK, recorder.Code)
-	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
-	require.False(t, settings.PlanGatedModelCooldownEnabled)
-	require.False(t, settings.NoopToolcallInjectionEnabled)
-
-	var persisted service.OpenAIOAuthRuntimeSettings
-	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
-	require.False(t, persisted.PlanGatedModelCooldownEnabled)
-}
-
-func TestSettingHandlerOpenAIOAuthRuntimePatchRateLimitSameAccountRetryIsPartial(t *testing.T) {
-	handler, repo := newOpenAIOAuthRuntimeHandler()
-
-	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
-		"openai_oauth_rate_limit_same_account_retry_enabled": true,
-	})
-	require.Equal(t, http.StatusOK, recorder.Code)
-	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
-	require.True(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
-	require.False(t, settings.NoopToolcallInjectionEnabled)
-
-	var persisted service.OpenAIOAuthRuntimeSettings
-	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
-	require.True(t, persisted.OpenAIRateLimitSameAccountRetryEnabled)
-}
-
-func TestSettingHandlerOpenAIOAuthRuntimePatchGrokForbiddenSameAccountRetryIsPartial(t *testing.T) {
-	handler, repo := newOpenAIOAuthRuntimeHandler()
-
-	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
-		"grok_oauth_forbidden_same_account_retry_enabled": true,
-	})
-	require.Equal(t, http.StatusOK, recorder.Code)
-	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
-	require.True(t, settings.GrokOAuthForbiddenSameAccountRetryEnabled)
-	require.False(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
-	require.False(t, settings.NoopToolcallInjectionEnabled)
-
-	var persisted service.OpenAIOAuthRuntimeSettings
-	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
-	require.True(t, persisted.GrokOAuthForbiddenSameAccountRetryEnabled)
-}
-
-func TestSettingHandlerOpenAIOAuthRuntimePatchDynamicIgnoresClientRevision(t *testing.T) {
-	handler, _ := newOpenAIOAuthRuntimeHandler()
-	dynamic := service.DefaultOpenAIOAuthRuntimeSettings(false).Dynamic429Scheduling
-	dynamic.Enabled = true
-	dynamic.MinimumSamples = 40
-	dynamic.Revision = 88
-
-	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
-		"dynamic_429_scheduling": dynamic,
-	})
-	require.Equal(t, http.StatusOK, recorder.Code)
-	settings := decodeOpenAIOAuthRuntimeResponse(t, recorder)
-	require.Equal(t, 40, settings.Dynamic429Scheduling.MinimumSamples)
-	require.Equal(t, int64(2), settings.Dynamic429Scheduling.Revision)
-}
-
-func TestSettingHandlerOpenAIOAuthRuntimePatchRejectsInvalidDynamicSettings(t *testing.T) {
-	handler, _ := newOpenAIOAuthRuntimeHandler()
-	dynamic := service.DefaultOpenAIOAuthRuntimeSettings(true).Dynamic429Scheduling
-	dynamic.Minimum429Count = dynamic.MinimumSamples + 1
-
-	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{
-		"dynamic_429_scheduling": dynamic,
-	})
-	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "minimum_429_count")
+			var persisted service.OpenAIOAuthRuntimeSettings
+			require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &persisted))
+			require.Equal(t, settings, persisted)
+		})
+	}
 }
 
 func TestSettingHandlerOpenAIOAuthRuntimePatchRejectsEmptyPayload(t *testing.T) {
