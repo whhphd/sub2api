@@ -577,6 +577,7 @@ type OpenAIOAuthRuntimeSettings struct {
 	SafePreOutputOverloadRetryEnabled         bool `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled             bool `json:"plan_gated_model_cooldown_enabled"`
 	OpenAIRateLimitSameAccountRetryEnabled    bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
+	OpenAIRateLimitProxyRotationEnabled      bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
 	GrokOAuthForbiddenSameAccountRetryEnabled bool `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 
@@ -584,6 +585,8 @@ func DefaultOpenAIOAuthRuntimeSettings(_ bool) *OpenAIOAuthRuntimeSettings {
 	return &OpenAIOAuthRuntimeSettings{
 		SafePreOutputOverloadRetryEnabled:         false,
 		PlanGatedModelCooldownEnabled:             true,
+		OpenAIRateLimitSameAccountRetryEnabled:    false,
+		OpenAIRateLimitProxyRotationEnabled:       false,
 		GrokOAuthForbiddenSameAccountRetryEnabled: false,
 	}
 }

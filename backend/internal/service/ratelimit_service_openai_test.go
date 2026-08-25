@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -228,6 +229,16 @@ type openAI429SnapshotRepo struct {
 	bulkUpdatedPayload AccountBulkUpdate
 }
 
+type openAIOAuthRateLimitProxyRepo struct {
+	ProxyRepository
+	proxies []Proxy
+	err     error
+}
+
+func (r *openAIOAuthRateLimitProxyRepo) ListActive(_ context.Context) ([]Proxy, error) {
+	return r.proxies, r.err
+}
+
 func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
 	r.rateLimitedID = id
 	return nil
@@ -270,6 +281,84 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	}
 	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
+	}
+}
+
+func TestIsOpenAIShortRateLimitExceededResponse(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "nested message", body: `{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`, want: true},
+		{name: "detail message", body: `{"detail":"Rate limit exceeded"}`, want: true},
+		{name: "usage exhaustion", body: `{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}`, want: false},
+		{name: "unrelated 429", body: `{"error":{"type":"invalid_request_error","message":"invalid request"}}`, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isOpenAIShortRateLimitExceededResponse([]byte(tt.body)))
+		})
+	}
+}
+
+func TestHandle429_OpenAIOAuthRateLimitRotatesProxyWhenEnabled(t *testing.T) {
+	settingRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.OpenAIRateLimitProxyRotationEnabled = true
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+
+	now := time.Now()
+	repo := &openAI429SnapshotRepo{}
+	proxyRepo := &openAIOAuthRateLimitProxyRepo{proxies: []Proxy{
+		{ID: 1, Status: StatusActive},
+		{ID: 2, Status: StatusActive},
+		{ID: 3, Status: StatusDisabled},
+		{ID: 4, Status: StatusActive, ExpiresAt: ptr(now.Add(-time.Minute))},
+	}}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	svc.SetSettingService(NewSettingService(settingRepo, nil))
+	svc.SetProxyRepository(proxyRepo)
+	currentProxyID := int64(1)
+	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &currentProxyID}
+
+	svc.handle429(context.Background(), account, http.Header{}, []byte(`{"error":{"type":"rate_limit_exceeded","message":"Rate limit exceeded"}}`))
+
+	require.Equal(t, []int64{123}, repo.bulkUpdatedIDs)
+	require.NotNil(t, repo.bulkUpdatedPayload.ProxyID)
+	require.Equal(t, int64(2), *repo.bulkUpdatedPayload.ProxyID)
+	require.NotNil(t, account.ProxyID)
+	require.Equal(t, int64(2), *account.ProxyID)
+	require.NotNil(t, account.Proxy)
+	require.Equal(t, int64(2), account.Proxy.ID)
+}
+
+func TestHandle429_OpenAIOAuthRateLimitProxyRotationSkipsDisabledAndUsageLimit(t *testing.T) {
+	settingRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settings := DefaultOpenAIOAuthRuntimeSettings(false)
+	settings.OpenAIRateLimitProxyRotationEnabled = true
+	data, err := json.Marshal(settings)
+	require.NoError(t, err)
+	settingRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = string(data)
+
+	for _, body := range []string{
+		`{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}`,
+		`{"error":{"type":"invalid_request_error","message":"invalid request"}}`,
+	} {
+		repo := &openAI429SnapshotRepo{}
+		proxyRepo := &openAIOAuthRateLimitProxyRepo{proxies: []Proxy{{ID: 2, Status: StatusActive}}}
+		svc := NewRateLimitService(repo, nil, nil, nil, nil)
+		svc.SetSettingService(NewSettingService(settingRepo, nil))
+		svc.SetProxyRepository(proxyRepo)
+		currentProxyID := int64(1)
+		account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &currentProxyID}
+
+		svc.handle429(context.Background(), account, http.Header{}, []byte(body))
+
+		require.Nil(t, repo.bulkUpdatedPayload.ProxyID, body)
+		require.Equal(t, currentProxyID, *account.ProxyID, body)
 	}
 }
 

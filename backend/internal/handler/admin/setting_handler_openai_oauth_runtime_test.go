@@ -149,6 +149,14 @@ func TestSettingHandlerOpenAIOAuthRuntimePatchIsPartial(t *testing.T) {
 				require.False(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
 			},
 		},
+		{
+			name:    "OpenAI rate-limit proxy rotation",
+			payload: map[string]any{"openai_oauth_rate_limit_proxy_rotation_enabled": true},
+			assert: func(t *testing.T, settings service.OpenAIOAuthRuntimeSettings) {
+				require.True(t, settings.OpenAIRateLimitProxyRotationEnabled)
+				require.False(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
+			},
+		},
 	}
 
 	for _, tt := range tests {

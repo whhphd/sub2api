@@ -167,6 +167,7 @@ type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
 	SafePreOutputOverloadRetryEnabled    *bool `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled        *bool `json:"plan_gated_model_cooldown_enabled"`
 	RateLimitSameAccountRetryEnabled     *bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
+	RateLimitProxyRotationEnabled        *bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
 	GrokForbiddenSameAccountRetryEnabled *bool `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 
@@ -185,6 +186,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		req.PlanGatedModelCooldownEnabled,
 		req.RateLimitSameAccountRetryEnabled,
 		req.GrokForbiddenSameAccountRetryEnabled,
+		req.RateLimitProxyRotationEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
@@ -195,6 +197,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		"safe_pre_output_overload_retry_changed", req.SafePreOutputOverloadRetryEnabled != nil,
 		"plan_gated_model_cooldown_changed", req.PlanGatedModelCooldownEnabled != nil,
 		"rate_limit_same_account_retry_changed", req.RateLimitSameAccountRetryEnabled != nil,
+		"rate_limit_proxy_rotation_changed", req.RateLimitProxyRotationEnabled != nil,
 		"grok_forbidden_same_account_retry_changed", req.GrokForbiddenSameAccountRetryEnabled != nil,
 	)
 	response.Success(c, settings)

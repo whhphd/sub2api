@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -31,6 +32,7 @@ type RateLimitService struct {
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
 	runtimeBlocker        AccountRuntimeBlocker
+	proxyRepo             ProxyRepository
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
 
@@ -118,6 +120,12 @@ func (s *RateLimitService) SetOpenAI403CounterCache(cache OpenAI403CounterCache)
 // SetSettingService 设置系统设置服务（可选依赖）
 func (s *RateLimitService) SetSettingService(settingService *SettingService) {
 	s.settingService = settingService
+}
+
+// SetProxyRepository sets the proxy pool used by optional OpenAI OAuth
+// short-rate-limit rotation.
+func (s *RateLimitService) SetProxyRepository(proxyRepo ProxyRepository) {
+	s.proxyRepo = proxyRepo
 }
 
 // SetTokenCacheInvalidator 设置 token 缓存清理器（可选依赖）
@@ -1087,6 +1095,11 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
+	// A short-lived OpenAI OAuth rate limit may indicate that the current egress
+	// IP is throttled. Rotate the account's proxy before the existing bounded
+	// same-account retry path checks its state.
+	s.rotateOpenAIOAuthProxyOnShort429(ctx, account, responseBody)
+
 	// OpenAI OAuth stays on the same account for the gateway's bounded retry
 	// window. Persisting a rate-limit reset on the first 429 would make the next
 	// retry ineligible and silently turn same-account recovery into a switch.
@@ -1711,6 +1724,70 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 func isOpenAIUsageLimit429Response(body []byte) bool {
 	var payload any
 	return len(body) > 0 && json.Unmarshal(body, &payload) == nil && containsOpenAIUsageLimitMarker(payload)
+}
+
+// isOpenAIShortRateLimitExceededResponse identifies the transient OpenAI OAuth
+// response that is safe to recover by retrying through another egress proxy.
+// Usage exhaustion has different scheduling semantics and is explicitly
+// excluded even when its payload also contains generic rate-limit wording.
+func isOpenAIShortRateLimitExceededResponse(body []byte) bool {
+	if len(body) == 0 || isOpenAIUsageLimit429Response(body) {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	raw := strings.ToLower(string(body))
+	return strings.Contains(message, "rate limit exceeded") ||
+		strings.Contains(message, "rate_limit_exceeded") ||
+		strings.Contains(raw, "rate_limit_exceeded")
+}
+
+func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context, account *Account, responseBody []byte) {
+	if s == nil || account == nil || !account.IsOpenAIOAuth() ||
+		s.proxyRepo == nil || s.accountRepo == nil || s.settingService == nil ||
+		!isOpenAIShortRateLimitExceededResponse(responseBody) {
+		return
+	}
+	settings := s.settingService.GetOpenAIOAuthRuntimeSettings(ctx)
+	if settings == nil || !settings.OpenAIRateLimitProxyRotationEnabled {
+		return
+	}
+
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	proxies, err := s.proxyRepo.ListActive(stateCtx)
+	if err != nil {
+		slog.Warn("openai_oauth_rate_limit_proxy_rotation_list_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	now := time.Now()
+	currentProxyID := int64(0)
+	if account.ProxyID != nil {
+		currentProxyID = *account.ProxyID
+	}
+	candidates := make([]Proxy, 0, len(proxies))
+	for _, proxy := range proxies {
+		if proxy.ID <= 0 || !proxy.IsActive() || proxy.IsExpired(now) || proxy.ID == currentProxyID {
+			continue
+		}
+		candidates = append(candidates, proxy)
+	}
+	if len(candidates) == 0 {
+		slog.Warn("openai_oauth_rate_limit_proxy_rotation_no_candidate", "account_id", account.ID, "current_proxy_id", currentProxyID)
+		return
+	}
+	selected := candidates[rand.IntN(len(candidates))]
+	selectedProxyID := selected.ID
+	updated, err := s.accountRepo.BulkUpdate(stateCtx, []int64{account.ID}, AccountBulkUpdate{ProxyID: &selectedProxyID})
+	if err != nil || updated != 1 {
+		if err == nil {
+			err = fmt.Errorf("updated %d accounts, want 1", updated)
+		}
+		slog.Warn("openai_oauth_rate_limit_proxy_rotation_update_failed", "account_id", account.ID, "proxy_id", selectedProxyID, "error", err)
+		return
+	}
+	account.ProxyID = &selectedProxyID
+	account.Proxy = &selected
+	slog.Info("openai_oauth_rate_limit_proxy_rotated", "account_id", account.ID, "from_proxy_id", currentProxyID, "to_proxy_id", selectedProxyID)
 }
 
 func containsOpenAIUsageLimitMarker(value any) bool {

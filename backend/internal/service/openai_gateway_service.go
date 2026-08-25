@@ -667,11 +667,7 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	if settings == nil || !settings.OpenAIRateLimitSameAccountRetryEnabled {
 		return
 	}
-	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(failoverErr.ResponseBody)))
-	body := strings.ToLower(string(failoverErr.ResponseBody))
-	if !strings.Contains(message, "rate limit exceeded") &&
-		!strings.Contains(message, "rate_limit_exceeded") &&
-		!strings.Contains(body, "rate_limit_exceeded") {
+	if !isOpenAIShortRateLimitExceededResponse(failoverErr.ResponseBody) {
 		return
 	}
 	failoverErr.RetryableOnSameAccount = true

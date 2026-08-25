@@ -856,7 +856,8 @@ func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*O
 
 // UpdateOpenAIOAuthRuntimeSettings applies an independent partial update. The
 // optional retry settings preserve call compatibility: index 0 is OpenAI OAuth
-// 429 retry and index 1 is Grok OAuth 403 retry.
+// 429 retry, index 1 is Grok OAuth 403 retry, and index 2 is short 429 proxy
+// rotation.
 func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	ctx context.Context,
 	safePreOutputOverloadRetryEnabled *bool,
@@ -868,7 +869,8 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	}
 	rateLimitSameAccountRetryProvided := len(sameAccountRetrySettings) > 0 && sameAccountRetrySettings[0] != nil
 	grokForbiddenSameAccountRetryProvided := len(sameAccountRetrySettings) > 1 && sameAccountRetrySettings[1] != nil
-	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided {
+	proxyRotationProvided := len(sameAccountRetrySettings) > 2 && sameAccountRetrySettings[2] != nil
+	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided && !proxyRotationProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -892,6 +894,9 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	}
 	if grokForbiddenSameAccountRetryProvided {
 		current.GrokOAuthForbiddenSameAccountRetryEnabled = *sameAccountRetrySettings[1]
+	}
+	if proxyRotationProvided {
+		current.OpenAIRateLimitProxyRotationEnabled = *sameAccountRetrySettings[2]
 	}
 	normalized, err := normalizeOpenAIOAuthRuntimeSettings(current)
 	if err != nil {

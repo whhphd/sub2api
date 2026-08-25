@@ -445,6 +445,61 @@
                 </div>
 
                 <div
+                  class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                  data-testid="openai-oauth-rate-limit-proxy-rotation-card"
+                >
+                  <div>
+                    <h3 class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.openaiOauthRuntime.proxyRotationTitle") }}
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiOauthRuntime.proxyRotationDescription") }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="openAIOAuthRuntimeLoading"
+                    class="flex items-center gap-2 text-gray-500"
+                  >
+                    <div
+                      class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                    ></div>
+                    {{ t("common.loading") }}
+                  </div>
+                  <template v-else>
+                    <div class="flex items-center justify-between gap-6">
+                      <div>
+                        <label class="font-medium text-gray-900 dark:text-white">
+                          {{ t("admin.settings.openaiOauthRuntime.proxyRotationEnabled") }}
+                        </label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.openaiOauthRuntime.proxyRotationEnabledHint") }}
+                        </p>
+                      </div>
+                      <Toggle
+                        v-model="openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled"
+                        :disabled="openAIOAuthRateLimitProxyRotationSaving"
+                        data-testid="openai-oauth-rate-limit-proxy-rotation-toggle"
+                      />
+                    </div>
+                    <div class="flex justify-end">
+                      <button
+                        type="button"
+                        class="btn btn-primary btn-sm"
+                        :disabled="openAIOAuthRateLimitProxyRotationSaving"
+                        data-testid="openai-oauth-rate-limit-proxy-rotation-save"
+                        @click="saveOpenAIOAuthRateLimitProxyRotationSettings"
+                      >
+                        {{
+                          openAIOAuthRateLimitProxyRotationSaving
+                            ? t("common.saving")
+                            : t("common.save")
+                        }}
+                      </button>
+                    </div>
+                  </template>
+                </div>
+
+                <div
                   class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
                 >
                   <button
@@ -9382,11 +9437,13 @@ const rateLimit429CooldownForm = reactive({
 const openAIOAuthRuntimeLoading = ref(true);
 const openAIOAuthSafeRetrySaving = ref(false);
 const openAIOAuthRateLimitSameAccountRetrySaving = ref(false);
+const openAIOAuthRateLimitProxyRotationSaving = ref(false);
 const grokOAuthForbiddenSameAccountRetrySaving = ref(false);
 const openAIOAuthPlanGatedCooldownSaving = ref(false);
 const openAIOAuthRuntimeForm = reactive({
   safe_pre_output_overload_retry_enabled: false,
   openai_oauth_rate_limit_same_account_retry_enabled: false,
+  openai_oauth_rate_limit_proxy_rotation_enabled: false,
   grok_oauth_forbidden_same_account_retry_enabled: false,
   plan_gated_model_cooldown_enabled: true,
 });
@@ -12438,6 +12495,8 @@ async function loadOpenAIOAuthRuntimeSettings() {
       settings.safe_pre_output_overload_retry_enabled;
     openAIOAuthRuntimeForm.openai_oauth_rate_limit_same_account_retry_enabled =
       settings.openai_oauth_rate_limit_same_account_retry_enabled;
+    openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled =
+      settings.openai_oauth_rate_limit_proxy_rotation_enabled;
     openAIOAuthRuntimeForm.grok_oauth_forbidden_same_account_retry_enabled =
       settings.grok_oauth_forbidden_same_account_retry_enabled;
     openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
@@ -12446,6 +12505,30 @@ async function loadOpenAIOAuthRuntimeSettings() {
     // Keep custom runtime features at their safe defaults if the setting cannot load.
   } finally {
     openAIOAuthRuntimeLoading.value = false;
+  }
+}
+
+async function saveOpenAIOAuthRateLimitProxyRotationSettings() {
+  openAIOAuthRateLimitProxyRotationSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({
+      openai_oauth_rate_limit_proxy_rotation_enabled:
+        openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled,
+    });
+    openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled =
+      updated.openai_oauth_rate_limit_proxy_rotation_enabled;
+    appStore.showSuccess(
+      t("admin.settings.openaiOauthRuntime.proxyRotationSaved"),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.openaiOauthRuntime.proxyRotationSaveFailed"),
+      ),
+    );
+  } finally {
+    openAIOAuthRateLimitProxyRotationSaving.value = false;
   }
 }
 
