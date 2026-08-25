@@ -676,7 +676,7 @@ func (s *OpenAIGatewayService) ApplyOpenAIOAuthRateLimitSameAccountRetryPolicy(
 	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"openai_oauth_rate_limit_retry_policy_enter account_id=%d platform=%s account_type=%s service_nil=%t account_nil=%t failover_nil=%t status_code=%d retryable=%t body_bytes=%d",
+		"Warning: openai_oauth_rate_limit_retry_policy_enter account_id=%d platform=%s account_type=%s service_nil=%t account_nil=%t failover_nil=%t status_code=%d retryable=%t body_bytes=%d",
 		accountID,
 		platform,
 		accountType,
