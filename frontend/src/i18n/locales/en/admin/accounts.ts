@@ -172,6 +172,7 @@ export default {
         rateLimited: 'Rate Limited',
         overloaded: 'Overloaded',
         tempUnschedulable: 'Temp Unschedulable',
+        codexQuotaPaused: 'Quota Paused',
         quotaExceeded: 'Quota Exceeded',
         unschedulable: 'Unschedulable',
         rateLimitedUntil: 'Rate limited and removed from scheduling. Auto resumes at {time}',
@@ -613,8 +614,9 @@ export default {
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexFingerprintMode: 'Codex fingerprint convergence',
-        codexFingerprintModeDesc: 'When multiple users share the same OAuth account, converge device/session identifiers to account-level stable values. New accounts without an explicit mode follow the system default; an account-level explicit choice takes precedence.',
+        codexFingerprintModeDesc: 'When multiple users share the same OAuth account, converge device/session identifiers to stable account-level values. Accounts without an explicit mode follow the global default; an account-level choice takes precedence.',
         codexFingerprintOff: 'Off (passthrough)',
+        codexFingerprintAccountDevice: 'Account-unique device (new, recommended)',
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',
