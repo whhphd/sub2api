@@ -351,6 +351,13 @@ func TestHandle429_OpenAIOAuthRateLimitRotatesProxyWhenEnabled(t *testing.T) {
 	require.Equal(t, int64(2), account.Proxy.ID)
 }
 
+func TestProvideRateLimitServiceWiresProxyRepository(t *testing.T) {
+	proxyRepo := &openAIOAuthRateLimitProxyRepo{}
+	svc := ProvideRateLimitService(nil, proxyRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	require.Same(t, proxyRepo, svc.proxyRepo)
+}
+
 func TestHandleUpstreamError_OpenAIOAuthShort429BypassesTempUnschedulableRule(t *testing.T) {
 	settingRepo := newOpenAIOAuthRuntimeSettingRepo()
 	settings := DefaultOpenAIOAuthRuntimeSettings(false)

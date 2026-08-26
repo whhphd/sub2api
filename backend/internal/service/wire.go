@@ -479,6 +479,7 @@ func ProvideSchedulerSnapshotService(
 // ProvideRateLimitService creates RateLimitService with optional dependencies.
 func ProvideRateLimitService(
 	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
 	usageRepo UsageLogRepository,
 	cfg *config.Config,
 	geminiQuotaService *GeminiQuotaService,
@@ -489,6 +490,7 @@ func ProvideRateLimitService(
 	tokenCacheInvalidator TokenCacheInvalidator,
 ) *RateLimitService {
 	svc := NewRateLimitService(accountRepo, usageRepo, cfg, geminiQuotaService, tempUnschedCache)
+	svc.SetProxyRepository(proxyRepo)
 	if healthCache, ok := tempUnschedCache.(OpenAIAPIKeyHealthCache); ok {
 		svc.SetOpenAIAPIKeyHealthCache(healthCache)
 	}
