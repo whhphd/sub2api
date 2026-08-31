@@ -60,6 +60,10 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
+	ClearActualOpenAIUpstreamEndpoint(c)
+	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
+	}
 	setCodexToolNameReverse(c, nil)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
@@ -511,7 +515,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 				s.settingService.GetOpenAIOAuthRuntimeSettings(c.Request.Context()).SafePreOutputOverloadRetryEnabled
 			return nil, attachOpenAIBufferedOverloadDiagnostics(
 				enabled,
-				s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message, resp.Header),
+				s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payload, message, upstreamModel, resp.Header),
 				finalResponse.ID,
 			)
 		}
@@ -780,7 +784,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if !clientOutputStarted && shouldFailover {
 				streamFailoverErr = attachOpenAIOverloadDiagnostics(
 					safeOverloadObservability,
-					s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message, resp.Header),
+					s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payloadBytes, message, upstreamModel, resp.Header),
 					overloadTracker,
 					openAIStreamClientOutputStarted(c, clientOutputStarted),
 				)

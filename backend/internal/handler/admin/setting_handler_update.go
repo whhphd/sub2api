@@ -243,6 +243,7 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
+	OpenAITTFTMode                              *string  `json:"openai_ttft_mode"`
 	EnableFingerprintUnification              *bool    `json:"enable_fingerprint_unification"`
 	OpenAIOAuthDefaultCodexFingerprintEnabled *bool    `json:"openai_oauth_default_codex_fingerprint_enabled"`
 	OpenAIOAuthDefaultCodexFingerprintMode    *string  `json:"openai_oauth_default_codex_fingerprint_mode"`
@@ -1710,6 +1711,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return service.NormalizeOpenAIOAuthNewAccountProxyPoolIDs(*req.OpenAIOAuthNewAccountProxyPoolIDs)
 			}
 			return previousSettings.OpenAIOAuthNewAccountProxyPoolIDs
+		}(),
+		OpenAITTFTMode: func() string {
+			if req.OpenAITTFTMode != nil {
+				return *req.OpenAITTFTMode
+			}
+			return previousSettings.OpenAITTFTMode
 		}(),
 		EnableMetadataPassthrough: func() bool {
 			if req.EnableMetadataPassthrough != nil {

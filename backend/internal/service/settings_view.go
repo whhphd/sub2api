@@ -230,6 +230,7 @@ type SystemSettings struct {
 	BackendModeEnabled bool
 
 	// Gateway forwarding behavior
+	OpenAITTFTMode                              string // Responses first_token_ms 统计口径（默认 semantic）
 	EnableFingerprintUnification              bool   // 是否统一 OAuth 账号的指纹头（默认 true）
 	OpenAIOAuthDefaultCodexFingerprintEnabled bool   // 新建 OpenAI OAuth 账号默认启用指纹收敛（默认 true）
 	OpenAIOAuthDefaultCodexFingerprintMode    string // 新建 OpenAI OAuth 账号默认指纹收敛档位（默认 session）
@@ -603,6 +604,16 @@ func normalizeOpenAIOAuthRuntimeSettings(settings *OpenAIOAuthRuntimeSettings) (
 	return cloneOpenAIOAuthRuntimeSettings(settings), nil
 }
 
+// OpenAIImagesOAuthUnavailableCooldownSettings controls how long an OAuth account's image capability is paused when unavailable.
+type OpenAIImagesOAuthUnavailableCooldownSettings struct {
+	CooldownMinutes int `json:"cooldown_minutes"`
+}
+
+const (
+	openAIImagesOAuthUnavailableDefaultCooldownMinutes = 30
+	openAIImagesOAuthUnavailableMaxCooldownMinutes     = 120
+)
+
 // OpenAIAPIKeyHealthBreakerSettings controls cross-instance failure counting for OpenAI pool API keys.
 type OpenAIAPIKeyHealthBreakerSettings struct {
 	Enabled          bool `json:"enabled"`
@@ -634,6 +645,10 @@ func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 		Enabled:         true,
 		CooldownSeconds: 5,
 	}
+}
+
+func DefaultOpenAIImagesOAuthUnavailableCooldownSettings() *OpenAIImagesOAuthUnavailableCooldownSettings {
+	return &OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: openAIImagesOAuthUnavailableDefaultCooldownMinutes}
 }
 
 // DefaultBetaPolicySettings 返回默认的 Beta 策略配置
