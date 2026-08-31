@@ -9,6 +9,7 @@
 ARG NODE_IMAGE=node:24-alpine
 ARG GOLANG_IMAGE=golang:1.27.0-alpine
 ARG ALPINE_IMAGE=alpine:3.20
+ARG NODE_MAX_OLD_SPACE_SIZE=3072
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
 
@@ -17,8 +18,9 @@ ARG GOSUMDB=sum.golang.google.cn
 # -----------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS frontend-builder
 
+ARG NODE_MAX_OLD_SPACE_SIZE
 WORKDIR /app/frontend
-ENV NODE_OPTIONS=--max-old-space-size=1536
+ENV NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}
 
 # Install pnpm. Keep this pinned to the lockfile-compatible major version so
 # Docker builds remain reproducible when pnpm changes config validation rules.
