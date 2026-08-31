@@ -7558,7 +7558,7 @@
                 </p>
               </div>
 
-              <div v-if="form.channel_monitor_mode === 'v1'">
+              <div>
                 <label class="input-label">
                   {{ t('admin.settings.features.channelMonitor.defaultInterval') }}
                   <span class="text-red-500">*</span>

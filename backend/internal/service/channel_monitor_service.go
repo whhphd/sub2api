@@ -62,8 +62,8 @@ type ChannelMonitorRepository interface {
 	UpdateAggregationWatermark(ctx context.Context, date time.Time) error
 }
 
-// channelMonitorRuntimeReader is the optional settings view used to gate V1
-// active probes by channel_monitor_enabled + channel_monitor_mode.
+// channelMonitorRuntimeReader is the optional settings view used to gate
+// channel-monitor runtime capabilities.
 type channelMonitorRuntimeReader interface {
 	GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime
 }
@@ -72,8 +72,8 @@ type channelMonitorRuntimeReader interface {
 type ChannelMonitorService struct {
 	repo      ChannelMonitorRepository
 	encryptor SecretEncryptor
-	// settings is optional; when nil, RunCheck fails closed for active probes
-	// (mode defaults to v2 / retired) so tests without settings never hit upstream.
+	// settings is optional; when nil, RunCheck fails closed so tests or alternate
+	// wiring without settings never hit an upstream provider.
 	settings channelMonitorRuntimeReader
 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
@@ -98,7 +98,7 @@ func NewChannelMonitorService(repo ChannelMonitorRepository, encryptor SecretEnc
 }
 
 // SetRuntimeReader injects the settings reader used to gate active probes.
-// Optional: when unset, active probes are treated as mode=v2 (retired).
+// Optional: when unset, active probes are disabled.
 func (s *ChannelMonitorService) SetRuntimeReader(r channelMonitorRuntimeReader) {
 	if s == nil {
 		return
@@ -108,7 +108,7 @@ func (s *ChannelMonitorService) SetRuntimeReader(r channelMonitorRuntimeReader) 
 
 func (s *ChannelMonitorService) probeRuntime(ctx context.Context) ChannelMonitorRuntime {
 	if s == nil || s.settings == nil {
-		return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}
+		return ChannelMonitorRuntime{Enabled: false, Mode: ChannelMonitorModeV2}
 	}
 	return s.settings.GetChannelMonitorRuntime(ctx)
 }
@@ -597,8 +597,8 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 
 // RunCheck 同步触发对一个监控的检测：并发跑 primary + extra 模型，
 // 写历史记录并更新 last_checked_at。返回每个模型的检测结果。
-// 仅当 channel_monitor_enabled=true 且 channel_monitor_mode=v1 时真正探测；
-// mode=v2 时返回 ErrChannelMonitorActiveProbesRetired，不产生上游流量。
+// channel_monitor_enabled=true 时真正探测；mode=v1 只运行主动探测，
+// mode=v2 同时运行主动探测和被动聚合。
 //
 // 按 check_mode 分派：probe（默认，现状探活）/ quota（仅查关联账号配额，
 // 零 LLM 成本）/ quota_probe（探活 + 配额快照挂主模型行）。

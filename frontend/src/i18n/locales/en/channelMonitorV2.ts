@@ -89,7 +89,7 @@ export default {
         'System mode is currently {mode}. V2 minute aggregation will not run; this config can be prepared now and takes effect after switching to {modeV2}. Change mode under System Settings → Feature switches.',
       modeClosed: 'Channel monitor disabled',
       modeV1: 'V1 active probes',
-      modeV2: 'V2 passive monitoring',
+      modeV2: 'V2 combined monitoring',
       enableTitle: 'Enable V2 aggregation',
       enableHint:
         'Applies when system mode is V2. Turning this off only stops this config’s aggregation; the system mode switch remains under Feature switches.',
@@ -137,11 +137,11 @@ export default {
       descriptionV1:
         'System mode is V1 active probes: manage probe monitors and run checks now; V2 aggregation does not run.',
       descriptionV2:
-        'System mode is V2 passive monitoring: configure aggregation dimensions; V1 active probes do not run.',
+        'System mode is V2 combined monitoring: passive aggregation and V1 active probes run together.',
       tabAria: 'Monitor management',
       tabV2: 'V2 data monitor config',
       tabV1Active: 'V1 active probes',
-      tabV1History: 'V1 history (probes not active in current mode)',
+      tabV1History: 'V1 active probes',
     },
   },
 }

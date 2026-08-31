@@ -433,8 +433,9 @@ type ChannelMonitorRuntime struct {
 }
 
 // ActiveProbesAllowed reports whether V1 active provider probes may run.
+// V2 augments active probes with passive aggregation instead of retiring them.
 func (r ChannelMonitorRuntime) ActiveProbesAllowed() bool {
-	return r.Enabled && r.Mode == ChannelMonitorModeV1
+	return r.Enabled && (r.Mode == ChannelMonitorModeV1 || r.Mode == ChannelMonitorModeV2)
 }
 
 // PassiveAggregationAllowed reports whether V2 passive aggregation may run.

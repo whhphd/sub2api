@@ -210,7 +210,7 @@ var (
 	)
 	ErrChannelMonitorActiveProbesRetired = infraerrors.Forbidden(
 		"CHANNEL_MONITOR_ACTIVE_PROBES_RETIRED",
-		"channel monitor active probes are retired in v2 mode",
+		"channel monitor mode does not allow active probes",
 	)
 	ErrChannelMonitorModeMismatch = infraerrors.Forbidden(
 		"CHANNEL_MONITOR_MODE_MISMATCH",
