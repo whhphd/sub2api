@@ -230,7 +230,7 @@ type SystemSettings struct {
 	BackendModeEnabled bool
 
 	// Gateway forwarding behavior
-	OpenAITTFTMode                              string // Responses first_token_ms 统计口径（默认 semantic）
+	OpenAITTFTMode                            string // Responses first_token_ms 统计口径（默认 semantic）
 	EnableFingerprintUnification              bool   // 是否统一 OAuth 账号的指纹头（默认 true）
 	OpenAIOAuthDefaultCodexFingerprintEnabled bool   // 新建 OpenAI OAuth 账号默认启用指纹收敛（默认 true）
 	OpenAIOAuthDefaultCodexFingerprintMode    string // 新建 OpenAI OAuth 账号默认指纹收敛档位（默认 session）
@@ -578,7 +578,7 @@ type OpenAIOAuthRuntimeSettings struct {
 	SafePreOutputOverloadRetryEnabled         bool `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled             bool `json:"plan_gated_model_cooldown_enabled"`
 	OpenAIRateLimitSameAccountRetryEnabled    bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
-	OpenAIRateLimitProxyRotationEnabled      bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
+	OpenAIRateLimitProxyRotationEnabled       bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
 	GrokOAuthForbiddenSameAccountRetryEnabled bool `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 

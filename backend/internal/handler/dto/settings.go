@@ -201,7 +201,7 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	OpenAITTFTMode                              string  `json:"openai_ttft_mode"`
+	OpenAITTFTMode                            string  `json:"openai_ttft_mode"`
 	EnableFingerprintUnification              bool    `json:"enable_fingerprint_unification"`
 	OpenAIOAuthDefaultCodexFingerprintEnabled bool    `json:"openai_oauth_default_codex_fingerprint_enabled"`
 	OpenAIOAuthDefaultCodexFingerprintMode    string  `json:"openai_oauth_default_codex_fingerprint_mode"`
