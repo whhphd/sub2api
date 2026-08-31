@@ -20,7 +20,7 @@ func TestChannelMonitorV2MaxChunkForDepth(t *testing.T) {
 	require.Equal(t, channelMonitorV2MaxChunkFar, channelMonitorV2MaxChunkForDepth(now, now.Add(-10*24*time.Hour)))
 	require.Less(t, channelMonitorV2MaxChunkFar, 24*time.Hour)
 	require.Equal(t, time.Hour, channelMonitorV2BackfillChunkInit)
-	require.Equal(t, 15*time.Minute, channelMonitorV2MinBackfillChunk)
+	require.Equal(t, 5*time.Minute, channelMonitorV2MinBackfillChunk)
 }
 
 func TestChannelMonitorV2BackfillStartNeverExpandsChunk(t *testing.T) {
