@@ -164,7 +164,7 @@ func (s *ProxyHealthService) HandleTransportFailure(ctx context.Context, account
 	if errors.Is(err, context.Canceled) || err == nil {
 		return false, true
 	}
-	class := classifyOpenAITransportError(err)
+	class := classifyUpstreamTransportError(err)
 	threshold := 2
 	failureClass := "transient"
 	if class.Persistent {
