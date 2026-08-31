@@ -23,6 +23,44 @@ func TestChannelMonitorV2MaxChunkForDepth(t *testing.T) {
 	require.Equal(t, 15*time.Minute, channelMonitorV2MinBackfillChunk)
 }
 
+func TestChannelMonitorV2BackfillStartNeverExpandsChunk(t *testing.T) {
+	now := time.Date(2026, 8, 31, 14, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name  string
+		end   time.Time
+		chunk time.Duration
+		want  time.Time
+	}{
+		{
+			name:  "same day keeps adaptive chunk",
+			end:   time.Date(2026, 8, 24, 11, 9, 0, 0, time.UTC),
+			chunk: 15 * time.Minute,
+			want:  time.Date(2026, 8, 24, 10, 54, 0, 0, time.UTC),
+		},
+		{
+			name:  "crossing midnight shortens to boundary",
+			end:   time.Date(2026, 8, 24, 1, 0, 0, 0, time.UTC),
+			chunk: 2 * time.Hour,
+			want:  time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:  "midnight end keeps adaptive chunk",
+			end:   time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC),
+			chunk: time.Hour,
+			want:  time.Date(2026, 8, 23, 23, 0, 0, 0, time.UTC),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := channelMonitorV2BackfillStart(now, tt.end, tt.chunk)
+			require.Equal(t, tt.want, got)
+			require.False(t, got.Before(tt.end.Add(-tt.chunk)))
+		})
+	}
+}
+
 func TestChannelMonitorV2AggregatorAdaptiveChunk(t *testing.T) {
 	s := NewChannelMonitorV2Aggregator(nil, nil, nil)
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)

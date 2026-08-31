@@ -280,15 +280,7 @@ func (s *ChannelMonitorV2Aggregator) runOnce() {
 	if chunk < channelMonitorV2MinBackfillChunk {
 		chunk = channelMonitorV2MinBackfillChunk
 	}
-	start := end.Add(-chunk)
-	// Once bootstrap reaches historical data, keep chunks on day boundaries so
-	// daily rollups never depend on 1m rows from two independently pruned chunks.
-	if end.Before(now.Add(-7 * 24 * time.Hour)) {
-		aligned := end.Add(-chunk).Truncate(24 * time.Hour)
-		if aligned.Before(end) {
-			start = aligned
-		}
-	}
+	start := channelMonitorV2BackfillStart(now, end, chunk)
 	if start.Before(retentionCutoff) {
 		start = retentionCutoff
 	}
@@ -302,6 +294,19 @@ func (s *ChannelMonitorV2Aggregator) runOnce() {
 		return
 	}
 	s.recordBackfillSuccess(start, time.Since(started), now)
+}
+
+func channelMonitorV2BackfillStart(now, end time.Time, chunk time.Duration) time.Time {
+	start := end.Add(-chunk)
+	// Split at a UTC day boundary only when it is already inside the proposed
+	// chunk. Alignment may shorten a chunk, but must never expand it.
+	if end.Before(now.Add(-7 * 24 * time.Hour)) {
+		dayBoundary := end.Truncate(24 * time.Hour)
+		if dayBoundary.After(start) && dayBoundary.Before(end) {
+			start = dayBoundary
+		}
+	}
+	return start
 }
 
 // channelMonitorV2MaxChunkForDepth returns the hard ceiling for a historical
