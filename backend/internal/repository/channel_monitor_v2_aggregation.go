@@ -241,12 +241,23 @@ ELSE 2147483647 END`
 // Error dedup lookback: request_id branch is bounded by chunk start minus 90
 // minutes so candidate_ids never forces a full-history scan of ops_error_logs.
 const channelMonitorV2ErrorAggregationSQL = `
-WITH dedup AS (
-  WITH candidate_ids AS MATERIALIZED (
-    SELECT DISTINCT request_id
-    FROM ops_error_logs
-    WHERE created_at >= $1 AND created_at < $2 AND NULLIF(request_id, '') IS NOT NULL
-  )
+WITH candidate_ids AS MATERIALIZED (
+  SELECT DISTINCT request_id
+  FROM ops_error_logs
+  WHERE created_at >= $1 AND created_at < $2 AND NULLIF(request_id, '') IS NOT NULL
+), relevant_errors AS MATERIALIZED (
+  SELECT current_error.*
+  FROM ops_error_logs current_error
+  WHERE NULLIF(current_error.request_id, '') IS NULL
+    AND current_error.created_at >= $1
+    AND current_error.created_at < $2
+  UNION ALL
+  SELECT current_error.*
+  FROM ops_error_logs current_error
+  JOIN candidate_ids candidate ON candidate.request_id = current_error.request_id
+  WHERE current_error.created_at >= $1 - INTERVAL '90 minutes'
+    AND current_error.created_at < $2
+), dedup AS (
   SELECT DISTINCT ON (COALESCE(NULLIF(current_error.request_id, ''), 'error:' || current_error.id::text))
     date_trunc('minute', current_error.created_at) AS bucket_start,
     -- Composite groups are a routing layer: resolve the concrete account
@@ -266,18 +277,10 @@ WITH dedup AS (
     (CASE WHEN jsonb_typeof(current_error.upstream_errors) = 'array' THEN jsonb_array_length(current_error.upstream_errors) > 0 ELSE FALSE END
       OR current_error.error_owner = 'provider' OR current_error.upstream_status_code IS NOT NULL) AS upstream_affected,
     CASE WHEN jsonb_typeof(current_error.upstream_errors) = 'array' THEN jsonb_array_length(current_error.upstream_errors) ELSE 0 END AS upstream_attempts
-  FROM ops_error_logs current_error
+  FROM relevant_errors current_error
   LEFT JOIN groups g ON g.id = current_error.group_id
   LEFT JOIN accounts a ON a.id = current_error.account_id
-  WHERE (
-      (NULLIF(current_error.request_id, '') IS NULL AND current_error.created_at >= $1 AND current_error.created_at < $2)
-      OR (
-        current_error.request_id IN (SELECT request_id FROM candidate_ids)
-        AND current_error.created_at >= $1 - INTERVAL '90 minutes'
-        AND current_error.created_at < $2
-      )
-    )
-    AND NOT current_error.is_count_tokens
+  WHERE NOT current_error.is_count_tokens
     AND (COALESCE(current_error.status_code, 0) >= 400 OR current_error.error_type = 'cyber_policy')
   ORDER BY COALESCE(NULLIF(current_error.request_id, ''), 'error:' || current_error.id::text), current_error.created_at DESC, current_error.id DESC
 ), classified AS (
