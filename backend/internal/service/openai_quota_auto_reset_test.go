@@ -81,9 +81,10 @@ func (r *autoResetScanRepo) ListWithFilters(context.Context, pagination.Paginati
 func TestOpenAIQuotaAutoResetService_GlobalSwitchScansUnconfiguredAccounts(t *testing.T) {
 	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
 	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = `{"openai_oauth_auto_reset_credit_global_enabled":true}`
+	resetAt := time.Now().Add(time.Hour)
 	service := &OpenAIQuotaAutoResetService{
 		accountRepo: &autoResetScanRepo{accounts: []Account{{
-			ID: 9, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true,
+			ID: 9, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, RateLimitResetAt: &resetAt,
 		}}},
 		settings: NewSettingService(settingsRepo, nil),
 		ctx:      context.Background(),
@@ -91,7 +92,7 @@ func TestOpenAIQuotaAutoResetService_GlobalSwitchScansUnconfiguredAccounts(t *te
 	}
 
 	service.scanEnabledAccounts(context.Background())
-	require.Equal(t, int64(9), <-service.queue)
+	require.Equal(t, int64(9), <-service.queue, "限流状态不得阻断后台查卡")
 }
 
 func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T) {
@@ -134,6 +135,31 @@ func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T)
 		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
 		require.True(t, paused)
 		require.Equal(t, "quota_auto_reset_pending_5h", decision.reason)
+	})
+
+	t.Run("明确无卡时放行到现有上游 429 处理", func(t *testing.T) {
+		extra := cloneOpenAIAutoResetExtra(baseExtra)
+		delete(extra, "auto_pause_5h_threshold")
+		extra["codex_5h_used_percent"] = 100.0
+		extra[OpenAIAutoResetCreditStateExtraKey] = OpenAIAutoResetCreditState{
+			Status: OpenAIAutoResetStatusNoCredit, AvailableCount: 0, CheckedAt: now.Format(time.RFC3339),
+		}
+		account := &Account{ID: 5, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}
+		paused, _ := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+		require.False(t, paused)
+	})
+
+	t.Run("无卡不会绕过独立配置的普通配额暂停", func(t *testing.T) {
+		extra := cloneOpenAIAutoResetExtra(baseExtra)
+		extra["codex_5h_used_percent"] = 100.0
+		extra[OpenAIAutoResetCreditStateExtraKey] = OpenAIAutoResetCreditState{
+			Status: OpenAIAutoResetStatusNoCredit, AvailableCount: 0, CheckedAt: now.Format(time.RFC3339),
+		}
+		account := &Account{ID: 6, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}
+		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+		require.True(t, paused)
+		require.Equal(t, "5h", decision.window)
+		require.Empty(t, decision.reason)
 	})
 
 	t.Run("自然窗口重置后清除动态阻塞", func(t *testing.T) {
