@@ -168,6 +168,7 @@ type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
 	PlanGatedModelCooldownEnabled        *bool `json:"plan_gated_model_cooldown_enabled"`
 	RateLimitSameAccountRetryEnabled     *bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
 	RateLimitProxyRotationEnabled        *bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
+	AutoResetCreditGlobalEnabled         *bool `json:"openai_oauth_auto_reset_credit_global_enabled"`
 	GrokForbiddenSameAccountRetryEnabled *bool `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 
@@ -187,6 +188,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		req.RateLimitSameAccountRetryEnabled,
 		req.GrokForbiddenSameAccountRetryEnabled,
 		req.RateLimitProxyRotationEnabled,
+		req.AutoResetCreditGlobalEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
@@ -198,6 +200,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		"plan_gated_model_cooldown_changed", req.PlanGatedModelCooldownEnabled != nil,
 		"rate_limit_same_account_retry_changed", req.RateLimitSameAccountRetryEnabled != nil,
 		"rate_limit_proxy_rotation_changed", req.RateLimitProxyRotationEnabled != nil,
+		"auto_reset_credit_global_changed", req.AutoResetCreditGlobalEnabled != nil,
 		"grok_forbidden_same_account_retry_changed", req.GrokForbiddenSameAccountRetryEnabled != nil,
 	)
 	response.Success(c, settings)

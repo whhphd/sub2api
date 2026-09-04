@@ -579,6 +579,7 @@ type OpenAIOAuthRuntimeSettings struct {
 	PlanGatedModelCooldownEnabled             bool `json:"plan_gated_model_cooldown_enabled"`
 	OpenAIRateLimitSameAccountRetryEnabled    bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
 	OpenAIRateLimitProxyRotationEnabled       bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
+	OpenAIAutoResetCreditGlobalEnabled        bool `json:"openai_oauth_auto_reset_credit_global_enabled"`
 	GrokOAuthForbiddenSameAccountRetryEnabled bool `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 
@@ -588,6 +589,7 @@ func DefaultOpenAIOAuthRuntimeSettings(_ bool) *OpenAIOAuthRuntimeSettings {
 		PlanGatedModelCooldownEnabled:             true,
 		OpenAIRateLimitSameAccountRetryEnabled:    false,
 		OpenAIRateLimitProxyRotationEnabled:       false,
+		OpenAIAutoResetCreditGlobalEnabled:        false,
 		GrokOAuthForbiddenSameAccountRetryEnabled: false,
 	}
 }

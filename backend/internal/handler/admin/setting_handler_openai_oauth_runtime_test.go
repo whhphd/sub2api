@@ -157,6 +157,14 @@ func TestSettingHandlerOpenAIOAuthRuntimePatchIsPartial(t *testing.T) {
 				require.False(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
 			},
 		},
+		{
+			name:    "OpenAI global automatic reset-credit use",
+			payload: map[string]any{"openai_oauth_auto_reset_credit_global_enabled": true},
+			assert: func(t *testing.T, settings service.OpenAIOAuthRuntimeSettings) {
+				require.True(t, settings.OpenAIAutoResetCreditGlobalEnabled)
+				require.False(t, settings.OpenAIRateLimitSameAccountRetryEnabled)
+			},
+		},
 	}
 
 	for _, tt := range tests {

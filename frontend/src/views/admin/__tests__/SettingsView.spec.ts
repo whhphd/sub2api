@@ -702,6 +702,7 @@ describe("admin SettingsView payment visible method controls", () => {
       safe_pre_output_overload_retry_enabled: false,
       openai_oauth_rate_limit_same_account_retry_enabled: false,
       openai_oauth_rate_limit_proxy_rotation_enabled: false,
+      openai_oauth_auto_reset_credit_global_enabled: false,
       grok_oauth_forbidden_same_account_retry_enabled: false,
       plan_gated_model_cooldown_enabled: true,
     };
@@ -716,6 +717,9 @@ describe("admin SettingsView payment visible method controls", () => {
       openai_oauth_rate_limit_proxy_rotation_enabled:
         payload.openai_oauth_rate_limit_proxy_rotation_enabled ??
         openAIOAuthRuntimeSettings.openai_oauth_rate_limit_proxy_rotation_enabled,
+      openai_oauth_auto_reset_credit_global_enabled:
+        payload.openai_oauth_auto_reset_credit_global_enabled ??
+        openAIOAuthRuntimeSettings.openai_oauth_auto_reset_credit_global_enabled,
       grok_oauth_forbidden_same_account_retry_enabled:
         payload.grok_oauth_forbidden_same_account_retry_enabled ??
         openAIOAuthRuntimeSettings.grok_oauth_forbidden_same_account_retry_enabled,
@@ -1672,6 +1676,29 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
       openai_oauth_rate_limit_proxy_rotation_enabled: true,
+    });
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("independently saves the OpenAI OAuth global automatic reset-credit switch", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const toggle = wrapper.get(
+      '[data-testid="openai-oauth-auto-reset-credit-global-toggle"]',
+    );
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper
+      .get('[data-testid="openai-oauth-auto-reset-credit-global-save"]')
+      .trigger("click");
+    await flushPromises();
+
+    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({
+      openai_oauth_auto_reset_credit_global_enabled: true,
     });
     expect(updateSettings).not.toHaveBeenCalled();
   });

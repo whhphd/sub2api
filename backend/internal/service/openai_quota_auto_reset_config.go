@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -28,17 +29,21 @@ type OpenAIAutoResetCreditConfig struct {
 	Threshold7d float64
 }
 
-// ResolveOpenAIAutoResetCreditConfig 只接受 OpenAI OAuth 母账号；历史账号未配置时
-// 始终保持关闭，防止升级后产生意外消费。
-func ResolveOpenAIAutoResetCreditConfig(account *Account) OpenAIAutoResetCreditConfig {
+// ResolveOpenAIAutoResetCreditConfig 只接受 OpenAI OAuth 母账号。全局开关仅
+// 覆盖账号级启用位，账号自身的阈值仍然优先。
+func ResolveOpenAIAutoResetCreditConfig(account *Account, globalEnabled ...bool) OpenAIAutoResetCreditConfig {
 	config := OpenAIAutoResetCreditConfig{
 		Threshold5h: openAIAutoResetCreditDefaultThreshold,
 		Threshold7d: openAIAutoResetCreditDefaultThreshold,
 	}
-	if !isOpenAIAutoResetCreditAccount(account) || account.Extra == nil {
+	if !isOpenAIAutoResetCreditAccount(account) {
 		return config
 	}
-	config.Enabled = resolveAccountExtraBool(account.Extra, OpenAIAutoResetCreditEnabledExtraKey)
+	config.Enabled = len(globalEnabled) > 0 && globalEnabled[0]
+	if account.Extra == nil {
+		return config
+	}
+	config.Enabled = config.Enabled || resolveAccountExtraBool(account.Extra, OpenAIAutoResetCreditEnabledExtraKey)
 	if value, ok := resolveAccountExtraNumber(account.Extra, OpenAIAutoResetCredit5hThresholdExtraKey); ok && isValidOpenAIAutoResetThreshold(value) {
 		config.Threshold5h = value
 	}
@@ -46,6 +51,23 @@ func ResolveOpenAIAutoResetCreditConfig(account *Account) OpenAIAutoResetCreditC
 		config.Threshold7d = value
 	}
 	return config
+}
+
+type openAIAutoResetCreditGlobalCtxKey struct{}
+
+func withOpenAIAutoResetCreditGlobalEnabled(ctx context.Context, enabled bool) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAIAutoResetCreditGlobalCtxKey{}, enabled)
+}
+
+func openAIAutoResetCreditGlobalEnabled(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	enabled, _ := ctx.Value(openAIAutoResetCreditGlobalCtxKey{}).(bool)
+	return enabled
 }
 
 func isOpenAIAutoResetCreditAccount(account *Account) bool {

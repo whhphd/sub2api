@@ -217,6 +217,7 @@ func (s *OpenAIQuotaAutoResetService) scanEnabledAccounts(ctx context.Context) {
 	if release != nil {
 		defer release()
 	}
+	globalEnabled := s.autoResetCreditGlobalEnabled(ctx)
 	for page := 1; ; page++ {
 		accounts, pageInfo, err := s.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{
 			Page: page, PageSize: openAIAutoResetBatchSize,
@@ -227,7 +228,7 @@ func (s *OpenAIQuotaAutoResetService) scanEnabledAccounts(ctx context.Context) {
 		}
 		for i := range accounts {
 			account := &accounts[i]
-			if account.Schedulable && ResolveOpenAIAutoResetCreditConfig(account).Enabled {
+			if account.Schedulable && ResolveOpenAIAutoResetCreditConfig(account, globalEnabled).Enabled {
 				s.Notify(account.ID)
 			}
 		}
@@ -235,6 +236,10 @@ func (s *OpenAIQuotaAutoResetService) scanEnabledAccounts(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (s *OpenAIQuotaAutoResetService) autoResetCreditGlobalEnabled(ctx context.Context) bool {
+	return s != nil && s.settings != nil && s.settings.GetOpenAIOAuthRuntimeSettings(ctx).OpenAIAutoResetCreditGlobalEnabled
 }
 
 // Redis 锁异常时允许重复扫描，避免协调设施故障导致所有实例同时停止补偿；
@@ -280,7 +285,7 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		}
 		return nil
 	}
-	config := ResolveOpenAIAutoResetCreditConfig(account)
+	config := ResolveOpenAIAutoResetCreditConfig(account, s.autoResetCreditGlobalEnabled(ctx))
 	if !config.Enabled || !account.IsActive() || !account.Schedulable {
 		return nil
 	}
@@ -334,7 +339,7 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	if err != nil || account == nil {
 		return err
 	}
-	config = ResolveOpenAIAutoResetCreditConfig(account)
+	config = ResolveOpenAIAutoResetCreditConfig(account, s.autoResetCreditGlobalEnabled(ctx))
 	if !config.Enabled {
 		return nil
 	}
@@ -389,7 +394,7 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	}
 
 	account, err = s.accountRepo.GetByID(ctx, accountID)
-	if err != nil || account == nil || !ResolveOpenAIAutoResetCreditConfig(account).Enabled {
+	if err != nil || account == nil || !ResolveOpenAIAutoResetCreditConfig(account, s.autoResetCreditGlobalEnabled(ctx)).Enabled {
 		return err
 	}
 	result, err := s.idempotency.Execute(ctx, IdempotencyExecuteOptions{

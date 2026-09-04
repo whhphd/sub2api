@@ -539,6 +539,61 @@
             </div>
           </div>
 
+          <!-- OpenAI OAuth global automatic reset-credit use -->
+          <div class="card" data-testid="openai-oauth-auto-reset-credit-global-card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.openaiOauthRuntime.autoResetCreditGlobalTitle") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.openaiOauthRuntime.autoResetCreditGlobalDescription") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="openAIOAuthRuntimeLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-6">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.openaiOauthRuntime.autoResetCreditGlobalEnabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiOauthRuntime.autoResetCreditGlobalEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="openAIOAuthRuntimeForm.openai_oauth_auto_reset_credit_global_enabled"
+                    :disabled="openAIOAuthAutoResetCreditGlobalSaving"
+                    data-testid="openai-oauth-auto-reset-credit-global-toggle"
+                  />
+                </div>
+                <div class="flex justify-end">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="openAIOAuthAutoResetCreditGlobalSaving"
+                    data-testid="openai-oauth-auto-reset-credit-global-save"
+                    @click="saveOpenAIOAuthAutoResetCreditGlobalSettings"
+                  >
+                    {{
+                      openAIOAuthAutoResetCreditGlobalSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Grok OAuth 403 Same-Account Retry -->
           <div
             class="card"
@@ -9464,12 +9519,14 @@ const openAIOAuthRuntimeLoading = ref(true);
 const openAIOAuthSafeRetrySaving = ref(false);
 const openAIOAuthRateLimitSameAccountRetrySaving = ref(false);
 const openAIOAuthRateLimitProxyRotationSaving = ref(false);
+const openAIOAuthAutoResetCreditGlobalSaving = ref(false);
 const grokOAuthForbiddenSameAccountRetrySaving = ref(false);
 const openAIOAuthPlanGatedCooldownSaving = ref(false);
 const openAIOAuthRuntimeForm = reactive({
   safe_pre_output_overload_retry_enabled: false,
   openai_oauth_rate_limit_same_account_retry_enabled: false,
   openai_oauth_rate_limit_proxy_rotation_enabled: false,
+  openai_oauth_auto_reset_credit_global_enabled: false,
   grok_oauth_forbidden_same_account_retry_enabled: false,
   plan_gated_model_cooldown_enabled: true,
 });
@@ -12526,6 +12583,8 @@ async function loadOpenAIOAuthRuntimeSettings() {
       settings.openai_oauth_rate_limit_same_account_retry_enabled;
     openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled =
       settings.openai_oauth_rate_limit_proxy_rotation_enabled;
+    openAIOAuthRuntimeForm.openai_oauth_auto_reset_credit_global_enabled =
+      settings.openai_oauth_auto_reset_credit_global_enabled;
     openAIOAuthRuntimeForm.grok_oauth_forbidden_same_account_retry_enabled =
       settings.grok_oauth_forbidden_same_account_retry_enabled;
     openAIOAuthRuntimeForm.plan_gated_model_cooldown_enabled =
@@ -12558,6 +12617,30 @@ async function saveOpenAIOAuthRateLimitProxyRotationSettings() {
     );
   } finally {
     openAIOAuthRateLimitProxyRotationSaving.value = false;
+  }
+}
+
+async function saveOpenAIOAuthAutoResetCreditGlobalSettings() {
+  openAIOAuthAutoResetCreditGlobalSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({
+      openai_oauth_auto_reset_credit_global_enabled:
+        openAIOAuthRuntimeForm.openai_oauth_auto_reset_credit_global_enabled,
+    });
+    openAIOAuthRuntimeForm.openai_oauth_auto_reset_credit_global_enabled =
+      updated.openai_oauth_auto_reset_credit_global_enabled;
+    appStore.showSuccess(
+      t("admin.settings.openaiOauthRuntime.autoResetCreditGlobalSaved"),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.openaiOauthRuntime.autoResetCreditGlobalSaveFailed"),
+      ),
+    );
+  } finally {
+    openAIOAuthAutoResetCreditGlobalSaving.value = false;
   }
 }
 

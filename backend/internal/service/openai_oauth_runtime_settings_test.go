@@ -99,6 +99,7 @@ func TestDefaultOpenAIOAuthRuntimeSettings(t *testing.T) {
 	require.True(t, disabled.PlanGatedModelCooldownEnabled)
 	require.False(t, disabled.OpenAIRateLimitSameAccountRetryEnabled)
 	require.False(t, disabled.OpenAIRateLimitProxyRotationEnabled)
+	require.False(t, disabled.OpenAIAutoResetCreditGlobalEnabled)
 	require.False(t, disabled.GrokOAuthForbiddenSameAccountRetryEnabled)
 
 	require.Equal(t, disabled, DefaultOpenAIOAuthRuntimeSettings(true))
@@ -169,9 +170,16 @@ func TestUpdateOpenAIOAuthRuntimeSettingsIsPartial(t *testing.T) {
 	require.True(t, afterProxyRotation.GrokOAuthForbiddenSameAccountRetryEnabled)
 	require.Equal(t, 5, callbackCount)
 
+	autoResetGlobalEnabled := true
+	afterAutoResetGlobal, err := svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, nil, nil, nil, &autoResetGlobalEnabled)
+	require.NoError(t, err)
+	require.True(t, afterAutoResetGlobal.OpenAIAutoResetCreditGlobalEnabled)
+	require.True(t, afterAutoResetGlobal.OpenAIRateLimitProxyRotationEnabled)
+	require.Equal(t, 6, callbackCount)
+
 	var stored OpenAIOAuthRuntimeSettings
 	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyOpenAIOAuthRuntimeSettings]), &stored))
-	require.Equal(t, afterProxyRotation, &stored)
+	require.Equal(t, afterAutoResetGlobal, &stored)
 
 	_, err = svc.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil)
 	require.ErrorContains(t, err, "at least one")

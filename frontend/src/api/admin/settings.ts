@@ -1327,6 +1327,7 @@ export interface OpenAIOAuthRuntimeSettings {
   plan_gated_model_cooldown_enabled: boolean;
   openai_oauth_rate_limit_same_account_retry_enabled: boolean;
   openai_oauth_rate_limit_proxy_rotation_enabled: boolean;
+  openai_oauth_auto_reset_credit_global_enabled: boolean;
   grok_oauth_forbidden_same_account_retry_enabled: boolean;
 }
 
@@ -1337,6 +1338,7 @@ export type UpdateOpenAIOAuthRuntimeSettingsRequest = Partial<
     | "plan_gated_model_cooldown_enabled"
     | "openai_oauth_rate_limit_same_account_retry_enabled"
     | "openai_oauth_rate_limit_proxy_rotation_enabled"
+    | "openai_oauth_auto_reset_credit_global_enabled"
     | "grok_oauth_forbidden_same_account_retry_enabled"
   >
 >;

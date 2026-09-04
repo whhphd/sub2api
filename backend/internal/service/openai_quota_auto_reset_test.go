@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,6 +18,16 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		config := ResolveOpenAIAutoResetCreditConfig(account)
 		require.False(t, config.Enabled)
 		require.Equal(t, 1.0, config.Threshold5h)
+		require.Equal(t, 1.0, config.Threshold7d)
+	})
+
+	t.Run("全局开关覆盖未配置账号但保留账号阈值", func(t *testing.T) {
+		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+			OpenAIAutoResetCredit5hThresholdExtraKey: 0.8,
+		}}
+		config := ResolveOpenAIAutoResetCreditConfig(account, true)
+		require.True(t, config.Enabled)
+		require.Equal(t, 0.8, config.Threshold5h)
 		require.Equal(t, 1.0, config.Threshold7d)
 	})
 
@@ -43,6 +54,44 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+}
+
+func TestShouldAutoPauseOpenAIAccountByQuota_GlobalAutoResetCredit(t *testing.T) {
+	now := time.Now().UTC()
+	account := &Account{ID: 5, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+		"codex_5h_used_percent":  100.0,
+		"codex_usage_updated_at": now.Format(time.RFC3339),
+		"codex_5h_reset_at":      now.Add(time.Hour).Format(time.RFC3339),
+	}}
+	ctx := withOpenAIAutoResetCreditGlobalEnabled(context.Background(), true)
+	paused, decision := shouldAutoPauseOpenAIAccountByQuota(ctx, account)
+	require.True(t, paused)
+	require.Equal(t, "quota_auto_reset_pending_5h", decision.reason)
+}
+
+type autoResetScanRepo struct {
+	AccountRepository
+	accounts []Account
+}
+
+func (r *autoResetScanRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string) ([]Account, *pagination.PaginationResult, error) {
+	return r.accounts, &pagination.PaginationResult{Page: 1, Pages: 1}, nil
+}
+
+func TestOpenAIQuotaAutoResetService_GlobalSwitchScansUnconfiguredAccounts(t *testing.T) {
+	settingsRepo := newOpenAIOAuthRuntimeSettingRepo()
+	settingsRepo.values[SettingKeyOpenAIOAuthRuntimeSettings] = `{"openai_oauth_auto_reset_credit_global_enabled":true}`
+	service := &OpenAIQuotaAutoResetService{
+		accountRepo: &autoResetScanRepo{accounts: []Account{{
+			ID: 9, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true,
+		}}},
+		settings: NewSettingService(settingsRepo, nil),
+		ctx:      context.Background(),
+		queue:    make(chan int64, 1),
+	}
+
+	service.scanEnabledAccounts(context.Background())
+	require.Equal(t, int64(9), <-service.queue)
 }
 
 func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T) {
