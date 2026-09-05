@@ -1,0 +1,23 @@
+[Unit]
+Description=Sub2API host network metrics
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+DynamicUser=yes
+ExecStart=/usr/local/lib/sub2api-node-exporter/node_exporter --web.listen-address=172.18.0.1:9100 --collector.disable-defaults --collector.netdev --collector.netclass --collector.stat --collector.netdev.device-include=^(enp6s0|enp7s0)$
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=172.18.0.0/16
+MemoryMax=128M
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target

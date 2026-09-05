@@ -193,6 +193,10 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		// Realtime ops signals
 		ops.GET("/concurrency", h.Admin.Ops.GetConcurrencyStats)
+		ops.GET("/network/overview", h.Admin.Ops.GetNetworkOverview)
+		ops.GET("/network/trend", h.Admin.Ops.GetNetworkTrend)
+		ops.GET("/network/settings", h.Admin.Ops.GetNetworkSettings)
+		ops.PUT("/network/settings", h.Admin.Ops.UpdateNetworkSettings)
 		ops.GET("/user-concurrency", h.Admin.Ops.GetUserConcurrencyStats)
 		ops.GET("/account-availability", h.Admin.Ops.GetAccountAvailability)
 		ops.GET("/realtime-traffic", h.Admin.Ops.GetRealtimeTrafficSummary)

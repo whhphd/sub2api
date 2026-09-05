@@ -39,6 +39,8 @@
         @exit-fullscreen="exitFullscreen"
       />
 
+      <OpsNetworkPanel v-if="opsEnabled && !(loading && !hasLoadedOnce)" :time-range="timeRange" :custom-start-time="customStartTime" :custom-end-time="customEndTime" :fullscreen="isFullscreen" />
+
       <!-- Row: Concurrency + Throughput -->
       <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div class="lg:col-span-1 min-h-[360px]">
@@ -160,6 +162,7 @@ import { useAdminSettingsStore, useAppStore } from '@/stores'
 import OpsDashboardHeader from './components/OpsDashboardHeader.vue'
 import OpsDashboardSkeleton from './components/OpsDashboardSkeleton.vue'
 import OpsConcurrencyCard from './components/OpsConcurrencyCard.vue'
+import OpsNetworkPanel from './components/OpsNetworkPanel.vue'
 import OpsErrorDetailModal from './components/OpsErrorDetailModal.vue'
 import OpsErrorDistributionChart from './components/OpsErrorDistributionChart.vue'
 import OpsErrorDetailsModal from './components/OpsErrorDetailsModal.vue'

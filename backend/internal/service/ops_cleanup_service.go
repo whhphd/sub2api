@@ -43,6 +43,7 @@ return 0
 // 附带：在 runCleanupOnce 末尾调用 ChannelMonitorService.RunDailyMaintenance，
 // 统一共享 cron schedule + leader lock + heartbeat，避免再引一套调度。
 type OpsCleanupService struct {
+	network           *OpsNetworkService
 	opsRepo           OpsRepository
 	db                *sql.DB
 	redisClient       *redis.Client
@@ -322,6 +323,12 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 			return out, err
 		}
 		*t.counter = n
+	}
+
+	if s.network != nil {
+		if err := s.network.Cleanup(ctx); err != nil {
+			return out, err
+		}
 	}
 
 	// Channel monitor 每日维护（聚合昨日明细 + 软删过期明细/聚合）。

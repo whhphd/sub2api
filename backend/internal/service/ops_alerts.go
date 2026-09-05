@@ -31,6 +31,9 @@ func (s *OpsService) CreateAlertRule(ctx context.Context, rule *OpsAlertRule) (*
 		return nil, infraerrors.BadRequest("INVALID_RULE", "invalid rule")
 	}
 
+	if err := validateNetworkAlert(rule); err != nil {
+		return nil, err
+	}
 	created, err := s.opsRepo.CreateAlertRule(ctx, rule)
 	if err != nil {
 		return nil, err
@@ -49,6 +52,9 @@ func (s *OpsService) UpdateAlertRule(ctx context.Context, rule *OpsAlertRule) (*
 		return nil, infraerrors.BadRequest("INVALID_RULE", "invalid rule")
 	}
 
+	if err := validateNetworkAlert(rule); err != nil {
+		return nil, err
+	}
 	updated, err := s.opsRepo.UpdateAlertRule(ctx, rule)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

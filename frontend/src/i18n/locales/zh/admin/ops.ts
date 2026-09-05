@@ -1,5 +1,8 @@
+import network from './opsNetwork'
+
 export default {
     ops: {
+	  network,
       title: '运维监控',
       description: '运维监控与排障',
       // Dashboard

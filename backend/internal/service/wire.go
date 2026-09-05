@@ -570,6 +570,9 @@ func ProvideOpsCleanupService(
 	opsService *OpsService,
 ) *OpsCleanupService {
 	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, settingRepo)
+	if opsService != nil {
+		svc.network = opsService.network
+	}
 	svc.Start()
 	if opsService != nil {
 		opsService.SetCleanupReloader(svc)
@@ -736,6 +739,7 @@ func ProvideOpsService(
 	settingService *SettingService,
 	authCacheInvalidationWorker *AuthCacheInvalidationWorker,
 	apiKeyService *APIKeyService,
+	networkCache OpsNetworkCache,
 ) *OpsService {
 	svc := NewOpsService(
 		opsRepo,
@@ -758,6 +762,10 @@ func ProvideOpsService(
 	}
 	svc.authCacheInvalidationWorker = authCacheInvalidationWorker
 	svc.apiKeyService = apiKeyService
+	if repo, ok := opsRepo.(OpsNetworkRepository); ok {
+		svc.network = NewOpsNetworkService(repo, networkCache, settingRepo, svc, cfg)
+		svc.network.Start()
+	}
 	svc.StartRuntimeSettingsRefresh(context.Background())
 	return svc
 }

@@ -674,6 +674,9 @@ export type OpsPhase = string
 export type AlertSeverity = 'critical' | 'warning' | 'info'
 export type ThresholdMode = 'count' | 'percentage' | 'both'
 export type MetricType =
+	| 'network_rx_utilization_percent'
+	| 'network_tx_utilization_percent'
+	| 'network_unavailable'
   | 'success_rate'
   | 'error_rate'
   | 'upstream_error_rate'

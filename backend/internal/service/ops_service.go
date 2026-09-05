@@ -43,6 +43,7 @@ type OpsRuntimeSettingsRefreshHealth struct {
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
+	network     *OpsNetworkService
 	opsRepo     OpsRepository
 	settingRepo SettingRepository
 	cfg         *config.Config
@@ -109,6 +110,8 @@ func (s *OpsService) SetOpenAIQuotaAutoPauseSettingsSink(sink func(OpsOpenAIAcco
 	}
 	s.quotaAutoPauseSink = sink
 }
+
+func (s *OpsService) NetworkService() *OpsNetworkService { return s.network }
 
 func NewOpsService(
 	opsRepo OpsRepository,

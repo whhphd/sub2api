@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -116,6 +116,9 @@ const groupOptions = computed<SelectOption[]>(() => {
 
 const metricDefinitions = computed(() => {
   return [
+    { type: 'network_rx_utilization_percent', group: 'system', label: t('admin.ops.network.rxAlert'), description: '', recommendedOperator: '>=', recommendedThreshold: 80, unit: '%' },
+    { type: 'network_tx_utilization_percent', group: 'system', label: t('admin.ops.network.txAlert'), description: '', recommendedOperator: '>=', recommendedThreshold: 80, unit: '%' },
+    { type: 'network_unavailable', group: 'system', label: t('admin.ops.network.unavailable'), description: '', recommendedOperator: '>=', recommendedThreshold: 1, unit: '' },
     // System-level metrics
     {
       type: 'success_rate',
@@ -248,6 +251,17 @@ const selectedMetricDefinition = computed(() => {
   const metricType = draft.value?.metric_type
   if (!metricType) return null
   return metricDefinitions.value.find((m) => m.type === metricType) ?? null
+})
+
+watch(() => draft.value?.metric_type, (metric, previous) => {
+  if (!draft.value || !metric?.startsWith('network_')) return
+  draft.value.filters = { network_link: draft.value.filters?.network_link || 'public' }
+  if (previous && previous !== metric) {
+    draft.value.operator = '>='
+    draft.value.threshold = metric === 'network_unavailable' ? 1 : 80
+    draft.value.sustained_minutes = metric === 'network_unavailable' ? 1 : 3
+    draft.value.notify_email = false
+  }
 })
 
 const metricOptions = computed(() => {
@@ -554,7 +568,11 @@ function cancelDelete() {
             <Select v-model="draft!.operator" :options="operatorOptions" />
           </div>
 
-          <div class="md:col-span-2">
+          <div v-if="draft!.metric_type.startsWith('network_')" class="md:col-span-2">
+            <label class="input-label">{{ t('admin.ops.network.interface') }}</label>
+            <Select :model-value="draft!.filters?.network_link || 'public'" :options="[{ value: 'public', label: t('admin.ops.network.public') }, { value: 'private', label: t('admin.ops.network.private') }]" @update:model-value="value => { if (draft) draft.filters = { network_link: value } }" />
+          </div>
+          <div v-if="!draft!.metric_type.startsWith('network_')" class="md:col-span-2">
             <label class="input-label">
               {{ t('admin.ops.alertRules.form.groupId') }}
               <span v-if="isGroupMetricSelected" class="ml-1 text-red-500">*</span>

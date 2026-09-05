@@ -17,6 +17,9 @@ import (
 )
 
 var validOpsAlertMetricTypes = []string{
+	"network_rx_utilization_percent",
+	"network_tx_utilization_percent",
+	"network_unavailable",
 	"success_rate",
 	"error_rate",
 	"upstream_error_rate",
@@ -89,6 +92,8 @@ type opsAlertRuleValidatedInput struct {
 func isPercentOrRateMetric(metricType string) bool {
 	switch metricType {
 	case "success_rate",
+		"network_rx_utilization_percent",
+		"network_tx_utilization_percent",
 		"error_rate",
 		"upstream_error_rate",
 		"cpu_usage_percent",

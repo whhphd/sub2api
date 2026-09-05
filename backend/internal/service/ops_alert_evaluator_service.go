@@ -216,6 +216,10 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 			continue
 		}
 		rulesEnabled++
+		if isNetworkAlert(rule.MetricType) {
+			s.evaluateNetworkRule(ctx, rule, runtimeCfg, now)
+			continue
+		}
 
 		scopePlatform, scopeGroupID, scopeRegion := parseOpsAlertRuleScope(rule.Filters)
 

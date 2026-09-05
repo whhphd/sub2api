@@ -226,6 +226,9 @@ func provideCleanup(
 				return nil
 			}},
 			{"OpsMetricsCollector", func() error {
+				if opsService != nil && opsService.NetworkService() != nil {
+					opsService.NetworkService().Stop()
+				}
 				if opsMetricsCollector != nil {
 					opsMetricsCollector.Stop()
 				}

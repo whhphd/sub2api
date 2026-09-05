@@ -1,5 +1,8 @@
+import network from './opsNetwork'
+
 export default {
     ops: {
+	  network,
       title: 'Ops Monitoring',
       description: 'Operational monitoring and troubleshooting',
       // Dashboard

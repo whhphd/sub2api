@@ -1596,6 +1596,7 @@ func (r *RedisConfig) Address() string {
 }
 
 type OpsConfig struct {
+	Network OpsNetworkConfig `mapstructure:"network"`
 	// Enabled controls whether ops features should run.
 	//
 	// NOTE: vNext still has a DB-backed feature flag (ops_monitoring_enabled) for runtime on/off.
@@ -1613,6 +1614,11 @@ type OpsConfig struct {
 
 	// Pre-aggregation configuration.
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+}
+
+type OpsNetworkConfig struct {
+	ExporterURL string `mapstructure:"exporter_url"`
+	ServerID    string `mapstructure:"server_id"`
 }
 
 type OpsCleanupConfig struct {
@@ -2255,6 +2261,8 @@ func setDefaults() {
 	viper.SetDefault("ops.cleanup.enabled", true)
 	viper.SetDefault("ops.cleanup.schedule", "0 2 * * *")
 	// Retention days: vNext defaults to 30 days across ops datasets.
+	viper.SetDefault("ops.network.exporter_url", "")
+	viper.SetDefault("ops.network.server_id", "")
 	viper.SetDefault("ops.cleanup.error_log_retention_days", 30)
 	viper.SetDefault("ops.cleanup.minute_metrics_retention_days", 30)
 	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
