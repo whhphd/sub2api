@@ -38,6 +38,8 @@ func (s *UpstreamBalanceService) fetch(ctx context.Context, account *Account) *U
 	if err != nil {
 		return fail("invalid_base_url")
 	}
+	queryCtx, cancel := context.WithTimeout(ctx, s.requestTimeout)
+	defer cancel()
 	client := &upstreamBalanceClient{account: account, base: base, upstream: s.probe.accountTestService.httpUpstream}
 	if account.ProxyID != nil {
 		if account.Proxy == nil || account.Proxy.ID != *account.ProxyID {
@@ -60,7 +62,7 @@ func (s *UpstreamBalanceService) fetch(ctx context.Context, account *Account) *U
 		if json.Unmarshal([]byte(plain), &auth) != nil || auth.Identity != upstreamBalanceCredentialIdentity(account) {
 			return fail("credentials_changed")
 		}
-		result, err := client.queryNewAPIUser(ctx, auth)
+		result, err := client.queryNewAPIUser(queryCtx, auth)
 		if err != nil {
 			return &UpstreamBalanceSnapshot{Status: "failed", Provider: "new_api", LastError: balanceErrorCode(err)}
 		}
@@ -69,12 +71,12 @@ func (s *UpstreamBalanceService) fetch(ctx context.Context, account *Account) *U
 	if account.GetCredential("api_key") == "" {
 		return fail("missing_api_key")
 	}
-	body, status, err := client.get(ctx, buildOpenAIEndpointURL(base, "/v1/usage"), account.GetCredential("api_key"), "")
+	body, status, err := client.get(queryCtx, buildOpenAIEndpointURL(base, "/v1/usage"), account.GetCredential("api_key"), "")
 	if err != nil {
 		return fail(balanceErrorCode(err))
 	}
 	if status == http.StatusNotFound || status == http.StatusMethodNotAllowed {
-		result, err := client.queryNewAPIBilling(ctx)
+		result, err := client.queryNewAPIBilling(queryCtx)
 		if err != nil {
 			return &UpstreamBalanceSnapshot{Status: "failed", Provider: "new_api", LastError: balanceErrorCode(err)}
 		}
@@ -234,7 +236,7 @@ func (c *upstreamBalanceClient) queryNewAPIBilling(ctx context.Context) (*Upstre
 	}
 	result := &UpstreamBalanceSnapshot{Status: "unconfirmed", Provider: "new_api", Source: "/v1/dashboard/billing", Scope: "unknown"}
 	// New API returns this sentinel for unlimited keys, not a funded wallet.
-	if *sub.Total >= 100000000 {
+	if *sub.Total == 100000000 {
 		result.Status = "non_wallet"
 		return result, nil
 	}

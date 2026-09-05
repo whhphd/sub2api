@@ -74,6 +74,7 @@ func TestUpstreamBalanceSub2APIWalletModes(t *testing.T) {
 		{"negative", `{"mode":"unrestricted","isValid":true,"balance":-2.5,"unit":"USD"}`, "ok", float64Ptr(-2.5)},
 		{"key_quota", `{"mode":"quota_limited","isValid":true,"remaining":100}`, "non_wallet", nil},
 		{"subscription", `{"mode":"unrestricted","isValid":true,"subscription":{},"remaining":100}`, "non_wallet", nil},
+		{"large_wallet", `{"mode":"unrestricted","isValid":true,"balance":100000001,"unit":"USD"}`, "ok", float64Ptr(100000001)},
 		{"missing_balance", `{"mode":"unrestricted","isValid":true,"remaining":100}`, "", nil},
 		{"error", `{"isValid":false,"balance":0}`, "", nil},
 		{"html", `<html>login</html>`, "", nil},

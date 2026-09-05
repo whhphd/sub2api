@@ -64,16 +64,17 @@ type upstreamBalanceRepository interface {
 }
 
 type UpstreamBalanceService struct {
-	probe         *UpstreamBillingProbeService
-	encryptor     SecretEncryptor
-	keyConfigured bool
-	group         singleflight.Group
-	slots         chan struct{}
-	cycle         sync.Mutex
+	probe          *UpstreamBillingProbeService
+	encryptor      SecretEncryptor
+	keyConfigured  bool
+	requestTimeout time.Duration
+	group          singleflight.Group
+	slots          chan struct{}
+	cycle          sync.Mutex
 }
 
 func NewUpstreamBalanceService(probe *UpstreamBillingProbeService, encryptor SecretEncryptor, keyConfigured bool) *UpstreamBalanceService {
-	return &UpstreamBalanceService{probe: probe, encryptor: encryptor, keyConfigured: keyConfigured, slots: make(chan struct{}, 4)}
+	return &UpstreamBalanceService{probe: probe, encryptor: encryptor, keyConfigured: keyConfigured, requestTimeout: upstreamBalanceTimeout, slots: make(chan struct{}, 4)}
 }
 
 func (s *UpstreamBillingProbeService) BalanceService() *UpstreamBalanceService {
@@ -184,7 +185,7 @@ func (s *UpstreamBalanceService) query(ctx context.Context, id int64, scheduled 
 		case "failed", "unsupported":
 			snapshot.FailureCount = 1
 			if previous != nil {
-				snapshot.FailureCount += previous.FailureCount
+				snapshot.FailureCount += max(0, min(previous.FailureCount, 32))
 				snapshot.Balance, snapshot.Currency = previous.Balance, previous.Currency
 				snapshot.Source, snapshot.Scope = previous.Source, previous.Scope
 				if snapshot.Provider == "" {
@@ -204,7 +205,9 @@ func (s *UpstreamBalanceService) query(ctx context.Context, id int64, scheduled 
 		if !ok {
 			return nil, ErrUpstreamBalanceUnavailable
 		}
-		if err := repo.UpdateUpstreamBalanceSnapshot(opCtx, account, snapshot); err != nil {
+		persistCtx, persistCancel := context.WithTimeout(s.probe.parentCtx, 3*time.Second)
+		defer persistCancel()
+		if err := repo.UpdateUpstreamBalanceSnapshot(persistCtx, account, snapshot); err != nil {
 			return nil, err
 		}
 		return snapshot, nil
