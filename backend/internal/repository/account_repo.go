@@ -61,6 +61,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"passive_usage_",
 	"upstream_billing_probe",
 	"upstream_billing_rate_sync",
+	"upstream_balance",
 	"ollama_cloud_usage",
 }
 
@@ -642,7 +643,8 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'upstream_billing_probe',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
-			extra -> 'ollama_cloud_usage_snapshot'
+			extra -> 'ollama_cloud_usage_snapshot',
+			extra -> 'upstream_balance'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -668,6 +670,7 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSession         []byte
 		currentOllamaAutoRefresh     []byte
 		currentOllamaSnapshot        []byte
+		currentBalanceSnapshot       []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -679,6 +682,7 @@ func lockAndMergeAccountProbeExtra(
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
+		&currentBalanceSnapshot,
 	); err != nil {
 		return nil, err
 	}
@@ -694,8 +698,16 @@ func lockAndMergeAccountProbeExtra(
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
 		service.OllamaCloudUsageSnapshotExtraKey,
+		service.UpstreamBalanceExtraKey,
 	} {
 		delete(extra, key)
+	}
+	if identityUnchanged && account.Type == service.AccountTypeAPIKey {
+		if snapshot, ok, err := decodeAccountExtraJSON(currentBalanceSnapshot); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.UpstreamBalanceExtraKey] = snapshot
+		}
 	}
 	probeAccount := service.IsUpstreamBillingProbeIdentity(account.Platform, account.Type)
 	probeEnabled := false

@@ -1,5 +1,13 @@
 export default {
     accounts: {
+      upstreamBalance: {
+        title: 'Upstream Balance', refresh: 'Query upstream balance', queryFailed: 'Balance query failed',
+        updatedAt: 'Last success: {value}', nextQueryAt: 'Next query: {value}',
+        authTitle: 'New API User Credentials', accessToken: 'User access token', userID: 'User ID',
+        configured: 'Configured', clearAuth: 'Clear query credentials', pendingClear: 'Cleared on save',
+        status: { ok: 'Account balance', pending: 'Awaiting automatic query', unconfirmed: 'Scope unconfirmed; may be key quota', non_wallet: 'Not a wallet balance', unsupported: 'Unsupported', failed: 'Query failed', stale: 'Stale data' },
+        errors: { transport_unavailable: 'Query service unavailable', invalid_base_url: 'Invalid upstream URL', proxy_unavailable: 'Account proxy unavailable', credentials_unavailable: 'Query credentials unavailable', credentials_changed: 'Account changed; update query credentials', missing_api_key: 'Missing API key', timeout: 'Query timed out', request_failed: 'Connection failed', invalid_response: 'Invalid upstream response', authentication_failed: 'Upstream rejected credentials', rate_limited: 'Upstream rate limited the query', redirect_rejected: 'Upstream returned a redirect', http_error: 'Upstream API error' }
+      },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',

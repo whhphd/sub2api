@@ -1876,6 +1876,25 @@
         @updated="handleOllamaCloudUsageUpdated"
       />
 
+      <div v-if="account?.type === 'apikey'" class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between gap-2">
+          <label class="input-label mb-0">{{ t('admin.accounts.upstreamBalance.authTitle') }}</label>
+          <span v-if="account.credentials_status?.has_upstream_balance_auth && !balanceClearAuth" class="text-xs text-emerald-600">{{ t('admin.accounts.upstreamBalance.configured') }}</span>
+          <button v-if="account.credentials_status?.has_upstream_balance_auth" type="button" class="p-1 text-gray-500" :title="t('admin.accounts.upstreamBalance.clearAuth')" :aria-label="t('admin.accounts.upstreamBalance.clearAuth')" @click="balanceClearAuth = true; balanceAccessToken = ''; balanceUserID = ''">
+            <Icon name="trash" size="sm" />
+          </button>
+        </div>
+        <label class="block">
+          <span class="input-label">{{ t('admin.accounts.upstreamBalance.accessToken') }}</span>
+          <input v-model="balanceAccessToken" type="password" autocomplete="new-password" class="input" data-testid="balance-access-token" @input="balanceClearAuth = false" />
+        </label>
+        <label class="block">
+          <span class="input-label">{{ t('admin.accounts.upstreamBalance.userID') }}</span>
+          <input v-model="balanceUserID" type="text" inputmode="numeric" class="input" data-testid="balance-user-id" @input="balanceClearAuth = false" />
+        </label>
+        <span v-if="balanceClearAuth" class="text-xs text-amber-600">{{ t('admin.accounts.upstreamBalance.pendingClear') }}</span>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
@@ -3245,6 +3264,9 @@ const autoResetCreditEnabled = ref(false)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
+const balanceAccessToken = ref('')
+const balanceUserID = ref('')
+const balanceClearAuth = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
@@ -3789,6 +3811,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
 	autoResetCredit7dThreshold.value =
 		typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
+	balanceAccessToken.value = ''
+  balanceUserID.value = ''
+  balanceClearAuth.value = false
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
@@ -4709,6 +4734,11 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
+  if (props.account?.type === 'apikey' && (balanceAccessToken.value || balanceUserID.value || balanceClearAuth.value)) {
+    updatePayload.upstream_balance_auth = balanceClearAuth.value
+      ? { clear: true }
+      : { access_token: balanceAccessToken.value, user_id: balanceUserID.value }
+  }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {

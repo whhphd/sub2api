@@ -1060,6 +1060,21 @@ export interface UpstreamBillingData {
 
 export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
 
+export interface UpstreamBalanceSnapshot {
+  status: 'ok' | 'unconfirmed' | 'non_wallet' | 'unsupported' | 'failed'
+  provider?: string
+  source?: string
+  scope?: string
+  balance?: number
+  currency?: string
+  received_at?: string
+  fresh_until?: string
+  last_attempt_at: string
+  next_query_at: string
+  failure_count?: number
+  last_error?: string
+}
+
 export interface UpstreamBillingProbeSnapshot {
   status: UpstreamBillingProbeStatus
   data?: UpstreamBillingData
@@ -1087,6 +1102,7 @@ export interface UpstreamBillingProbeResult {
 }
 
 export interface UpstreamBillingRateSnapshotItem {
+  balance?: UpstreamBalanceSnapshot | null
   account_id: number
   snapshot?: UpstreamBillingProbeSnapshot | null
 }
@@ -1168,6 +1184,7 @@ export interface Account {
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    upstream_balance?: UpstreamBalanceSnapshot
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]
@@ -1509,6 +1526,7 @@ export interface CreateAccountRequest {
 }
 
 export interface UpdateAccountRequest {
+  upstream_balance_auth?: { access_token?: string; user_id?: string; clear?: boolean }
   name?: string
   notes?: string | null
   type?: AccountType

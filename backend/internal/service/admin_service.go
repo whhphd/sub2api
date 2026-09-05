@@ -405,6 +405,7 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
+	BalanceAuthCiphertext *string
 	Name                  string
 	Notes                 *string
 	Type                  string // Account type: oauth, setup-token, apikey

@@ -133,23 +133,24 @@ type CreateAccountRequest struct {
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	UpstreamBalanceAuth     *service.UpstreamBalanceAuthInput `json:"upstream_balance_auth"`
+	Name                    string                            `json:"name"`
+	Notes                   *string                           `json:"notes"`
+	Type                    string                            `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Credentials             map[string]any                    `json:"credentials"`
+	Extra                   map[string]any                    `json:"extra"`
+	ProxyID                 *int64                            `json:"proxy_id"`
+	Concurrency             *int                              `json:"concurrency"`
+	Priority                *int                              `json:"priority"`
+	RateMultiplier          *float64                          `json:"rate_multiplier"`
+	LoadFactor              *int                              `json:"load_factor"`
+	Status                  string                            `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs                *[]int64                          `json:"group_ids"`
+	ExpiresAt               *int64                            `json:"expires_at"`
+	AutoPauseOnExpired      *bool                             `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool                             `json:"upstream_billing_probe_enabled"`
+	RateSyncEnabled         *bool                             `json:"upstream_billing_rate_sync_enabled"`
+	ConfirmMixedChannelRisk *bool                             `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
@@ -1036,8 +1037,29 @@ func (h *AccountHandler) Update(c *gin.Context) {
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
+	var balanceAuthCiphertext *string
+	if req.UpstreamBalanceAuth != nil {
+		current, loadErr := h.adminService.GetAccount(c.Request.Context(), accountID)
+		if loadErr != nil {
+			response.ErrorFrom(c, loadErr)
+			return
+		}
+		projected := *current
+		if req.Type != "" {
+			projected.Type = req.Type
+		}
+		if len(req.Credentials) > 0 {
+			projected.Credentials = service.MergePreservingSensitiveCreds(current.Credentials, req.Credentials)
+		}
+		balanceAuthCiphertext, err = h.upstreamBillingProbe.BalanceService().PrepareAuth(&projected, req.UpstreamBalanceAuth)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
 
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+		BalanceAuthCiphertext: balanceAuthCiphertext,
 		Name:                  req.Name,
 		Notes:                 req.Notes,
 		Type:                  req.Type,

@@ -378,6 +378,9 @@
               @probe="handleProbeUpstreamBilling(row)"
             />
           </template>
+          <template #cell-upstream_balance="{ row }">
+            <UpstreamBalanceCell :account="row" :now="upstreamBillingNow" :querying="queryingUpstreamBalance.has(row.id)" @query="handleQueryUpstreamBalance(row)" />
+          </template>
           <template #cell-priority="{ value }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
           </template>
@@ -520,6 +523,7 @@ import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vu
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
+import UpstreamBalanceCell from '@/components/account/UpstreamBalanceCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
@@ -619,6 +623,7 @@ const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
+const queryingUpstreamBalance = reactive(new Set<number>())
 const upstreamBillingRateETag = ref<string | null>(null)
 const upstreamBillingRateRefreshing = ref(false)
 let upstreamBillingRateAbortController: AbortController | null = null
@@ -1220,11 +1225,14 @@ const applyUpstreamBillingRateSnapshots = async (
     if (!item) return account
     const nextSnapshot = item.snapshot ?? null
     const previousSnapshot = account.extra?.upstream_billing_probe ?? null
-    if (JSON.stringify(previousSnapshot) === JSON.stringify(nextSnapshot)) return account
+    const nextBalance = item.balance ?? null
+    if (JSON.stringify(previousSnapshot) === JSON.stringify(nextSnapshot) && JSON.stringify(account.extra?.upstream_balance ?? null) === JSON.stringify(nextBalance)) return account
 
     const nextExtra = { ...(account.extra ?? {}) }
     if (nextSnapshot) nextExtra.upstream_billing_probe = nextSnapshot
     else delete nextExtra.upstream_billing_probe
+    if (nextBalance) nextExtra.upstream_balance = nextBalance
+    else delete nextExtra.upstream_balance
     const nextAccount = {
       ...account,
       ...(typeof nextSnapshot?.synced_rate_multiplier === 'number'
@@ -1247,6 +1255,7 @@ const refreshUpstreamBillingRates = async (force = false) => {
   if (upstreamBillingRateRefreshing.value || loading.value || accounts.value.length === 0) return
   if (!force && (
     probingUpstreamBilling.size > 0 ||
+    queryingUpstreamBalance.size > 0 ||
     isAnyModalOpen.value ||
     menu.show ||
     showAccountToolsDropdown.value ||
@@ -1800,6 +1809,7 @@ const allColumns = computed(() => {
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },
+    { key: 'upstream_balance', label: t('admin.accounts.upstreamBalance.title'), sortable: false },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true },
@@ -2288,6 +2298,22 @@ const handleProbeUpstreamBilling = async (account: Account) => {
     appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
   } finally {
     probingUpstreamBilling.delete(account.id)
+  }
+}
+const handleQueryUpstreamBalance = async (account: Account) => {
+  if (queryingUpstreamBalance.has(account.id)) return
+  queryingUpstreamBalance.add(account.id)
+  try {
+    const snapshot = await adminAPI.accounts.queryUpstreamBalance(account.id)
+    const current = accounts.value.find(item => item.id === account.id)
+    if (current) {
+      upstreamBillingNow.value = Date.now()
+      patchAccountInList({ ...current, extra: { ...current.extra, upstream_balance: snapshot } })
+    }
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBalance.queryFailed')))
+  } finally {
+    queryingUpstreamBalance.delete(account.id)
   }
 }
 const handleAccountUpdated = (updatedAccount: Account) => {

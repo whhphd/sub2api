@@ -1,5 +1,13 @@
 export default {
     accounts: {
+      upstreamBalance: {
+        title: '上游余额', refresh: '查询上游余额', queryFailed: '余额查询失败',
+        updatedAt: '最后成功：{value}', nextQueryAt: '下次查询：{value}',
+        authTitle: 'New API 用户查询凭证', accessToken: '用户访问令牌', userID: '用户 ID',
+        configured: '已配置', clearAuth: '清除查询凭证', pendingClear: '保存后清除',
+        status: { ok: '账户余额', pending: '等待自动查询', unconfirmed: '口径未确认，可能为 Key 额度', non_wallet: '非钱包余额', unsupported: '不支持', failed: '查询失败', stale: '数据已过期' },
+        errors: { transport_unavailable: '查询服务不可用', invalid_base_url: '上游地址无效', proxy_unavailable: '账号代理不可用', credentials_unavailable: '查询凭证不可用', credentials_changed: '账号已变更，请重新配置查询凭证', missing_api_key: '账号未配置 API Key', timeout: '查询超时', request_failed: '连接失败', invalid_response: '上游响应无效', authentication_failed: '上游拒绝凭证', rate_limited: '上游限制查询频率', redirect_rejected: '上游返回重定向', http_error: '上游接口异常' }
+      },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',

@@ -9,6 +9,7 @@ import type {
   AccountListItem,
   CreateAccountRequest,
   UpdateAccountRequest,
+  UpstreamBalanceSnapshot,
   PaginatedResponse,
   AccountUsageInfo,
   WindowStats,
@@ -233,6 +234,11 @@ export async function duplicate(id: number): Promise<Account> {
  * @param updates - Fields to update
  * @returns Updated account
  */
+export async function queryUpstreamBalance(id: number): Promise<UpstreamBalanceSnapshot> {
+  const { data } = await apiClient.post<UpstreamBalanceSnapshot>(`/admin/accounts/${id}/upstream-balance`)
+  return data
+}
+
 export async function update(id: number, updates: UpdateAccountRequest): Promise<Account> {
   const { data } = await apiClient.put<Account>(`/admin/accounts/${id}`, updates)
   return data
@@ -1047,6 +1053,7 @@ export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUs
 }
 
 export const accountsAPI = {
+  queryUpstreamBalance,
   list,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,

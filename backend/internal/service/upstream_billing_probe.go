@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -134,6 +135,7 @@ type UpstreamBillingProbeResult struct {
 type UpstreamBillingRateSnapshotItem struct {
 	AccountID int64                         `json:"account_id"`
 	Snapshot  *UpstreamBillingProbeSnapshot `json:"snapshot"`
+	Balance   *UpstreamBalanceSnapshot      `json:"balance"`
 }
 
 // BuildUpstreamBillingRateSnapshotItems projects account rows into the
@@ -152,6 +154,7 @@ func BuildUpstreamBillingRateSnapshotItems(accounts []Account) []UpstreamBilling
 		items = append(items, UpstreamBillingRateSnapshotItem{
 			AccountID: account.ID,
 			Snapshot:  snapshot,
+			Balance:   UpstreamBalanceFromAccount(&account),
 		})
 	}
 	return items
@@ -238,6 +241,7 @@ func normalizeUpstreamBillingProbeSettings(settings *UpstreamBillingProbeSetting
 
 // UpstreamBillingProbeService discovers a remote Sub2API billing snapshot.
 type UpstreamBillingProbeService struct {
+	balance            *UpstreamBalanceService
 	accountRepo        AccountRepository
 	accountTestService *AccountTestService
 	settingService     *SettingService
@@ -298,9 +302,12 @@ func ProvideUpstreamBillingProbeService(
 	settingService *SettingService,
 	lockCache LeaderLockCache,
 	db *sql.DB,
+	encryptor SecretEncryptor,
+	cfg *config.Config,
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
 	svc.SetLeaderLock(lockCache, db)
+	svc.balance = NewUpstreamBalanceService(svc, encryptor, cfg != nil && cfg.Totp.EncryptionKeyConfigured)
 	svc.Start()
 	return svc
 }
@@ -316,6 +323,10 @@ func (s *UpstreamBillingProbeService) Start() {
 	}
 	s.started = true
 	s.wg.Add(1)
+	if s.balance != nil {
+		s.wg.Add(1)
+		go s.balance.runLoop()
+	}
 	s.mu.Unlock()
 	go s.runLoop()
 }
