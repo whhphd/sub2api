@@ -85,7 +85,7 @@ func (c *proxyHealthCache) RecordProxyFailure(ctx context.Context, proxyID int64
 	if err != nil {
 		return nil, err
 	}
-	values, ok := result.([]interface{})
+	values, ok := result.([]any)
 	if !ok || len(values) < 3 {
 		return nil, fmt.Errorf("unexpected proxy health script result %T", result)
 	}
@@ -111,7 +111,7 @@ func (c *proxyHealthCache) RecordProxySuccess(ctx context.Context, proxyID int64
 	return err
 }
 
-func redisString(value interface{}) string {
+func redisString(value any) string {
 	switch v := value.(type) {
 	case string:
 		return v
@@ -122,7 +122,7 @@ func redisString(value interface{}) string {
 	}
 }
 
-func parseRedisInt(value interface{}) int64 {
+func parseRedisInt(value any) int64 {
 	return func() int64 {
 		n, _ := strconv.ParseInt(redisString(value), 10, 64)
 		if n != 0 {
@@ -135,7 +135,7 @@ func parseRedisInt(value interface{}) int64 {
 	}()
 }
 
-func parseRedisTime(value interface{}) time.Time {
+func parseRedisTime(value any) time.Time {
 	if n := parseRedisInt(value); n > 0 {
 		return time.Unix(n, 0)
 	}
