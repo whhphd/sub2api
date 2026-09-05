@@ -403,19 +403,28 @@ func TestGrokOAuthForbiddenSameAccountRetryPolicy(t *testing.T) {
 func TestAppendGrokUpstreamErrorPreservesSanitizedDiagnostics(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &OpenAIGatewayService{}
-	account := &Account{ID: 4812, Name: "grok-oauth", Platform: PlatformGrok, Type: AccountTypeOAuth}
+	proxyID := int64(91)
+	account := &Account{
+		ID: 4812, Name: "grok-oauth", Platform: PlatformGrok, Type: AccountTypeOAuth,
+		ProxyID: &proxyID, Proxy: &Proxy{ID: proxyID, Name: "grok-egress"},
+	}
 	body := []byte(`{"error":{"message":"subscription required","url":"https://x.ai/check?access_token=secret-token"}}`)
 	headers := http.Header{"Xai-Request-Id": []string{"xai-request-403"}}
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 
 	svc.appendGrokUpstreamError(c, account, http.StatusForbidden, headers, body, "failover", "subscription required")
+	account.Proxy.ID = 92
+	account.Proxy.Name = "replacement-egress"
 
 	rawEvents, exists := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, exists)
 	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
 	require.True(t, ok)
 	require.Len(t, events, 1)
+	require.NotNil(t, events[0].ProxyID)
+	require.Equal(t, int64(91), *events[0].ProxyID)
+	require.Equal(t, "grok-egress", events[0].ProxyName)
 	require.Equal(t, "xai-request-403", events[0].UpstreamRequestID)
 	require.Equal(t, http.StatusForbidden, events[0].UpstreamStatusCode)
 	require.Contains(t, events[0].UpstreamResponseBody, "subscription required")
