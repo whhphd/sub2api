@@ -272,9 +272,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if account.Platform == PlatformOpenAI {
 		policyBody, changed, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, responsesBody)
 		if policyErr != nil {
-			if IsReasoningEffortPolicyDenied(policyErr) {
+			var overLimit *ReasoningEffortOverLimitError
+			if errors.As(policyErr, &overLimit) {
 				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
-				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", overLimit.Error())
 			}
 			return nil, policyErr
 		}

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -82,9 +83,10 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if account.Platform == PlatformOpenAI {
 		policyBody, changed, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, chatBody)
 		if policyErr != nil {
-			if IsReasoningEffortPolicyDenied(policyErr) {
+			var overLimit *ReasoningEffortOverLimitError
+			if errors.As(policyErr, &overLimit) {
 				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
-				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", overLimit.Error())
 			}
 			return nil, policyErr
 		}

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createModelAllowlistCandidatesTracker,
-} from "../modelAllowlistCandidates";
+  createModelsListCandidatesTracker,
+} from "../groupsModelsListCandidates";
 
-describe("modelAllowlistCandidates", () => {
+describe("groupsModelsListCandidates", () => {
   it("rejects stale candidate responses after a newer platform request starts", () => {
-    const tracker = createModelAllowlistCandidatesTracker();
+    const tracker = createModelsListCandidatesTracker();
     const first = {
       mode: "create" as const,
       groupID: 0,
@@ -26,7 +26,7 @@ describe("modelAllowlistCandidates", () => {
   });
 
   it("rejects responses for a previous edit group even with the same platform", () => {
-    const tracker = createModelAllowlistCandidatesTracker();
+    const tracker = createModelsListCandidatesTracker();
     const first = {
       mode: "edit" as const,
       groupID: 10,
@@ -45,7 +45,7 @@ describe("modelAllowlistCandidates", () => {
   });
 
   it("tracks create and edit requests independently", () => {
-    const tracker = createModelAllowlistCandidatesTracker();
+    const tracker = createModelsListCandidatesTracker();
     const editRequest = {
       mode: "edit" as const,
       groupID: 10,

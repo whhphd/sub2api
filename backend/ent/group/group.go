@@ -130,8 +130,8 @@ const (
 	FieldDefaultMappedModel = "default_mapped_model"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
-	// FieldModelAllowlist holds the string denoting the model_allowlist field in the database.
-	FieldModelAllowlist = "model_allowlist"
+	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
+	FieldModelsListConfig = "models_list_config"
 	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
 	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
@@ -280,7 +280,7 @@ var Columns = []string{
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
-	FieldModelAllowlist,
+	FieldModelsListConfig,
 	FieldCodexModelsManifestConfig,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
@@ -412,8 +412,8 @@ var (
 	DefaultMappedModelValidator func(string) error
 	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
-	// DefaultModelAllowlist holds the default value on creation for the "model_allowlist" field.
-	DefaultModelAllowlist domain.GroupModelAllowlist
+	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
+	DefaultModelsListConfig domain.GroupModelsListConfig
 	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.
 	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -158,8 +157,5 @@ func injectCacheControlOnLastContentBlock(body []byte, idx int, msg *gjson.Resul
 // mustJSONString 把一个 Go string 序列化为合法 JSON string（含引号），
 // 用于 sjson.SetRawBytes 场景下手工拼 JSON。
 func mustJSONString(s string) string {
-	// Go string quoting can emit non-JSON escapes such as \x7f or \a.
-	// Marshaling a string cannot fail.
-	encoded, _ := json.Marshal(s)
-	return string(encoded)
+	return fmt.Sprintf("%q", s)
 }

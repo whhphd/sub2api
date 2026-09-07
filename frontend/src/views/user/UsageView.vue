@@ -811,24 +811,13 @@ const handleColumnClickOutside = (event: MouseEvent) => {
   }
 }
 
-const loadApiKeys = async () => {
-  const firstPage = await keysAPI.list(1, 100)
-  const keys = [...firstPage.items]
-  for (let page = 2; page <= firstPage.pages && keys.length > 0; page++) {
-    const response = await keysAPI.list(page, 100)
-    if (response.items.length === 0) break
-    keys.push(...response.items)
-  }
-  return keys
-}
-
 const loadFilterOptions = async () => {
   try {
     const [keys, availableGroups] = await Promise.all([
-      loadApiKeys(),
+      keysAPI.list(1, 100),
       userGroupsAPI.getAvailable(),
     ])
-    apiKeys.value = keys
+    apiKeys.value = keys.items
     groups.value = availableGroups
   } catch (error) {
     console.error('Failed to load usage filter options:', error)

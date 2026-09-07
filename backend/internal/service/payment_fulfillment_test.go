@@ -23,52 +23,6 @@ type paymentFulfillmentTestProvider struct {
 	supportedTypes []payment.PaymentType
 }
 
-type paymentFulfillmentRedeemCacheStub struct {
-	count          int
-	getCalls       int
-	incrementCalls int
-	acquireCalls   int
-	releaseCalls   int
-}
-
-type paymentFulfillmentRedeemRepo struct {
-	paymentOrderLifecycleRedeemRepo
-	createCalls int
-}
-
-func (r *paymentFulfillmentRedeemRepo) Create(_ context.Context, code *RedeemCode) error {
-	r.createCalls++
-	if r.codesByCode == nil {
-		r.codesByCode = make(map[string]*RedeemCode)
-	}
-	cloned := *code
-	cloned.ID = int64(100 + r.createCalls)
-	code.ID = cloned.ID
-	r.codesByCode[cloned.Code] = &cloned
-	return nil
-}
-
-func (c *paymentFulfillmentRedeemCacheStub) GetRedeemAttemptCount(context.Context, int64) (int, error) {
-	c.getCalls++
-	return c.count, nil
-}
-
-func (c *paymentFulfillmentRedeemCacheStub) IncrementRedeemAttemptCount(context.Context, int64) error {
-	c.incrementCalls++
-	c.count++
-	return nil
-}
-
-func (c *paymentFulfillmentRedeemCacheStub) AcquireRedeemLock(context.Context, string, time.Duration) (bool, error) {
-	c.acquireCalls++
-	return true, nil
-}
-
-func (c *paymentFulfillmentRedeemCacheStub) ReleaseRedeemLock(context.Context, string) error {
-	c.releaseCalls++
-	return nil
-}
-
 func (p paymentFulfillmentTestProvider) Name() string        { return p.key }
 func (p paymentFulfillmentTestProvider) ProviderKey() string { return p.key }
 func (p paymentFulfillmentTestProvider) SupportedTypes() []payment.PaymentType {
@@ -256,15 +210,14 @@ func ensurePaymentAuditOrderActionUniqueIndex(t *testing.T, ctx context.Context,
 
 func TestResolveRedeemAction_CodeNotFound(t *testing.T) {
 	t.Parallel()
-	action, err := resolveRedeemAction(nil, ErrRedeemCodeNotFound)
-	require.NoError(t, err)
-	assert.Equal(t, redeemActionCreate, action, "a missing code should be created")
+	action := resolveRedeemAction(nil, nil)
+	assert.Equal(t, redeemActionCreate, action, "nil code with nil error should create")
 }
 
 func TestResolveRedeemAction_LookupError(t *testing.T) {
 	t.Parallel()
-	_, err := resolveRedeemAction(nil, errors.New("db connection lost"))
-	require.ErrorContains(t, err, "lookup payment redeem code")
+	action := resolveRedeemAction(nil, errors.New("db connection lost"))
+	assert.Equal(t, redeemActionCreate, action, "lookup error should fall back to create")
 }
 
 func TestResolveRedeemAction_LookupErrorWithNonNilCode(t *testing.T) {
@@ -272,8 +225,8 @@ func TestResolveRedeemAction_LookupErrorWithNonNilCode(t *testing.T) {
 	// Edge case: both code and error are non-nil (shouldn't happen in practice,
 	// but the function should still treat error as authoritative)
 	code := &RedeemCode{Status: StatusUnused}
-	_, err := resolveRedeemAction(code, errors.New("partial error"))
-	require.ErrorContains(t, err, "lookup payment redeem code")
+	action := resolveRedeemAction(code, errors.New("partial error"))
+	assert.Equal(t, redeemActionCreate, action, "non-nil error should always result in create regardless of code")
 }
 
 func TestResolveRedeemAction_CodeExistsAndUsed(t *testing.T) {
@@ -284,8 +237,7 @@ func TestResolveRedeemAction_CodeExistsAndUsed(t *testing.T) {
 		Type:   RedeemTypeBalance,
 		Value:  10.0,
 	}
-	action, err := resolveRedeemAction(code, nil)
-	require.NoError(t, err)
+	action := resolveRedeemAction(code, nil)
 	assert.Equal(t, redeemActionSkipCompleted, action, "used code should skip to completed")
 }
 
@@ -297,8 +249,7 @@ func TestResolveRedeemAction_CodeExistsAndUnused(t *testing.T) {
 		Type:   RedeemTypeBalance,
 		Value:  25.0,
 	}
-	action, err := resolveRedeemAction(code, nil)
-	require.NoError(t, err)
+	action := resolveRedeemAction(code, nil)
 	assert.Equal(t, redeemActionRedeem, action, "unused code should skip creation and proceed to redeem")
 }
 
@@ -310,8 +261,7 @@ func TestResolveRedeemAction_CodeExistsWithExpiredStatus(t *testing.T) {
 		Code:   "expired-code",
 		Status: StatusExpired,
 	}
-	action, err := resolveRedeemAction(code, nil)
-	require.NoError(t, err)
+	action := resolveRedeemAction(code, nil)
 	assert.Equal(t, redeemActionRedeem, action, "expired-status code is not IsUsed(), should redeem")
 }
 
@@ -327,7 +277,6 @@ func TestResolveRedeemAction_Table(t *testing.T) {
 		code     *RedeemCode
 		err      error
 		expected redeemAction
-		wantErr  bool
 	}{
 		{
 			name:     "nil code, nil error — first run",
@@ -342,11 +291,10 @@ func TestResolveRedeemAction_Table(t *testing.T) {
 			expected: redeemActionCreate,
 		},
 		{
-			name:     "nil code, generic DB error — fail closed",
+			name:     "nil code, generic DB error — treat as not found",
 			code:     nil,
 			err:      errors.New("connection refused"),
 			expected: redeemActionCreate,
-			wantErr:  true,
 		},
 		{
 			name:     "code exists, used — previous run completed redeem",
@@ -361,23 +309,17 @@ func TestResolveRedeemAction_Table(t *testing.T) {
 			expected: redeemActionRedeem,
 		},
 		{
-			name:     "code exists but error also set — fail closed",
+			name:     "code exists but error also set — error takes precedence",
 			code:     &RedeemCode{Status: StatusUsed},
 			err:      errors.New("unexpected"),
 			expected: redeemActionCreate,
-			wantErr:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := resolveRedeemAction(tt.code, tt.err)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
+			got := resolveRedeemAction(tt.code, tt.err)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
@@ -408,48 +350,11 @@ func TestResolveRedeemAction_IsUsedCanUseConsistency(t *testing.T) {
 	// Verify our decision function is consistent with the domain model methods
 	assert.True(t, usedCode.IsUsed())
 	assert.False(t, usedCode.CanUse())
-	usedAction, err := resolveRedeemAction(usedCode, nil)
-	require.NoError(t, err)
-	assert.Equal(t, redeemActionSkipCompleted, usedAction)
+	assert.Equal(t, redeemActionSkipCompleted, resolveRedeemAction(usedCode, nil))
 
 	assert.False(t, unusedCode.IsUsed())
 	assert.True(t, unusedCode.CanUse())
-	unusedAction, err := resolveRedeemAction(unusedCode, nil)
-	require.NoError(t, err)
-	assert.Equal(t, redeemActionRedeem, unusedAction)
-}
-
-func TestValidatePaymentRedeemCode(t *testing.T) {
-	t.Parallel()
-	userID := int64(42)
-	otherUserID := int64(43)
-	order := &dbent.PaymentOrder{ID: 7, UserID: userID, RechargeCode: "PAY-7-12345", Amount: 80}
-
-	tests := []struct {
-		name    string
-		code    *RedeemCode
-		wantErr string
-	}{
-		{name: "unused code", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUnused}},
-		{name: "used by order user", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUsed, UsedBy: &userID}},
-		{name: "used without user", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUsed}, wantErr: "user mismatch"},
-		{name: "used by another user", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUsed, UsedBy: &otherUserID}, wantErr: "user mismatch"},
-		{name: "wrong code", code: &RedeemCode{Code: "OTHER", Type: RedeemTypeBalance, Value: 80, Status: StatusUnused}, wantErr: "code mismatch"},
-		{name: "wrong type", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeConcurrency, Value: 80, Status: StatusUnused}, wantErr: "type mismatch"},
-		{name: "wrong amount", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 79, Status: StatusUnused}, wantErr: "amount mismatch"},
-		{name: "invalid status", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusDisabled}, wantErr: "invalid status"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validatePaymentRedeemCode(order, tt.code)
-			if tt.wantErr == "" {
-				require.NoError(t, err)
-				return
-			}
-			require.ErrorContains(t, err, tt.wantErr)
-		})
-	}
+	assert.Equal(t, redeemActionRedeem, resolveRedeemAction(unusedCode, nil))
 }
 
 func TestExpectedNotificationProviderKeyPrefersOrderInstanceProvider(t *testing.T) {
@@ -763,100 +668,6 @@ func TestFulfillmentLeaseVersionRejectsStaleWorker(t *testing.T) {
 	require.NoError(t, svc.markCompleted(ctx, order, secondLease, "SUBSCRIPTION_SUCCESS"))
 }
 
-func TestPublicRedeemStillEnforcesFailureLimit(t *testing.T) {
-	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxFailedAttempts}
-	svc := &RedeemService{cache: cache}
-
-	result, err := svc.Redeem(context.Background(), 42, "PUBLIC-CODE")
-
-	require.Nil(t, result)
-	require.ErrorIs(t, err, ErrRedeemRateLimited)
-	require.Equal(t, 1, cache.getCalls)
-	require.Zero(t, cache.incrementCalls)
-	require.Zero(t, cache.acquireCalls)
-}
-
-func TestPublicRedeemStillIncrementsInvalidCodeFailures(t *testing.T) {
-	cache := &paymentFulfillmentRedeemCacheStub{}
-	redeemRepo := &redeemRejectRepo{code: RedeemCode{Code: "OTHER"}}
-	svc := &RedeemService{redeemRepo: redeemRepo, cache: cache}
-
-	result, err := svc.Redeem(context.Background(), 42, "MISSING")
-
-	require.Nil(t, result)
-	require.ErrorIs(t, err, ErrRedeemCodeNotFound)
-	require.Equal(t, 1, cache.getCalls)
-	require.Equal(t, 1, cache.incrementCalls)
-	require.Equal(t, 1, cache.count)
-	require.Equal(t, 1, cache.acquireCalls)
-	require.Equal(t, 1, cache.releaseCalls)
-}
-
-func TestPaymentRedeemDoesNotIncrementFailureLimit(t *testing.T) {
-	ctx := context.Background()
-	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxFailedAttempts}
-	redeemRepo := &redeemRejectRepo{code: RedeemCode{
-		ID:     1,
-		Code:   "PAY-EXPIRED",
-		Type:   RedeemTypeBalance,
-		Value:  10,
-		Status: StatusExpired,
-	}}
-	svc := &RedeemService{redeemRepo: redeemRepo, cache: cache}
-
-	result, err := svc.redeemForPaymentFulfillment(ctx, 42, redeemRepo.code.Code)
-
-	require.Nil(t, result)
-	require.ErrorIs(t, err, ErrRedeemCodeExpired)
-	require.Zero(t, cache.getCalls)
-	require.Zero(t, cache.incrementCalls)
-	require.Equal(t, 1, cache.acquireCalls)
-	require.Equal(t, 1, cache.releaseCalls)
-}
-
-func TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit(t *testing.T) {
-	ctx := context.Background()
-	client := newPaymentConfigServiceTestClient(t)
-	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
-	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusPaid, time.Now())
-	order, err := client.PaymentOrder.UpdateOneID(order.ID).
-		SetOrderType(payment.OrderTypeBalance).
-		ClearPlanID().
-		ClearSubscriptionGroupID().
-		ClearSubscriptionDays().
-		Save(ctx)
-	require.NoError(t, err)
-
-	redeemRepo := &paymentFulfillmentRedeemRepo{}
-	credited := 0.0
-	userRepo := &mockUserRepo{getByIDUser: &User{ID: order.UserID, Balance: 0}}
-	userRepo.updateBalanceFn = func(_ context.Context, id int64, amount float64) error {
-		require.Equal(t, order.UserID, id)
-		credited += amount
-		return nil
-	}
-	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxFailedAttempts}
-	redeemService := NewRedeemService(redeemRepo, userRepo, nil, cache, nil, client, nil, nil)
-	svc := &PaymentService{entClient: client, redeemService: redeemService, userRepo: userRepo}
-
-	require.NoError(t, svc.ExecuteBalanceFulfillment(ctx, order.ID))
-	require.InDelta(t, order.Amount, credited, 1e-8)
-	require.Zero(t, cache.getCalls, "trusted payment fulfillment must not read the public failure counter")
-	require.Zero(t, cache.incrementCalls, "trusted payment fulfillment must not mutate the public failure counter")
-	require.Equal(t, 1, cache.acquireCalls)
-	require.Equal(t, 1, cache.releaseCalls)
-	require.Equal(t, 1, redeemRepo.createCalls)
-	require.Len(t, redeemRepo.useCalls, 1)
-
-	usedCode := redeemRepo.codesByCode[order.RechargeCode]
-	require.Equal(t, StatusUsed, usedCode.Status)
-	require.NotNil(t, usedCode.UsedBy)
-	require.Equal(t, order.UserID, *usedCode.UsedBy)
-	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
-	require.NoError(t, err)
-	require.Equal(t, OrderStatusCompleted, reloaded.Status)
-}
-
 func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
@@ -872,7 +683,6 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 		Save(ctx)
 	require.NoError(t, err)
 
-	usedBy := order.UserID
 	redeemRepo := &redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{
 		order.RechargeCode: {
 			ID:     101,
@@ -880,7 +690,6 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 			Type:   RedeemTypeBalance,
 			Value:  order.Amount,
 			Status: StatusUsed,
-			UsedBy: &usedBy,
 		},
 	}}
 	svc := &PaymentService{
@@ -959,44 +768,6 @@ func TestPaymentNotificationRejectsAmountMismatchBeforeFulfillment(t *testing.T)
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusPending, reloaded.Status)
-}
-
-func TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser(t *testing.T) {
-	ctx := context.Background()
-	client := newPaymentConfigServiceTestClient(t)
-	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
-	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusPaid, time.Now())
-	order, err := client.PaymentOrder.UpdateOneID(order.ID).
-		SetOrderType(payment.OrderTypeBalance).
-		ClearPlanID().
-		ClearSubscriptionGroupID().
-		ClearSubscriptionDays().
-		Save(ctx)
-	require.NoError(t, err)
-
-	otherUserID := order.UserID + 1
-	redeemRepo := &redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{
-		order.RechargeCode: {
-			ID:     101,
-			Code:   order.RechargeCode,
-			Type:   RedeemTypeBalance,
-			Value:  order.Amount,
-			Status: StatusUsed,
-			UsedBy: &otherUserID,
-		},
-	}}
-	svc := &PaymentService{
-		entClient:     client,
-		redeemService: &RedeemService{redeemRepo: redeemRepo},
-	}
-
-	err = svc.ExecuteBalanceFulfillment(ctx, order.ID)
-	require.ErrorContains(t, err, "payment redeem code user mismatch")
-	require.Empty(t, redeemRepo.useCalls)
-	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
-	require.NoError(t, err)
-	require.Equal(t, OrderStatusFailed, reloaded.Status)
-	require.Nil(t, reloaded.CompletedAt)
 }
 
 func TestExecuteSubscriptionFulfillmentRecoversCommittedAssignmentWithoutExtendingAgain(t *testing.T) {

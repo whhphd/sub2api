@@ -991,12 +991,6 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 	if account.IsOpenAIOAuth() {
 		return s.buildOpenAIOAuthUpstreamModelsRequest(ctx, account)
 	}
-	return buildOpenAIAPIKeyModelsRequest(ctx, account, s.validateUpstreamBaseURL)
-}
-
-// buildOpenAIAPIKeyModelsRequest is shared by admin discovery and public model
-// listing. Codex content negotiation is intentionally absent from this request.
-func buildOpenAIAPIKeyModelsRequest(ctx context.Context, account *Account, validateBaseURL func(string) (string, error)) (*http.Request, error) {
 	if account.Type != AccountTypeAPIKey {
 		return nil, newUpstreamModelSyncUnsupportedError(
 			fmt.Sprintf("Unsupported OpenAI account type for upstream model sync: %s", account.Type), nil,
@@ -1013,7 +1007,7 @@ func buildOpenAIAPIKeyModelsRequest(ctx context.Context, account *Account, valid
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://api.openai.com"
 	}
-	normalizedBaseURL, err := validateBaseURL(baseURL)
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI base URL", err)
 	}

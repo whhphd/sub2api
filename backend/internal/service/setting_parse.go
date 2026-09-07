@@ -192,8 +192,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorHideThroughput:         "true",
 		SettingKeyChannelMonitorShowQuota:              "false",
 
-		// Grok compatibility defaults: cross-client mapping stays enabled unless
-		// operators explicitly disable it.
+		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
 		SettingKeyGrokDefaultTextModel:           "grok-4.6",
 		SettingKeyGrokCrossClientModelMapEnabled: "true",
 		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,

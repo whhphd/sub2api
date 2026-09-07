@@ -1,10 +1,6 @@
 package service
 
-import (
-	"strings"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-)
+import "strings"
 
 func lastOpenAIModelSegment(model string) string {
 	model = strings.TrimSpace(model)
@@ -19,7 +15,38 @@ func lastOpenAIModelSegment(model string) string {
 }
 
 func canonicalizeOpenAIModelAliasSpelling(model string) string {
-	return openai.CanonicalizeOpenAIModelAliasSpelling(model)
+	model = strings.ToLower(lastOpenAIModelSegment(model))
+	if model == "" {
+		return ""
+	}
+
+	normalized := strings.ReplaceAll(model, "_", "-")
+	normalized = strings.Join(strings.Fields(normalized), "-")
+	for strings.Contains(normalized, "--") {
+		normalized = strings.ReplaceAll(normalized, "--", "-")
+	}
+
+	if strings.HasPrefix(normalized, "gpt5") {
+		normalized = "gpt-5" + strings.TrimPrefix(normalized, "gpt5")
+	}
+	if !strings.HasPrefix(normalized, "gpt-") && !strings.Contains(normalized, "codex") {
+		return ""
+	}
+
+	replacements := []struct {
+		from string
+		to   string
+	}{
+		{"gpt-5.4mini", "gpt-5.4-mini"},
+		{"gpt-5.4nano", "gpt-5.4-nano"},
+		{"gpt-5.3-codexspark", "gpt-5.3-codex-spark"},
+		{"gpt-5.3codexspark", "gpt-5.3-codex-spark"},
+		{"gpt-5.3codex", "gpt-5.3-codex"},
+	}
+	for _, replacement := range replacements {
+		normalized = strings.ReplaceAll(normalized, replacement.from, replacement.to)
+	}
+	return normalized
 }
 
 func normalizeKnownOpenAICodexModel(model string) string {
