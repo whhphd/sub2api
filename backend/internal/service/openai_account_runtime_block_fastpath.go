@@ -109,18 +109,6 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	if account != nil && account.Platform == PlatformOpenAI && statusCode == http.StatusPaymentRequired &&
-		isCodexModelsDeactivatedWorkspaceResponse(statusCode, responseBody) {
-		// The Codex manifest endpoint returns detail.code=deactivated_workspace.
-		// Persist a readable account error before the generic access-state path
-		// can reduce it to the raw JSON code.
-		const message = "Workspace deactivated (402): workspace has been deactivated"
-		if s.rateLimitService != nil {
-			s.rateLimitService.handleAuthError(stateCtx, account, message)
-		}
-		s.BlockAccountScheduling(account, time.Time{}, "openai_access_state")
-		return true
-	}
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) {
 		message := "OpenAI upstream account or workspace is unavailable"
 		if upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody)); upstreamMsg != "" {
