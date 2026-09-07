@@ -361,7 +361,7 @@ func RegisterGatewayRoutes(
 		h.Gateway.Responses(c)
 	}
 	responsesInputTokensHandler := func(c *gin.Context) {
-		if isOpenAIGatewayPlatform(c) {
+		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.InputTokens(c)
 			return
 		}
