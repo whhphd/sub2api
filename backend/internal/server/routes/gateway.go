@@ -173,8 +173,13 @@ func RegisterGatewayRoutes(
 				})
 				return
 			}
-			if service.IsOpenAIResponsesInputTokensRequestPath(c) && isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.ResponsesInputTokens(c)
+			if service.IsOpenAIResponsesInputTokensRequestPath(c) {
+				if isOpenAIOnlyEndpointGatewayPlatform(c) {
+					h.OpenAIGateway.ResponsesInputTokens(c)
+				} else {
+					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+					c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Responses input token counting is only available for OpenAI groups"}})
+				}
 				return
 			}
 			next(c)
