@@ -101,7 +101,9 @@ describe('channel monitor Grok provider', () => {
 
     expect(PROVIDERS).toContain(PROVIDER_GROK)
     const providerButtons = wrapper.findAll('[data-testid^="monitor-provider-"]')
-    expect(providerButtons).toHaveLength(8)
+    // 跟随 PROVIDERS 长度：上游新增平台（如 minimax）时不应让本用例失败，
+    // 它断言的是 Grok 在网格中可选 + 响应式列数，而非平台总数。
+    expect(providerButtons).toHaveLength(PROVIDERS.length)
     expect(providerButtons[0].element.parentElement?.className).toContain('grid-cols-2')
     expect(providerButtons[0].element.parentElement?.className).toContain('sm:grid-cols-4')
 
