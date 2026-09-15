@@ -76,7 +76,12 @@ func (c *opsNetworkCache) GetNetworkSnapshot(ctx context.Context, server string)
 	return &out, err
 }
 func (c *opsNetworkCache) GetNetworkSamples(ctx context.Context, server string, start, end time.Time) ([]service.OpsNetworkSample, error) {
-	rows, err := c.rdb.ZRangeByScore(ctx, networkKeys(server)[2], &redis.ZRangeBy{Min: strconv.FormatInt(start.UnixMilli(), 10), Max: strconv.FormatInt(end.UnixMilli(), 10)}).Result()
+	rows, err := c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     networkKeys(server)[2],
+		Start:   strconv.FormatInt(start.UnixMilli(), 10),
+		Stop:    strconv.FormatInt(end.UnixMilli(), 10),
+		ByScore: true,
+	}).Result()
 	if err != nil {
 		return nil, err
 	}

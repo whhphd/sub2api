@@ -337,7 +337,7 @@ func TestHandle429_OpenAIOAuthRateLimitRotatesProxyWhenEnabled(t *testing.T) {
 
 func TestProvideRateLimitServiceWiresProxyRepository(t *testing.T) {
 	proxyRepo := &openAIOAuthRateLimitProxyRepo{}
-	svc := ProvideRateLimitService(nil, proxyRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := ProvideRateLimitService(nil, proxyRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	require.Same(t, proxyRepo, svc.proxyRepo)
 }
