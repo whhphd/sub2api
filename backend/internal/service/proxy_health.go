@@ -54,11 +54,12 @@ type IPAPIProxyProber interface {
 // ip-api check. It only repairs active OpenAI OAuth accounts quarantined for a
 // proxy/network transport reason.
 type ProxyHealthService struct {
-	accountRepo AccountRepository
-	proxyRepo   ProxyRepository
-	prober      ProxyExitInfoProber
-	healthCache ProxyHealthCache
-	leaderLock  LeaderLockCache
+	codexExitCache CodexExitSnapshotCache
+	accountRepo    AccountRepository
+	proxyRepo      ProxyRepository
+	prober         ProxyExitInfoProber
+	healthCache    ProxyHealthCache
+	leaderLock     LeaderLockCache
 
 	runtimeBlocker AccountRuntimeBlocker
 	instanceID     string
@@ -220,6 +221,7 @@ func (s *ProxyHealthService) rebindAccount(ctx context.Context, account *Account
 	oldReason := account.TempUnschedulableReason
 	account.ProxyID = &proxyID
 	account.Proxy = selected
+	notifyCodexExitProxyChange(stateCtx, s.runtimeBlocker, account.ID)
 	if strings.HasPrefix(oldReason, proxyTransportUnschedReasonPrefix) {
 		_ = s.accountRepo.ClearTempUnschedulable(stateCtx, account.ID)
 		if s.runtimeBlocker != nil {
@@ -264,7 +266,15 @@ func (s *ProxyHealthService) runProbeCycle(ctx context.Context) {
 		before, _ := s.healthCache.GetProxyHealth(ctx, proxy.ID)
 		var probeErr error
 		if ipapi, ok := s.prober.(IPAPIProxyProber); ok {
-			_, _, probeErr = ipapi.ProbeProxyIPAPI(ctx, proxy.URL())
+			var info *ProxyExitInfo
+			info, _, probeErr = ipapi.ProbeProxyIPAPI(ctx, proxy.URL())
+			if probeErr == nil && info != nil && s.codexExitCache != nil {
+				if _, err := codexWireTimezoneLocation(info.Timezone); err == nil {
+					id := proxy.ID
+					tag := codexWireTimezoneProxyTag(&Account{ProxyID: &id, Proxy: proxy})
+					_ = s.codexExitCache.SetCodexExitSnapshot(ctx, &CodexExitSnapshot{ProxyTag: tag, IP: info.IP, Timezone: info.Timezone, City: info.City, Region: info.Region, Country: info.CountryCode, SampledAt: time.Now()})
+				}
+			}
 		} else {
 			_, _, probeErr = s.prober.ProbeProxy(ctx, proxy.URL())
 		}
@@ -348,8 +358,9 @@ type ProxyHealthBindings struct {
 	Service *ProxyHealthService
 }
 
-func ProvideProxyHealthBindings(health *ProxyHealthService, gateway *OpenAIGatewayService, rateLimit *RateLimitService) *ProxyHealthBindings {
+func ProvideProxyHealthBindings(health *ProxyHealthService, gateway *OpenAIGatewayService, rateLimit *RateLimitService, latencyCache ProxyLatencyCache) *ProxyHealthBindings {
 	if health != nil {
+		health.codexExitCache, _ = latencyCache.(CodexExitSnapshotCache)
 		health.SetRuntimeBlocker(gateway)
 		health.Start()
 	}

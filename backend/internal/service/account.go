@@ -21,18 +21,21 @@ import (
 )
 
 type Account struct {
-	ID                      int64
-	Name                    string
-	Notes                   *string
-	Platform                string
-	Type                    string
-	Credentials             map[string]any
-	Extra                   map[string]any
-	ProxyID                 *int64
-	ProxyFallbackOriginID   *int64
-	ProxyFallbackOriginName *string // 仅展示用
-	Concurrency             int
-	Priority                int
+	codexFingerprintEnhanced bool
+	codexUniqueFingerprint   bool
+	codexPolicyPrepared      bool
+	ID                       int64
+	Name                     string
+	Notes                    *string
+	Platform                 string
+	Type                     string
+	Credentials              map[string]any
+	Extra                    map[string]any
+	ProxyID                  *int64
+	ProxyFallbackOriginID    *int64
+	ProxyFallbackOriginName  *string // 仅展示用
+	Concurrency              int
+	Priority                 int
 	// RateMultiplier 账号计费倍率（>=0，允许 0 表示该账号计费为 0）。
 	// 使用指针用于兼容旧版本调度缓存（Redis）中缺字段的情况：nil 表示按 1.0 处理。
 	RateMultiplier     *float64
@@ -1768,11 +1771,32 @@ func (a *Account) GetOpenAIProtocolAPIKey() string {
 	return a.GetOpenAIApiKey()
 }
 
+// codexAccountUserAgentExtraKey 账号级出站 User-Agent。放 extra 而不是 credentials：
+// 更新账号时后端整体替换 credentials，从前端提交该字段会有覆盖令牌的风险。
+const codexAccountUserAgentExtraKey = "codex_user_agent"
+
+// GetOpenAIUserAgent 返回账号级显式配置的出站 User-Agent：extra.codex_user_agent 优先，
+// 其次是历史的 credentials.user_agent；都没有时返回空串，由调用方回落到全局规范身份。
 func (a *Account) GetOpenAIUserAgent() string {
-	if !a.IsOpenAI() {
+	if a == nil || !a.IsOpenAI() {
 		return ""
 	}
+	if ua := a.getCodexUserAgentOverride(); ua != "" {
+		return ua
+	}
 	return a.GetCredential("user_agent")
+}
+
+// 额度面只跟随显式的新配置；共享校验，但不能因配置无效而跟随遗留凭据 UA。
+func (a *Account) getCodexUserAgentOverride() string {
+	if a == nil || !a.IsOpenAI() {
+		return ""
+	}
+	ua := strings.TrimSpace(a.GetExtraString(codexAccountUserAgentExtraKey))
+	if strings.ContainsFunc(ua, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return ""
+	}
+	return ua
 }
 
 func (a *Account) GetChatGPTAccountID() string {

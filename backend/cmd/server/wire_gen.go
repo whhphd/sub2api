@@ -345,7 +345,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	batchImageWorkerRuntime := service.ProvideBatchImageWorkerRuntime(batchImageRepository, accountRepository, batchImageQueue, usageBillingRepository, usageLogRepository, batchImageModelPricingResolver, apiKeyAuthCacheInvalidator, configConfig)
 	proxyHealthCache := repository.NewProxyHealthCache(redisClient)
 	proxyHealthService := service.ProvideProxyHealthService(accountRepository, proxyRepository, proxyExitInfoProber, proxyHealthCache, leaderLockCache)
-	proxyHealthBindings := service.ProvideProxyHealthBindings(proxyHealthService, openAIGatewayService, rateLimitService)
+	proxyHealthBindings := service.ProvideProxyHealthBindings(proxyHealthService, openAIGatewayService, rateLimitService, proxyLatencyCache)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorQuotaFetcher := service.NewChannelMonitorQuotaFetcher(accountUsageService, cnProviderQuotaService, cnProviderBalanceService, accountRepository, configConfig)

@@ -144,6 +144,12 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	snapshotCtx, snapshotErr := s.codexQuotaSnapshotContext(ctx, accountID)
+	if snapshotErr != nil {
+		return nil, snapshotErr
+	}
+	ctx = snapshotCtx
+
 	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -327,7 +333,7 @@ func (s *OpenAIQuotaService) resetCredit(ctx context.Context, accountID int64, c
 	// shadow to its parent and would perform a parent-level reset — exactly
 	// what this guard must prevent. Return the load error instead.
 	if s.accountRepo != nil {
-		acc, loadErr := s.accountRepo.GetByID(ctx, accountID)
+		acc, loadErr := s.codexQuotaSnapshotAccount(ctx, accountID)
 		if loadErr != nil {
 			return nil, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", loadErr)
 		}
@@ -406,7 +412,7 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 		return "", "", "", false, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
 	}
 
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err := s.codexQuotaSnapshotAccount(ctx, accountID)
 	if err != nil {
 		return "", "", "", false, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
 	}
@@ -424,7 +430,7 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 	// parent account so that chatgpt_account_id / access_token / proxy all come
 	// from the parent. This must happen BEFORE the chatgpt_account_id check.
 	if account.IsShadow() {
-		resolved, rerr := resolveCredentialAccount(ctx, s.accountRepo, account)
+		resolved, rerr := s.codexQuotaCredentialAccount(ctx, account)
 		if rerr != nil {
 			return "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_SHADOW_RESOLVE_FAILED", "failed to resolve shadow account: %v", rerr)
 		}
@@ -454,20 +460,9 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 	}
 	fedRAMP = account.IsChatGPTAccountFedRAMP()
 
-	// account.Proxy is eager-loaded by accountRepo.GetByID (see
-	// repository.accountsToService), so we can read the proxy URL directly
-	// instead of round-tripping the DB again. Fall back to proxyRepo only
-	// when Proxy isn't pre-populated (defensive — e.g. callers that built
-	// the Account by hand).
-	if account.ProxyID != nil {
-		switch {
-		case account.Proxy != nil:
-			proxyURL = account.Proxy.URL()
-		case s.proxyRepo != nil:
-			if proxy, perr := s.proxyRepo.GetByID(ctx, *account.ProxyID); perr == nil && proxy != nil {
-				proxyURL = proxy.URL()
-			}
-		}
+	proxyURL, err = resolveConfiguredProxyURL(ctx, s.proxyRepo, account.ProxyID, account.Proxy)
+	if err != nil {
+		return "", "", "", false, err
 	}
 
 	return accessToken, chatGPTAccountID, proxyURL, fedRAMP, nil
@@ -477,12 +472,12 @@ func (s *OpenAIQuotaService) recoverAgentIdentityTask(ctx context.Context, accou
 	if s == nil || s.accountRepo == nil {
 		return fmt.Errorf("account repository is unavailable")
 	}
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err := s.codexQuotaSnapshotAccount(ctx, accountID)
 	if err != nil || account == nil {
 		return fmt.Errorf("account is unavailable")
 	}
 	if account.IsShadow() {
-		account, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		account, err = s.codexQuotaCredentialAccount(ctx, account)
 		if err != nil || account == nil {
 			return fmt.Errorf("credential account is unavailable")
 		}
@@ -497,12 +492,12 @@ func (s *OpenAIQuotaService) isAgentIdentityAccount(ctx context.Context, account
 	if s == nil || s.accountRepo == nil {
 		return false
 	}
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err := s.codexQuotaSnapshotAccount(ctx, accountID)
 	if err != nil || account == nil {
 		return false
 	}
 	if account.IsShadow() {
-		account, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		account, err = s.codexQuotaCredentialAccount(ctx, account)
 		if err != nil || account == nil {
 			return false
 		}
@@ -515,7 +510,7 @@ func (s *OpenAIQuotaService) buildCodexQuotaHeaders(ctx context.Context, account
 	if s == nil || s.accountRepo == nil {
 		return headers, "", nil
 	}
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err := s.codexQuotaSnapshotAccount(ctx, accountID)
 	if err != nil || account == nil {
 		if strings.TrimSpace(accessToken) == "" {
 			return nil, "", fmt.Errorf("agent identity account credentials are unavailable")
@@ -523,11 +518,14 @@ func (s *OpenAIQuotaService) buildCodexQuotaHeaders(ctx context.Context, account
 		return headers, "", nil
 	}
 	if account.IsShadow() {
-		if resolved, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account); resolveErr == nil && resolved != nil {
+		if resolved, resolveErr := s.codexQuotaCredentialAccount(ctx, account); resolveErr == nil && resolved != nil {
 			account = resolved
 		} else if strings.TrimSpace(accessToken) == "" {
 			return nil, "", fmt.Errorf("agent identity shadow credentials are unavailable")
 		}
+	}
+	if ua := account.getCodexUserAgentOverride(); ua != "" {
+		headers["user-agent"] = resolveCodexOutboundIdentity(ua).userAgent
 	}
 	if !account.IsOpenAIAgentIdentity() {
 		return headers, "", nil
@@ -551,7 +549,7 @@ func (s *OpenAIQuotaService) redactQuotaErrorBody(ctx context.Context, accountID
 	if s == nil || s.accountRepo == nil {
 		return body
 	}
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err := s.codexQuotaSnapshotAccount(ctx, accountID)
 	if err != nil || account == nil {
 		return body
 	}

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -587,6 +588,7 @@ type RateLimit429CooldownSettings struct {
 // OpenAIOAuthRuntimeSettings contains the global OAuth runtime policies used by
 // the OpenAI-compatible gateway, including Grok-specific behavior switches.
 type OpenAIOAuthRuntimeSettings struct {
+	CodexFingerprintEnhancementEnabled        bool `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
 	SafePreOutputOverloadRetryEnabled         bool `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled             bool `json:"plan_gated_model_cooldown_enabled"`
 	OpenAIRateLimitSameAccountRetryEnabled    bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
@@ -615,6 +617,9 @@ func cloneOpenAIOAuthRuntimeSettings(settings *OpenAIOAuthRuntimeSettings) *Open
 }
 
 func normalizeOpenAIOAuthRuntimeSettings(settings *OpenAIOAuthRuntimeSettings) (*OpenAIOAuthRuntimeSettings, error) {
+	if settings != nil && settings.CodexFingerprintEnhancementEnabled && settings.OpenAIRateLimitProxyRotationEnabled {
+		return nil, fmt.Errorf("codex fingerprint enhancement and short-rate-limit proxy rotation are mutually exclusive")
+	}
 	return cloneOpenAIOAuthRuntimeSettings(settings), nil
 }
 

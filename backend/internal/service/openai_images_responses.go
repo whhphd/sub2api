@@ -1836,7 +1836,29 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		return nil, err
 	}
 	upstreamCtx = withOpenAIImagesSelfBuiltRequest(upstreamCtx)
-	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, parsed.StickySessionSeed(), false)
+	upstreamCtx = withOpenAIImagesWireTarget(upstreamCtx, targetURL)
+	if !direct && codexDeviceWireProfileEnabled(c, account) {
+		ids := resolveCodexFingerprintIDsForRequest(c, account, nil)
+		stageCodexFingerprintIDs(c, ids)
+		responsesBody, _, err = applyCodexFingerprintClientMetadataRaw(responsesBody, ids)
+		if err != nil {
+			return nil, fmt.Errorf("apply image device metadata: %w", err)
+		}
+		stageCodexConvergenceBodyIdentityRaw(c, codexAccountIdentitySource(c, account), responsesBody)
+	}
+
+	// The native image endpoint keeps its existing schema and identity handling.
+	builderAccount := account
+	originalSource := codexAccountIdentitySource(c, account)
+	if direct {
+		builderAccount = snapshotOpenAIOutboundAccount(account)
+		builderAccount.codexFingerprintEnhanced = false
+		delete(builderAccount.Extra, codexFingerprintConvergenceExtraKey)
+		stageCodexPolicySource(c, inheritCodexFingerprintPolicy(originalSource, builderAccount))
+		stageCodexFingerprintIDs(c, nil)
+	}
+	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, builderAccount, responsesBody, token, true, parsed.StickySessionSeed(), false)
+	stageCodexPolicySource(c, originalSource)
 	if err != nil {
 		return nil, err
 	}
@@ -1852,7 +1874,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		if !parsed.Stream {
 			upstreamReq.Header.Set("Accept", "application/json")
 		}
-	} else {
+	} else if !codexDeviceWireProfileEnabled(c, account) {
 		upstreamReq.Header.Set("OpenAI-Beta", "responses=experimental")
 	}
 
