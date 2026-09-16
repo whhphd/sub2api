@@ -1878,10 +1878,16 @@ func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context,
 		logger.LegacyPrintf("service.ratelimit", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=dependency_unavailable", account.ID)
 		return
 	}
-	settings := s.settingService.GetOpenAIOAuthRuntimeSettings(ctx)
-	if settings == nil || !settings.OpenAIRateLimitProxyRotationEnabled {
-		slog.Info("openai_oauth_rate_limit_proxy_rotation_skipped", "account_id", account.ID, "reason", "setting_disabled")
-		logger.LegacyPrintf("service.ratelimit", "openai_oauth_rate_limit_proxy_rotation_skipped account_id=%d reason=setting_disabled", account.ID)
+	// Also recheck after candidate selection, which may perform network/cache I/O.
+	rotationAllowed := func(policyCtx context.Context) bool {
+		settings, policyErr := s.settingService.readOpenAIOAuthRuntimeSettings(policyCtx)
+		if policyErr != nil || settings == nil || settings.CodexFingerprintEnhancementEnabled || !settings.OpenAIRateLimitProxyRotationEnabled {
+			slog.Info("openai_oauth_rate_limit_proxy_rotation_skipped", "account_id", account.ID, "reason", "setting_disabled")
+			return false
+		}
+		return true
+	}
+	if !rotationAllowed(ctx) {
 		return
 	}
 
@@ -1895,6 +1901,9 @@ func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context,
 			return
 		}
 		selectedProxyID := selected.ID
+		if !rotationAllowed(stateCtx) {
+			return
+		}
 		updated, err := s.accountRepo.BulkUpdate(stateCtx, []int64{account.ID}, AccountBulkUpdate{ProxyID: &selectedProxyID})
 		if err != nil || updated != 1 {
 			if err == nil {
@@ -1929,6 +1938,9 @@ func (s *RateLimitService) rotateOpenAIOAuthProxyOnShort429(ctx context.Context,
 	}
 	selected := candidates[rand.IntN(len(candidates))]
 	selectedProxyID := selected.ID
+	if !rotationAllowed(stateCtx) {
+		return
+	}
 	updated, err := s.accountRepo.BulkUpdate(stateCtx, []int64{account.ID}, AccountBulkUpdate{ProxyID: &selectedProxyID})
 	if err != nil || updated != 1 {
 		if err == nil {

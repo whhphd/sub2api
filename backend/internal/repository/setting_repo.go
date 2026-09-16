@@ -103,3 +103,23 @@ func (r *settingRepository) Delete(ctx context.Context, key string) error {
 	_, err := r.client.Setting.Delete().Where(setting.KeyEQ(key)).Exec(ctx)
 	return err
 }
+
+// CompareAndSwap prevents independent administrators/instances from overwriting
+// each other's partial runtime-policy changes. No schema migration is needed.
+func (r *settingRepository) CompareAndSwap(ctx context.Context, key, oldValue, newValue string) (bool, error) {
+	if oldValue == "" {
+		result, err := r.client.ExecContext(ctx, "INSERT INTO settings (key,value,updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO NOTHING", key, newValue, time.Now())
+		if err != nil {
+			return false, err
+		}
+		inserted, err := result.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		if inserted == 1 {
+			return true, nil
+		}
+	}
+	count, err := r.client.Setting.Update().Where(setting.KeyEQ(key), setting.ValueEQ(oldValue)).SetValue(newValue).SetUpdatedAt(time.Now()).Save(ctx)
+	return count == 1, err
+}

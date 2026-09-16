@@ -794,14 +794,19 @@ func (s *SettingService) GetOpenAIOAuthRuntimeSettings(ctx context.Context) *Ope
 			return cloneOpenAIOAuthRuntimeSettings(cached.settings), nil
 		}
 
+		cacheBeforeRead := s.openAIOAuthRuntimeSettingsCache.Load()
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIOAuthRuntimeSettingsDBTimeout)
 		defer cancel()
 		settings, readErr := s.readOpenAIOAuthRuntimeSettings(dbCtx)
 		if readErr == nil {
-			s.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{
+			if !s.openAIOAuthRuntimeSettingsCache.CompareAndSwap(cacheBeforeRead, &cachedOpenAIOAuthRuntimeSettings{
 				settings:  cloneOpenAIOAuthRuntimeSettings(settings),
 				expiresAt: time.Now().Add(openAIOAuthRuntimeSettingsCacheTTL).UnixNano(),
-			})
+			}) {
+				if latest, ok := s.openAIOAuthRuntimeSettingsCache.Load().(*cachedOpenAIOAuthRuntimeSettings); ok {
+					return cloneOpenAIOAuthRuntimeSettings(latest.settings), nil
+				}
+			}
 			return settings, nil
 		}
 
@@ -809,10 +814,14 @@ func (s *SettingService) GetOpenAIOAuthRuntimeSettings(ctx context.Context) *Ope
 		if cached, _ := s.openAIOAuthRuntimeSettingsCache.Load().(*cachedOpenAIOAuthRuntimeSettings); cached != nil && cached.settings != nil {
 			fallback = cloneOpenAIOAuthRuntimeSettings(cached.settings)
 		}
-		s.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{
+		if !s.openAIOAuthRuntimeSettingsCache.CompareAndSwap(cacheBeforeRead, &cachedOpenAIOAuthRuntimeSettings{
 			settings:  cloneOpenAIOAuthRuntimeSettings(fallback),
 			expiresAt: time.Now().Add(openAIOAuthRuntimeSettingsErrorTTL).UnixNano(),
-		})
+		}) {
+			if latest, ok := s.openAIOAuthRuntimeSettingsCache.Load().(*cachedOpenAIOAuthRuntimeSettings); ok {
+				fallback = cloneOpenAIOAuthRuntimeSettings(latest.settings)
+			}
+		}
 		return fallback, readErr
 	})
 	settings, _ := value.(*OpenAIOAuthRuntimeSettings)
@@ -829,6 +838,10 @@ func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*O
 	if err != nil && !errors.Is(err, ErrSettingNotFound) {
 		return nil, fmt.Errorf("get OpenAI OAuth runtime settings: %w", err)
 	}
+	return parseOpenAIOAuthRuntimeSettings(value)
+}
+
+func parseOpenAIOAuthRuntimeSettings(value string) (*OpenAIOAuthRuntimeSettings, error) {
 	if strings.TrimSpace(value) != "" {
 		var settings OpenAIOAuthRuntimeSettings
 		if err := json.Unmarshal([]byte(value), &settings); err != nil {
@@ -857,7 +870,8 @@ func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*O
 // UpdateOpenAIOAuthRuntimeSettings applies an independent partial update. The
 // optional settings preserve call compatibility: index 0 is OpenAI OAuth 429
 // retry, index 1 is Grok OAuth 403 retry, index 2 is short 429 proxy rotation,
-// and index 3 globally enables automatic reset-credit use.
+// index 3 globally enables automatic reset-credit use, and index 4 enables
+// Codex fingerprint enhancement.
 func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	ctx context.Context,
 	safePreOutputOverloadRetryEnabled *bool,
@@ -871,7 +885,8 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	grokForbiddenSameAccountRetryProvided := len(sameAccountRetrySettings) > 1 && sameAccountRetrySettings[1] != nil
 	proxyRotationProvided := len(sameAccountRetrySettings) > 2 && sameAccountRetrySettings[2] != nil
 	autoResetCreditGlobalProvided := len(sameAccountRetrySettings) > 3 && sameAccountRetrySettings[3] != nil
-	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided && !proxyRotationProvided && !autoResetCreditGlobalProvided {
+	enhancementProvided := len(sameAccountRetrySettings) > 4 && sameAccountRetrySettings[4] != nil
+	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided && !proxyRotationProvided && !autoResetCreditGlobalProvided && !enhancementProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -880,49 +895,76 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 
 	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIOAuthRuntimeSettingsDBTimeout)
 	defer cancel()
-	current, err := s.readOpenAIOAuthRuntimeSettings(dbCtx)
-	if err != nil {
-		return nil, err
-	}
-	if safePreOutputOverloadRetryEnabled != nil {
-		current.SafePreOutputOverloadRetryEnabled = *safePreOutputOverloadRetryEnabled
-	}
-	if planGatedModelCooldownEnabled != nil {
-		current.PlanGatedModelCooldownEnabled = *planGatedModelCooldownEnabled
-	}
-	if rateLimitSameAccountRetryProvided {
-		current.OpenAIRateLimitSameAccountRetryEnabled = *sameAccountRetrySettings[0]
-	}
-	if grokForbiddenSameAccountRetryProvided {
-		current.GrokOAuthForbiddenSameAccountRetryEnabled = *sameAccountRetrySettings[1]
-	}
-	if proxyRotationProvided {
-		current.OpenAIRateLimitProxyRotationEnabled = *sameAccountRetrySettings[2]
-	}
-	if autoResetCreditGlobalProvided {
-		current.OpenAIAutoResetCreditGlobalEnabled = *sameAccountRetrySettings[3]
-	}
-	normalized, err := normalizeOpenAIOAuthRuntimeSettings(current)
-	if err != nil {
-		return nil, err
-	}
-	data, err := json.Marshal(normalized)
-	if err != nil {
-		return nil, fmt.Errorf("marshal OpenAI OAuth runtime settings: %w", err)
-	}
-	if err := s.settingRepo.Set(dbCtx, SettingKeyOpenAIOAuthRuntimeSettings, string(data)); err != nil {
-		return nil, fmt.Errorf("set OpenAI OAuth runtime settings: %w", err)
-	}
+	for attempt := 0; attempt < 5; attempt++ {
+		original, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAIOAuthRuntimeSettings)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			return nil, err
+		}
+		current, err := parseOpenAIOAuthRuntimeSettings(original)
+		if err != nil {
+			return nil, err
+		}
+		if safePreOutputOverloadRetryEnabled != nil {
+			current.SafePreOutputOverloadRetryEnabled = *safePreOutputOverloadRetryEnabled
+		}
+		if planGatedModelCooldownEnabled != nil {
+			current.PlanGatedModelCooldownEnabled = *planGatedModelCooldownEnabled
+		}
+		if rateLimitSameAccountRetryProvided {
+			current.OpenAIRateLimitSameAccountRetryEnabled = *sameAccountRetrySettings[0]
+		}
+		if grokForbiddenSameAccountRetryProvided {
+			current.GrokOAuthForbiddenSameAccountRetryEnabled = *sameAccountRetrySettings[1]
+		}
+		if proxyRotationProvided {
+			current.OpenAIRateLimitProxyRotationEnabled = *sameAccountRetrySettings[2]
+		}
+		if autoResetCreditGlobalProvided {
+			current.OpenAIAutoResetCreditGlobalEnabled = *sameAccountRetrySettings[3]
+		}
+		if enhancementProvided && proxyRotationProvided && *sameAccountRetrySettings[4] && *sameAccountRetrySettings[2] {
+			return nil, fmt.Errorf("cannot enable both Codex fingerprint enhancement and short-rate-limit proxy rotation")
+		}
+		if enhancementProvided {
+			current.CodexFingerprintEnhancementEnabled = *sameAccountRetrySettings[4]
+			if current.CodexFingerprintEnhancementEnabled {
+				current.OpenAIRateLimitProxyRotationEnabled = false
+			}
+		}
+		if proxyRotationProvided && *sameAccountRetrySettings[2] {
+			current.CodexFingerprintEnhancementEnabled = false
+		}
+		normalized, err := normalizeOpenAIOAuthRuntimeSettings(current)
+		if err != nil {
+			return nil, err
+		}
+		data, err := json.Marshal(normalized)
+		if err != nil {
+			return nil, fmt.Errorf("marshal OpenAI OAuth runtime settings: %w", err)
+		}
+		if repo, ok := s.settingRepo.(SettingCompareAndSwapper); ok {
+			updated, err := repo.CompareAndSwap(dbCtx, SettingKeyOpenAIOAuthRuntimeSettings, original, string(data))
+			if err != nil {
+				return nil, fmt.Errorf("set OpenAI OAuth runtime settings: %w", err)
+			}
+			if !updated {
+				continue
+			}
+		} else if err := s.settingRepo.Set(dbCtx, SettingKeyOpenAIOAuthRuntimeSettings, string(data)); err != nil {
+			return nil, fmt.Errorf("set OpenAI OAuth runtime settings: %w", err)
+		}
 
-	s.openAIOAuthRuntimeSettingsSF.Forget(openAIOAuthRuntimeSettingsRefreshKey)
-	s.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{
-		settings:  cloneOpenAIOAuthRuntimeSettings(normalized),
-		expiresAt: time.Now().Add(openAIOAuthRuntimeSettingsCacheTTL).UnixNano(),
-	})
-	if s.onUpdate != nil {
-		s.onUpdate()
+		s.openAIOAuthRuntimeSettingsSF.Forget(openAIOAuthRuntimeSettingsRefreshKey)
+		s.openAIOAuthRuntimeSettingsCache.Store(&cachedOpenAIOAuthRuntimeSettings{
+			settings:  cloneOpenAIOAuthRuntimeSettings(normalized),
+			expiresAt: time.Now().Add(openAIOAuthRuntimeSettingsCacheTTL).UnixNano(),
+		})
+		if s.onUpdate != nil {
+			s.onUpdate()
+		}
+		return cloneOpenAIOAuthRuntimeSettings(normalized), nil
 	}
-	return cloneOpenAIOAuthRuntimeSettings(normalized), nil
+	return nil, fmt.Errorf("runtime settings changed concurrently; retry the update")
 }
 
 func (s *SettingService) GetOpenAIImagesOAuthUnavailableCooldownSettings(ctx context.Context) (*OpenAIImagesOAuthUnavailableCooldownSettings, error) {

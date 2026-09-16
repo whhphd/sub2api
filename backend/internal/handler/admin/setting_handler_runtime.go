@@ -164,6 +164,7 @@ func (h *SettingHandler) GetOpenAIOAuthRuntimeSettings(c *gin.Context) {
 // UpdateOpenAIOAuthRuntimeSettingsRequest supports independent saves from the
 // the System Settings cards. Pointer fields distinguish omission from false.
 type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
+	CodexFingerprintEnhancementEnabled   *bool `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
 	SafePreOutputOverloadRetryEnabled    *bool `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled        *bool `json:"plan_gated_model_cooldown_enabled"`
 	RateLimitSameAccountRetryEnabled     *bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
@@ -189,6 +190,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		req.GrokForbiddenSameAccountRetryEnabled,
 		req.RateLimitProxyRotationEnabled,
 		req.AutoResetCreditGlobalEnabled,
+		req.CodexFingerprintEnhancementEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
@@ -200,6 +202,8 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		"plan_gated_model_cooldown_changed", req.PlanGatedModelCooldownEnabled != nil,
 		"rate_limit_same_account_retry_changed", req.RateLimitSameAccountRetryEnabled != nil,
 		"rate_limit_proxy_rotation_changed", req.RateLimitProxyRotationEnabled != nil,
+		"codex_fingerprint_enhancement_changed", req.CodexFingerprintEnhancementEnabled != nil,
+		"codex_fingerprint_enhancement_enabled", settings.CodexFingerprintEnhancementEnabled,
 		"auto_reset_credit_global_changed", req.AutoResetCreditGlobalEnabled != nil,
 		"grok_forbidden_same_account_retry_changed", req.GrokForbiddenSameAccountRetryEnabled != nil,
 	)

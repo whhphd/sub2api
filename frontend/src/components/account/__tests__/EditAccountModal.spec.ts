@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, runtimeSettingsMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
+  runtimeSettingsMock: vi.fn().mockResolvedValue({openai_oauth_codex_fingerprint_enhancement_enabled:false}),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
@@ -31,6 +32,7 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
+      getOpenAIOAuthRuntimeSettings: runtimeSettingsMock,
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
       getSettings: vi.fn().mockResolvedValue({})
     },
@@ -329,6 +331,16 @@ describe('EditAccountModal', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('shows global device mode while retaining the saved session mode', async () => {
+    runtimeSettingsMock.mockResolvedValueOnce({openai_oauth_codex_fingerprint_enhancement_enabled:true})
+    const account=buildOpenAIOAuthParentAccount()
+    account.extra={...account.extra,codex_fingerprint_mode:'session'}
+    const wrapper=mountModal(account)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="codex-enhancement-effective-mode"]').exists()).toBe(true)
+    expect((wrapper.vm as any).codexFingerprintMode).toBe('session')
+  })
 
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })

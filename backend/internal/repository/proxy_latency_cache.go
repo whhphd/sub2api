@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
@@ -71,4 +73,35 @@ func (c *proxyLatencyCache) SetProxyLatency(ctx context.Context, proxyID int64, 
 		return err
 	}
 	return c.rdb.Set(ctx, proxyLatencyKey(proxyID), payload, 0).Err()
+}
+
+func codexExitSnapshotKey(tag string) string {
+	return fmt.Sprintf("proxy:codex-exit:%x", sha256.Sum256([]byte(tag)))
+}
+func (c *proxyLatencyCache) GetCodexExitSnapshot(ctx context.Context, tag string) (*service.CodexExitSnapshot, error) {
+	raw, err := c.rdb.Get(ctx, codexExitSnapshotKey(tag)).Bytes()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var snapshot service.CodexExitSnapshot
+	if err = json.Unmarshal(raw, &snapshot); err != nil {
+		return nil, err
+	}
+	if snapshot.ProxyTag != tag {
+		return nil, nil
+	}
+	return &snapshot, nil
+}
+func (c *proxyLatencyCache) SetCodexExitSnapshot(ctx context.Context, snapshot *service.CodexExitSnapshot) error {
+	if snapshot == nil {
+		return nil
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Set(ctx, codexExitSnapshotKey(snapshot.ProxyTag), raw, 24*time.Hour).Err()
 }

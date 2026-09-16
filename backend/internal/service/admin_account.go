@@ -1493,7 +1493,11 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 // accountRepo.Update triggers the scheduler outbox + cache propagation internally.
 // Calling this for a non-parent account is a harmless no-op.
 func (s *adminServiceImpl) propagateProxyToShadows(ctx context.Context, parentID int64, proxyID *int64) error {
-	return propagateAccountProxyToShadows(ctx, s.accountRepo, parentID, proxyID)
+	if err := propagateAccountProxyToShadows(ctx, s.accountRepo, parentID, proxyID); err != nil {
+		return err
+	}
+	notifyCodexExitProxyChange(ctx, s.runtimeBlocker, parentID)
+	return nil
 }
 
 // propagateAccountProxyToShadows 把母账号的 proxy 同步到其所有 spark 影子(影子 proxy 恒继承母账号)。

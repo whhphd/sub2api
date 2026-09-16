@@ -477,7 +477,7 @@
                       </div>
                       <Toggle
                         v-model="openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled"
-                        :disabled="openAIOAuthRateLimitProxyRotationSaving"
+                        :disabled="openAIOAuthRateLimitProxyRotationSaving || codexFingerprintEnhancementSaving"
                         data-testid="openai-oauth-rate-limit-proxy-rotation-toggle"
                       />
                     </div>
@@ -485,12 +485,67 @@
                       <button
                         type="button"
                         class="btn btn-primary btn-sm"
-                        :disabled="openAIOAuthRateLimitProxyRotationSaving"
+                        :disabled="openAIOAuthRateLimitProxyRotationSaving || codexFingerprintEnhancementSaving"
                         data-testid="openai-oauth-rate-limit-proxy-rotation-save"
                         @click="saveOpenAIOAuthRateLimitProxyRotationSettings"
                       >
                         {{
                           openAIOAuthRateLimitProxyRotationSaving
+                            ? t("common.saving")
+                            : t("common.save")
+                        }}
+                      </button>
+                    </div>
+                  </template>
+                </div>
+
+                <div
+                  class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                  data-testid="openai-oauth-codex-fingerprint-enhancement-card"
+                >
+                  <div>
+                    <h3 class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.openaiOauthRuntime.fingerprintEnhancementTitle") }}
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiOauthRuntime.fingerprintEnhancementDescription") }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="openAIOAuthRuntimeLoading"
+                    class="flex items-center gap-2 text-gray-500"
+                  >
+                    <div
+                      class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                    ></div>
+                    {{ t("common.loading") }}
+                  </div>
+                  <template v-else>
+                    <div class="flex items-center justify-between gap-6">
+                      <div>
+                        <label class="font-medium text-gray-900 dark:text-white">
+                          {{ t("admin.settings.openaiOauthRuntime.fingerprintEnhancementEnabled") }}
+                        </label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.openaiOauthRuntime.fingerprintEnhancementEnabledHint") }}
+                        </p>
+                      </div>
+                      <Toggle
+                        v-model="openAIOAuthRuntimeForm.openai_oauth_codex_fingerprint_enhancement_enabled"
+                        :disabled="openAIOAuthRateLimitProxyRotationSaving || codexFingerprintEnhancementSaving"
+                        data-testid="openai-oauth-codex-fingerprint-enhancement-toggle"
+                      />
+                    </div>
+                    <div class="flex justify-end">
+                      <button
+                        type="button"
+                        class="btn btn-primary btn-sm"
+                        :disabled="openAIOAuthRateLimitProxyRotationSaving || codexFingerprintEnhancementSaving"
+                        data-testid="openai-oauth-codex-fingerprint-enhancement-save"
+                        @click="saveCodexFingerprintEnhancementSettings"
+                      >
+                        {{
+                          codexFingerprintEnhancementSaving
                             ? t("common.saving")
                             : t("common.save")
                         }}
@@ -9581,10 +9636,12 @@ const openAIOAuthRuntimeLoading = ref(true);
 const openAIOAuthSafeRetrySaving = ref(false);
 const openAIOAuthRateLimitSameAccountRetrySaving = ref(false);
 const openAIOAuthRateLimitProxyRotationSaving = ref(false);
+const codexFingerprintEnhancementSaving = ref(false);
 const openAIOAuthAutoResetCreditGlobalSaving = ref(false);
 const grokOAuthForbiddenSameAccountRetrySaving = ref(false);
 const openAIOAuthPlanGatedCooldownSaving = ref(false);
 const openAIOAuthRuntimeForm = reactive({
+  openai_oauth_codex_fingerprint_enhancement_enabled: false,
   safe_pre_output_overload_retry_enabled: false,
   openai_oauth_rate_limit_same_account_retry_enabled: false,
   openai_oauth_rate_limit_proxy_rotation_enabled: false,
@@ -12668,6 +12725,7 @@ async function loadOpenAIOAuthRuntimeSettings() {
   openAIOAuthRuntimeLoading.value = true;
   try {
     const settings = await adminAPI.settings.getOpenAIOAuthRuntimeSettings();
+    openAIOAuthRuntimeForm.openai_oauth_codex_fingerprint_enhancement_enabled = settings.openai_oauth_codex_fingerprint_enhancement_enabled ?? false;
     openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
       settings.safe_pre_output_overload_retry_enabled;
     openAIOAuthRuntimeForm.openai_oauth_rate_limit_same_account_retry_enabled =
@@ -12696,6 +12754,7 @@ async function saveOpenAIOAuthRateLimitProxyRotationSettings() {
     });
     openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled =
       updated.openai_oauth_rate_limit_proxy_rotation_enabled;
+    openAIOAuthRuntimeForm.openai_oauth_codex_fingerprint_enhancement_enabled = updated.openai_oauth_codex_fingerprint_enhancement_enabled ?? false;
     appStore.showSuccess(
       t("admin.settings.openaiOauthRuntime.proxyRotationSaved"),
     );
@@ -12708,6 +12767,31 @@ async function saveOpenAIOAuthRateLimitProxyRotationSettings() {
     );
   } finally {
     openAIOAuthRateLimitProxyRotationSaving.value = false;
+  }
+}
+
+async function saveCodexFingerprintEnhancementSettings() {
+  codexFingerprintEnhancementSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({
+      openai_oauth_codex_fingerprint_enhancement_enabled:
+        openAIOAuthRuntimeForm.openai_oauth_codex_fingerprint_enhancement_enabled,
+    });
+    openAIOAuthRuntimeForm.openai_oauth_rate_limit_proxy_rotation_enabled =
+      updated.openai_oauth_rate_limit_proxy_rotation_enabled;
+    openAIOAuthRuntimeForm.openai_oauth_codex_fingerprint_enhancement_enabled = updated.openai_oauth_codex_fingerprint_enhancement_enabled ?? false;
+    appStore.showSuccess(
+      t("admin.settings.openaiOauthRuntime.fingerprintEnhancementSaved"),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.openaiOauthRuntime.fingerprintEnhancementSaveFailed"),
+      ),
+    );
+  } finally {
+    codexFingerprintEnhancementSaving.value = false;
   }
 }
 

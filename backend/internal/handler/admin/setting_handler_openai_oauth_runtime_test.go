@@ -188,3 +188,25 @@ func TestSettingHandlerOpenAIOAuthRuntimePatchRejectsEmptyPayload(t *testing.T) 
 	recorder := performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{})
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }
+
+func TestSettingHandlerCodexEnhancementMutualExclusion(t *testing.T) {
+	handler, _ := newOpenAIOAuthRuntimeHandler()
+	update := func(body map[string]bool) *httptest.ResponseRecorder {
+		return performOpenAIOAuthRuntimeRequest(t, handler.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, body)
+	}
+	r := update(map[string]bool{"openai_oauth_rate_limit_proxy_rotation_enabled": true})
+	require.Equal(t, http.StatusOK, r.Code)
+	r = update(map[string]bool{"openai_oauth_codex_fingerprint_enhancement_enabled": true})
+	require.Equal(t, http.StatusOK, r.Code)
+	current := decodeOpenAIOAuthRuntimeResponse(t, r)
+	require.True(t, current.CodexFingerprintEnhancementEnabled)
+	require.False(t, current.OpenAIRateLimitProxyRotationEnabled)
+	r = update(map[string]bool{"openai_oauth_codex_fingerprint_enhancement_enabled": true, "openai_oauth_rate_limit_proxy_rotation_enabled": true})
+	require.Equal(t, http.StatusBadRequest, r.Code)
+	r = performOpenAIOAuthRuntimeRequest(t, handler.GetOpenAIOAuthRuntimeSettings, http.MethodGet, nil)
+	require.True(t, decodeOpenAIOAuthRuntimeResponse(t, r).CodexFingerprintEnhancementEnabled)
+	r = update(map[string]bool{"openai_oauth_codex_fingerprint_enhancement_enabled": false})
+	current = decodeOpenAIOAuthRuntimeResponse(t, r)
+	require.False(t, current.CodexFingerprintEnhancementEnabled)
+	require.False(t, current.OpenAIRateLimitProxyRotationEnabled)
+}

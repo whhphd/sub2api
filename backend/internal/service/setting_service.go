@@ -96,6 +96,12 @@ var (
 	)
 )
 
+// SettingCompareAndSwapper serializes partial updates across server instances.
+// Implementations must compare and write in one database operation.
+type SettingCompareAndSwapper interface {
+	CompareAndSwap(ctx context.Context, key, oldValue, newValue string) (bool, error)
+}
+
 type SettingRepository interface {
 	Get(ctx context.Context, key string) (*Setting, error)
 	GetValue(ctx context.Context, key string) (string, error)

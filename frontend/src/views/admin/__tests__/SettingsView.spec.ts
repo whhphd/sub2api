@@ -1705,6 +1705,41 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).not.toHaveBeenCalled();
   });
 
+  it("saves fingerprint enhancement and reflects both server policy flags", async () => {
+    getOpenAIOAuthRuntimeSettings.mockResolvedValue({openai_oauth_codex_fingerprint_enhancement_enabled:false,openai_oauth_rate_limit_proxy_rotation_enabled:true});
+    updateOpenAIOAuthRuntimeSettings.mockResolvedValue({openai_oauth_codex_fingerprint_enhancement_enabled:true,openai_oauth_rate_limit_proxy_rotation_enabled:false});
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    const toggle=wrapper.get('[data-testid="openai-oauth-codex-fingerprint-enhancement-toggle"]');
+    await toggle.setValue(true);
+    await wrapper.get('[data-testid="openai-oauth-codex-fingerprint-enhancement-save"]').trigger("click");
+    await flushPromises();
+    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({openai_oauth_codex_fingerprint_enhancement_enabled:true});
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+    expect((wrapper.get('[data-testid="openai-oauth-rate-limit-proxy-rotation-toggle"]').element as HTMLInputElement).checked).toBe(false);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("disables enhancement when enabling rotation and keeps both off when disabling rotation", async () => {
+    getOpenAIOAuthRuntimeSettings.mockResolvedValue({openai_oauth_codex_fingerprint_enhancement_enabled:true,openai_oauth_rate_limit_proxy_rotation_enabled:false});
+    updateOpenAIOAuthRuntimeSettings.mockResolvedValueOnce({openai_oauth_codex_fingerprint_enhancement_enabled:false,openai_oauth_rate_limit_proxy_rotation_enabled:true}).mockResolvedValueOnce({openai_oauth_codex_fingerprint_enhancement_enabled:false,openai_oauth_rate_limit_proxy_rotation_enabled:false});
+    const wrapper=mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    const rotation=wrapper.get('[data-testid="openai-oauth-rate-limit-proxy-rotation-toggle"]');
+    await rotation.setValue(true);
+    await wrapper.get('[data-testid="openai-oauth-rate-limit-proxy-rotation-save"]').trigger("click");
+    await flushPromises();
+    const enhancement=wrapper.get('[data-testid="openai-oauth-codex-fingerprint-enhancement-toggle"]');
+    expect((enhancement.element as HTMLInputElement).checked).toBe(false);
+    await rotation.setValue(false);
+    await wrapper.get('[data-testid="openai-oauth-rate-limit-proxy-rotation-save"]').trigger("click");
+    await flushPromises();
+    expect((enhancement.element as HTMLInputElement).checked).toBe(false);
+    expect((rotation.element as HTMLInputElement).checked).toBe(false);
+  });
+
   it("independently saves the OpenAI OAuth global automatic reset-credit switch", async () => {
     const wrapper = mountView();
 

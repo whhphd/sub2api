@@ -2285,6 +2285,9 @@
             </p>
           </div>
           <div class="w-52 flex-shrink-0">
+            <p v-if="codexFingerprintEnhancementActive" class="mb-2 text-sm text-primary-600 dark:text-primary-400" data-testid="codex-enhancement-effective-mode">
+              {{ t('admin.settings.openaiOauthRuntime.fingerprintEnhancementAccountNotice') }}
+            </p>
             <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
           </div>
         </div>
@@ -3553,6 +3556,7 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'account_device' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const codexFingerprintEnhancementActive = ref(false)
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3962,6 +3966,14 @@ const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>
 }
 
 const syncFormFromAccount = (newAccount: Account | null) => {
+  codexFingerprintEnhancementActive.value = false
+  if (newAccount?.platform === 'openai' && newAccount.type === 'oauth') {
+    const accountID = newAccount.id
+    void adminAPI.settings.getOpenAIOAuthRuntimeSettings?.().then(settings => {
+      if (props.account?.id === accountID) codexFingerprintEnhancementActive.value = settings.openai_oauth_codex_fingerprint_enhancement_enabled ?? false
+    }).catch(() => { /* Keep the stored mode editable if settings cannot load. */ })
+  }
+
   if (!newAccount) {
     return
   }
@@ -5636,7 +5648,7 @@ const handleSubmit = async () => {
         if (codexFingerprintMode.value !== 'off') {
           newExtra.codex_fingerprint_mode = codexFingerprintMode.value
         } else {
-          delete newExtra.codex_fingerprint_mode
+          newExtra.codex_fingerprint_mode = 'off'
         }
       }
 
