@@ -194,3 +194,7 @@ func (m *opsRepoMock) GetLatestDailyBucketDate(ctx context.Context) (time.Time, 
 }
 
 var _ OpsRepository = (*opsRepoMock)(nil)
+
+func (m *opsRepoMock) GetAccountRecentRequests(context.Context, []int64, time.Time, time.Time) ([]*OpsAccountRecentRequest, error) {
+	return nil, nil
+}

@@ -378,6 +378,19 @@
               @probe="handleProbeUpstreamBilling(row)"
             />
           </template>
+          <template #header-recent_requests="{ column }">
+            <span class="inline-flex items-center gap-1">
+              {{ column.label }}
+              <HelpTooltip :text="t('admin.accounts.recentRequests.hint')" />
+            </span>
+          </template>
+          <template #cell-recent_requests="{ row }">
+            <RecentRequestsCell
+              :requests="recentRequestsByAccountId[String(row.id)] ?? []"
+              :loading="recentRequestsLoadingByAccountId[String(row.id)] === true"
+              :load-error="recentRequestsErrorByAccountId[String(row.id)] === true"
+            />
+          </template>
           <template #cell-upstream_balance="{ row }">
             <UpstreamBalanceCell :account="row" :now="upstreamBillingNow" :querying="queryingUpstreamBalance.has(row.id)" @query="handleQueryUpstreamBalance(row)" />
           </template>
@@ -489,6 +502,8 @@
 </template>
 
 <script setup lang="ts">
+import RecentRequestsCell from '@/components/account/RecentRequestsCell.vue'
+import { useAccountRecentRequests } from '@/composables/useAccountRecentRequests'
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
@@ -1382,6 +1397,16 @@ const isAnyModalOpen = computed(() => {
   )
 })
 
+const {
+  requests: recentRequestsByAccountId,
+  errors: recentRequestsErrorByAccountId,
+  loading: recentRequestsLoadingByAccountId
+} = useAccountRecentRequests({
+  accountIds: computed(() => accounts.value.map(account => account.id)),
+  enabled: computed(() => isColumnVisible('recent_requests') && !loading.value && !isAnyModalOpen.value),
+  fetch: (ids, signal) => adminAPI.ops.getAccountRecentRequests(ids, signal)
+})
+
 const enterAutoRefreshSilentWindow = () => {
   autoRefreshSilentUntil.value = Date.now() + AUTO_REFRESH_SILENT_WINDOW_MS
   autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
@@ -1809,6 +1834,7 @@ const allColumns = computed(() => {
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },
+    { key: 'recent_requests', label: t('admin.accounts.columns.recentRequests'), sortable: false },
     { key: 'upstream_balance', label: t('admin.accounts.upstreamBalance.title'), sortable: false },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },

@@ -6,6 +6,7 @@ import (
 )
 
 type OpsRepository interface {
+	GetAccountRecentRequests(ctx context.Context, accountIDs []int64, start, end time.Time) ([]*OpsAccountRecentRequest, error)
 	InsertErrorLog(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error)
 	BatchInsertErrorLogs(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error)
 	ListErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (*OpsErrorLogList, error)

@@ -133,6 +133,37 @@ export interface OpsRequestDetail {
   stream?: boolean
 }
 
+export interface OpsAccountRecentRequest extends OpsRequestDetail {
+  id: number
+  user_email?: string
+  account_name?: string
+  upstream_model?: string
+  request_type?: string | null
+  openai_ws_mode?: boolean
+  input_tokens?: number | null
+  output_tokens?: number | null
+  cache_read_tokens?: number | null
+  cache_creation_tokens?: number | null
+  image_input_tokens?: number | null
+  image_output_tokens?: number | null
+  actual_cost?: number | null
+  account_cost?: number | null
+}
+
+export interface OpsAccountRecentRequestsResponse {
+  accounts: Record<string, OpsAccountRecentRequest[]>
+  sampled_at: string
+  window_hours: number
+  limit: number
+}
+
+export async function getAccountRecentRequests(accountIds: number[], signal?: AbortSignal): Promise<OpsAccountRecentRequestsResponse> {
+  const { data } = await apiClient.get<OpsAccountRecentRequestsResponse>('/admin/ops/accounts/recent-requests', {
+    params: { account_ids: accountIds.join(',') }, signal, timeout: 5000
+  })
+  return data
+}
+
 export interface OpsRequestDetailsParams {
   time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
   start_time?: string
@@ -1339,6 +1370,7 @@ export const opsAPI = {
   listRequestErrorUpstreamErrors,
 
   listRequestDetails,
+  getAccountRecentRequests,
   listAlertRules,
   createAlertRule,
   updateAlertRule,

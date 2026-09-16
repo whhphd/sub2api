@@ -228,7 +228,23 @@ export default {
         viewTempUnschedDetails: 'View temp unschedulable details',
         tempUnschedulableUntil: 'Resumes {time}'
       },
+      recentRequests: {
+        summary: "Latest {count} request records",
+        viewDetails: "View request at {time}",
+        success: "Successful request",
+        error: "Error record",
+        reason: "Error reason",
+        unknownError: "No error details",
+        user: "User",
+        account: "Account",
+        requestId: "Request ID",
+        loadFailed: "Unable to load",
+        stale: "Refresh failed · showing previous records",
+        empty: "No records in 24h",
+        hint: "Latest 10 records in 24 hours; newest on the right. Green: success; red: error. Reads local logs every 5 seconds while visible. Retry errors may coexist with final success; this is not live concurrency or a success rate.",
+      },
       columns: {
+        recentRequests: 'Recent requests',
         name: 'Name',
         id: 'Account ID',
         platformType: 'Platform/Type',
