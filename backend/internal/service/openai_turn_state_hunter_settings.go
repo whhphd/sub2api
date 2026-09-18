@@ -51,8 +51,8 @@ func (c TurnStateHunterSettings) validate() error {
 		}
 		ids[id] = true
 	}
-	if c.MaxPerHour < 1 || c.MaxPerHour > 600 || c.PerAccountMaxPerHour < 1 || c.PerAccountMaxPerHour > 600 {
-		return fmt.Errorf("hunter hourly limits must be 1-600")
+	if c.MaxPerHour < 1 || c.PerAccountMaxPerHour < 1 {
+		return fmt.Errorf("hunter hourly limits must be positive integers")
 	}
 	if c.GapSeconds < 1 || c.GapSeconds > 600 || c.LeadMinutes < 1 || c.LeadMinutes > 55 || c.RetryMinutes < 1 || c.RetryMinutes > 1440 || (c.IdleMinutes != -1 && (c.IdleMinutes < 1 || c.IdleMinutes > 1440)) {
 		return fmt.Errorf("invalid hunter timing settings")
