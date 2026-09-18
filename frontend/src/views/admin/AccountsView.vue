@@ -325,6 +325,7 @@
               @account-updated="handleAccountUpdated"
               @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
+            <AccountTurnStateCell :account="row" :enabled="turnStateAutoEnabled" :now="upstreamBillingNow" />
           </template>
           <template #cell-proxy="{ row }">
             <div class="flex flex-col gap-1">
@@ -534,6 +535,7 @@ import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
+import AccountTurnStateCell from '@/components/account/AccountTurnStateCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
@@ -606,6 +608,7 @@ const selTypes = computed<AccountType[]>(() => {
   )
   return [...types]
 })
+const turnStateAutoEnabled = ref<boolean | null>(null)
 const showCreate = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
@@ -2570,7 +2573,17 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
+async function loadTurnStateRuntimeStatus() {
+  try {
+    const settings = await adminAPI.settings.getOpenAIOAuthRuntimeSettings()
+    turnStateAutoEnabled.value = settings.openai_oauth_turn_state_auto_enabled ?? false
+  } catch {
+    turnStateAutoEnabled.value = null
+  }
+}
+
 onMounted(async () => {
+  void loadTurnStateRuntimeStatus()
   if (typeof window !== 'undefined') {
     desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
     isDesktopViewport.value = desktopViewportMediaQuery.matches

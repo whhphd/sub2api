@@ -1040,6 +1040,10 @@ export default {
         saveFailed: '保存 429 默认回避设置失败'
       },
       openaiOauthRuntime: {
+"turnStateTitle": "Codex Turn-State 自动接管",
+"turnStateHint": "全局覆盖 OpenAI OAuth 的 HTTP/SSE 请求。从自然响应积累候选，在会话出现非基线形态后按账号和模型使用候选；候选耗尽不停止调度。WS 保持透传，决策记录独立保存。该功能为实验性机制，不保证改善模型质量。",
+"turnStateSaved": "Turn-State 设置已保存",
+"turnStateSaveFailed": "保存 Turn-State 设置失败",
         safeRetryTitle: 'OpenAI OAuth 流式过载安全重试',
         safeRetryDescription: '在实际内容输出前缓冲结构事件，遇到上游过载时安全重试，避免把半截响应发给用户。',
         safeRetryEnabled: '启用流式过载安全重试',

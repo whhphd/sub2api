@@ -1046,6 +1046,10 @@ export default {
         saveFailed: 'Failed to save 429 default cooldown settings'
       },
       openaiOauthRuntime: {
+"turnStateTitle": "Codex Turn-State automatic takeover",
+"turnStateHint": "Applies globally to OpenAI OAuth HTTP/SSE. Collects candidates from upstream responses and uses matching account/model candidates for sessions with non-baseline shapes. Exhaustion does not stop scheduling. WebSockets remain unchanged; decisions have independent logs. Experimental; quality improvement is not guaranteed.",
+"turnStateSaved": "Turn-State settings saved",
+"turnStateSaveFailed": "Failed to save Turn-State settings",
         safeRetryTitle: 'OpenAI OAuth Safe Streaming Overload Retry',
         safeRetryDescription: 'Buffer structural events before real output so an upstream overload can be retried without exposing a partial response.',
         safeRetryEnabled: 'Enable safe streaming overload retry',

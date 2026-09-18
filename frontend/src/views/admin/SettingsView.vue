@@ -499,6 +499,19 @@
                   </template>
                 </div>
 
+                <div class="card space-y-4 p-6" data-testid="turn-state-auto-settings">
+                  <div class="flex items-center justify-between gap-6">
+                    <div>
+                      <h3 class="font-medium">{{ t('admin.settings.openaiOauthRuntime.turnStateTitle') }}</h3>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.openaiOauthRuntime.turnStateHint') }}</p>
+                    </div>
+                    <Toggle v-model="openAIOAuthRuntimeForm.openai_oauth_turn_state_auto_enabled" :disabled="openAIOAuthRuntimeLoading || turnStateAutoSaving" data-testid="turn-state-auto-toggle" />
+                  </div>
+                  <div class="flex justify-end">
+                    <button type="button" class="btn btn-primary" :disabled="openAIOAuthRuntimeLoading || turnStateAutoSaving" data-testid="turn-state-auto-save" @click="saveTurnStateAutoSettings">{{ t('common.save') }}</button>
+                  </div>
+                </div>
+
                 <div
                   class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
                   data-testid="openai-oauth-codex-fingerprint-enhancement-card"
@@ -975,6 +988,8 @@
                     </p>
                   </div>
                 </div>
+
+
 
                 <!-- Save Button -->
                 <div
@@ -9637,10 +9652,12 @@ const openAIOAuthSafeRetrySaving = ref(false);
 const openAIOAuthRateLimitSameAccountRetrySaving = ref(false);
 const openAIOAuthRateLimitProxyRotationSaving = ref(false);
 const codexFingerprintEnhancementSaving = ref(false);
+const turnStateAutoSaving = ref(false);
 const openAIOAuthAutoResetCreditGlobalSaving = ref(false);
 const grokOAuthForbiddenSameAccountRetrySaving = ref(false);
 const openAIOAuthPlanGatedCooldownSaving = ref(false);
 const openAIOAuthRuntimeForm = reactive({
+  openai_oauth_turn_state_auto_enabled: false,
   openai_oauth_codex_fingerprint_enhancement_enabled: false,
   safe_pre_output_overload_retry_enabled: false,
   openai_oauth_rate_limit_same_account_retry_enabled: false,
@@ -12725,6 +12742,7 @@ async function loadOpenAIOAuthRuntimeSettings() {
   openAIOAuthRuntimeLoading.value = true;
   try {
     const settings = await adminAPI.settings.getOpenAIOAuthRuntimeSettings();
+    openAIOAuthRuntimeForm.openai_oauth_turn_state_auto_enabled = settings.openai_oauth_turn_state_auto_enabled ?? false;
     openAIOAuthRuntimeForm.openai_oauth_codex_fingerprint_enhancement_enabled = settings.openai_oauth_codex_fingerprint_enhancement_enabled ?? false;
     openAIOAuthRuntimeForm.safe_pre_output_overload_retry_enabled =
       settings.safe_pre_output_overload_retry_enabled;
@@ -12793,6 +12811,17 @@ async function saveCodexFingerprintEnhancementSettings() {
   } finally {
     codexFingerprintEnhancementSaving.value = false;
   }
+}
+
+async function saveTurnStateAutoSettings() {
+  turnStateAutoSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({ openai_oauth_turn_state_auto_enabled: openAIOAuthRuntimeForm.openai_oauth_turn_state_auto_enabled });
+    openAIOAuthRuntimeForm.openai_oauth_turn_state_auto_enabled = updated.openai_oauth_turn_state_auto_enabled ?? false;
+    appStore.showSuccess(t('admin.settings.openaiOauthRuntime.turnStateSaved'));
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.openaiOauthRuntime.turnStateSaveFailed')));
+  } finally { turnStateAutoSaving.value = false; }
 }
 
 async function saveOpenAIOAuthAutoResetCreditGlobalSettings() {

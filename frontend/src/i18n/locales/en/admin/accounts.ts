@@ -1,5 +1,6 @@
 export default {
     accounts: {
+ turnState: {"parent": "Uses parent account #{id} state pool", "inherited": "Parent managed", "unknown": "Settings unavailable", "observeOnly": "Observation only", "waiting": "Waiting for candidates", "ready": "Candidates available", "rejected": "Candidates rejected", "expired": "Candidates expired", "baseline": "Baseline shape", "nonBaseline": "Non-baseline shape", "available": "{count} available", "hint": "Length / cipher blocks; shape is not a quality verdict."},
       upstreamBalance: {
         title: 'Upstream Balance', refresh: 'Query upstream balance', queryFailed: 'Balance query failed',
         updatedAt: 'Last success: {value}', nextQueryAt: 'Next query: {value}',
