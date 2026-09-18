@@ -98,6 +98,7 @@ type OpenAITurnStateHunterService struct {
 	// Offline tests inject the paid-probe boundary and clock, never a real AI endpoint.
 	probeOverride func(context.Context, *Account, string, TurnStateHunterSettings, Proxy) openAITurnStateHuntAttempt
 	now           func() time.Time
+ retryWait     func(context.Context) error
 }
 
 func NewOpenAITurnStateHunterService(g *OpenAIGatewayService, a AccountRepository, p ProxyRepository, prober IPAPIProxyProber, leader LeaderLockCache) *OpenAITurnStateHunterService {
@@ -168,7 +169,7 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 		return
 	}
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].ID < accounts[j].ID })
-	// One probe per account per pass prevents the first account monopolizing budget.
+	// One bounded probe sequence per account per pass prevents budget monopolization.
 	for len(accounts) > 0 && ctx.Err() == nil {
 		progressed := false
 		start := sort.Search(len(accounts), func(i int) bool { return accounts[i].ID > s.cursor }) % len(accounts)
@@ -344,7 +345,7 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 	}
 	var selected *Proxy
 	exit := ""
-	// Cursor rotates both targets; one attempt per account pass.
+	// Cursor rotates both targets; transport retries stay in the same bounded sequence.
 	model := models[st.Cursor%len(models)]
 	for n := 0; n < len(cfg.ProxyIDs); n++ {
 		id := cfg.ProxyIDs[(st.Cursor+n)%len(cfg.ProxyIDs)]
@@ -396,48 +397,75 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 		s.gate(ctx, a, st, "no_usable_exit")
 		return false, false
 	}
-	current, e := s.gateway.hunterPolicy(ctx)
-	if e != nil || !sameHunterPolicy(current, cfg) {
-		return false, true
-	}
-	latest, e := s.fresh(ctx, a.ID)
-	if e != nil || latest.Status != StatusActive || turnStateOwner(latest) != turnStateOwner(a) {
-		return false, false
-	}
-	a = latest
-	// Persist allowance before spending. A crash can overcount, never overspend.
-	allowed, e := s.reserveGlobal(ctx, cfg)
-	if e != nil {
-		s.log(a, model, "hunter_storage_error", "budget_unavailable", nil)
-		return false, true
-	}
-	if !allowed {
-		s.gate(ctx, a, st, "global_cap")
-		return false, true
-	}
-	st.HourCount++
-	st.CapWait = false
-	st.Gate = ""
-	st.NextAt = time.Time{}
-	if s.save(ctx, a, st) != nil {
-		return false, true
-	}
-	var result openAITurnStateHuntAttempt
-	if s.probeOverride != nil {
-		result = s.probeOverride(ctx, a, model, cfg, *selected)
-	} else {
-		result = s.probe(ctx, a, model, cfg, *selected)
-	}
-	result.Exit = exit
-	// push is donor metadata maintenance; the count was already reserved above.
-	st.HourCount--
-	st.push(result)
-	if result.Status != http.StatusOK || result.Error != "" {
-		st.NextAt = s.now().Add(openAITurnStateHuntBackoff(result.Status))
-	}
-	s.log(a, model, "hunter_attempt", result.Error, map[string]any{"proxy_id": result.ProxyID, "http_status": result.Status, "length": result.Chars, "baseline": result.Healthy, "headers_ms": result.LatencyMs, "hour_count": st.HourCount})
-	return true, s.save(ctx, a, st) != nil
+	return s.probeWithTransportRetry(ctx, a, model, cfg, *selected, exit, st)
 }
+
+// Only transport failures with no HTTP response receive short retries. All three
+// attempts build new requests/connections and reserve independent budget entries.
+// Backoff is persisted after each failure so interruption cannot skip it.
+func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Context, account *Account, model string, cfg TurnStateHunterSettings, selected Proxy, exit string, st openAITurnStateHuntState) (spent, halt bool) {
+	const maxAttempts = 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if ctx.Err() != nil { return spent, true }
+		current, err := s.gateway.hunterPolicy(ctx)
+		if err != nil || !sameHunterPolicy(current, cfg) { return spent, true }
+		a, err := s.fresh(ctx, account.ID)
+		if err != nil || a == nil || a.Status != StatusActive || turnStateOwner(a) != turnStateOwner(account) { return spent, true }
+		// Reload the proxy before retrying; do not reuse a deleted/disabled or edited binding.
+		if attempt > 1 {
+			op, cancel := context.WithTimeout(ctx, turnStateTimeout)
+			proxies, proxyErr := s.proxies.ListByIDs(op, []int64{selected.ID})
+			cancel()
+			if proxyErr != nil { return spent, true }
+			matched := false
+			for _, p := range proxies {
+				if p.ID == selected.ID && p.IsActive() && !p.IsExpired(s.now()) &&
+					p.Protocol == selected.Protocol && p.Host == selected.Host && p.Port == selected.Port &&
+					p.Username == selected.Username && p.Password == selected.Password { matched = true; break }
+			}
+			if !matched { return spent, true }
+		}
+		st.rollHour(s.now())
+		if st.HourCount >= cfg.PerAccountMaxPerHour {
+			st.CapWait = true
+			st.NextAt = st.HourStart.Add(time.Hour)
+			s.gate(ctx, a, st, "account_cap")
+			return spent, false
+		}
+		allowed, err := s.reserveGlobal(ctx, cfg)
+		if err != nil { s.log(a, model, "hunter_storage_error", "budget_unavailable", nil); return spent, true }
+		if !allowed { s.gate(ctx, a, st, "global_cap"); return spent, true }
+		st.HourCount++
+		st.CapWait = false
+		st.Gate = ""
+		st.NextAt = time.Time{}
+		if s.save(ctx, a, st) != nil { return spent, true }
+		var result openAITurnStateHuntAttempt
+		if s.probeOverride != nil { result = s.probeOverride(ctx, a, model, cfg, selected) } else { result = s.probe(ctx, a, model, cfg, selected) }
+		spent = true
+		result.Exit = exit
+		result.RetryAttempt = attempt
+		st.HourCount-- // push consumes the allowance reserved above.
+		st.push(result)
+		transportFailure := result.Status == 0 && result.Error == "transport_error"
+		if transportFailure { st.NextAt = s.now().Add(time.Minute) } else if result.Status != http.StatusOK || result.Error != "" { st.NextAt = s.now().Add(openAITurnStateHuntBackoff(result.Status)) }
+		s.log(a, model, "hunter_attempt", result.Error, map[string]any{"proxy_id": result.ProxyID, "http_status": result.Status, "length": result.Chars, "baseline": result.Healthy, "headers_ms": result.LatencyMs, "hour_count": st.HourCount, "retry_attempt": attempt})
+		if s.save(ctx, a, st) != nil { return spent, true }
+		if ctx.Err() != nil { return spent, true }
+		if !transportFailure || attempt == maxAttempts { return spent, false }
+		s.log(a, model, "hunter_retry", "transport_error", map[string]any{"proxy_id": selected.ID, "next_attempt": attempt+1, "delay_seconds": 2})
+		if err := s.waitTransportRetry(ctx); err != nil { return spent, true }
+	}
+	return spent, false
+}
+
+func (s *OpenAITurnStateHunterService) waitTransportRetry(ctx context.Context) error {
+	if s.retryWait != nil { return s.retryWait(ctx) }
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select { case <-ctx.Done(): return ctx.Err(); case <-timer.C: return nil }
+}
+
 func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, model string, cfg TurnStateHunterSettings, p Proxy) openAITurnStateHuntAttempt {
 	result := openAITurnStateHuntAttempt{At: s.now(), Model: model, ProxyID: p.ID}
 	proxyURL, err := resolveConfiguredProxyURL(ctx, nil, &p.ID, &p)

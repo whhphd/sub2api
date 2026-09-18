@@ -39,7 +39,7 @@ const loading = ref(true), saving = ref(false), loadError = ref(''), autoEnabled
 const modelsText = ref(''), proxySearch = ref(''), proxies = ref<Proxy[]>([])
 const form = reactive<TurnStateHunterConfig>({ enabled: false, models: [], proxy_ids: [], max_per_hour: 300, per_account_max_per_hour: 30, gap_seconds: 20, lead_minutes: 10, retry_minutes: 10, idle_minutes: 60, reasoning_effort: 'high' })
 const numericFields = [
-  { key: 'max_per_hour', min: 1, max: 600 }, { key: 'per_account_max_per_hour', min: 1, max: 600 },
+  { key: 'max_per_hour', min: 1, max: undefined }, { key: 'per_account_max_per_hour', min: 1, max: undefined },
   { key: 'gap_seconds', min: 1, max: 600 }, { key: 'lead_minutes', min: 1, max: 55 },
   { key: 'retry_minutes', min: 1, max: 1440 }, { key: 'idle_minutes', min: -1, max: 1440 },
 ] as const
@@ -57,7 +57,7 @@ async function load() {
 }
 async function save() {
   const models = [...new Set(modelsText.value.split(/[,，\n]/).map(v => v.trim().toLowerCase()).filter(Boolean))]
-  const invalidNumbers = numericFields.some(f => !Number.isInteger(form[f.key]) || form[f.key] < f.min || form[f.key] > f.max) || form.idle_minutes === 0
+  const invalidNumbers = numericFields.some(f => !Number.isSafeInteger(form[f.key]) || form[f.key] < f.min || (f.max !== undefined && form[f.key] > f.max)) || form.idle_minutes === 0
   if (models.length > 8 || form.proxy_ids.length > 64 || invalidNumbers || (form.enabled && (!models.length || !form.proxy_ids.length || missingProxyIDs.value.length))) {
     app.showError(t('admin.settings.turnStateHunter.invalid')); return
   }

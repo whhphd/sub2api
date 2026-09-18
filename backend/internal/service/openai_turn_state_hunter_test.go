@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+ "fmt"
 	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
@@ -241,4 +242,108 @@ func TestHunterProbeWireAndEncryptedPool(t *testing.T) {
 func TestHunterManagedFieldsCannotBeInjected(t *testing.T) {
 	clean := stripTurnStateRuntimeExtra(map[string]any{CodexTurnStatePoolKey: "secret", CodexTurnStateHuntKey: map[string]any{"hour_count": 0}, "other": true})
 	require.Equal(t, map[string]any{"other": true}, clean)
+}
+
+func TestHunterHourlyLimitsHaveNoFixedCeiling(t *testing.T) {
+ cfg := DefaultTurnStateHunterSettings()
+ cfg.MaxPerHour, cfg.PerAccountMaxPerHour = 10000, 3000
+ require.NoError(t, cfg.validate())
+ for _, value := range []int{0, -1} {
+  invalid := cfg; invalid.MaxPerHour = value
+  require.Error(t, invalid.validate())
+  invalid = cfg; invalid.PerAccountMaxPerHour = value
+  require.Error(t, invalid.validate())
+ }
+}
+
+func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
+ for _, tc := range []struct {
+  name string
+  statuses []int
+  global, account, calls int
+  backoff time.Duration
+ }{
+  {"recovers", []int{0,200}, 1000,1000,2,0},
+  {"three_failures", []int{0,0,0,200}, 1000,1000,3,time.Minute},
+  {"global_budget", []int{0,0,200}, 2,1000,2,time.Minute},
+  {"account_budget", []int{0,0,200}, 1000,2,2,time.Hour},
+  {"rate_limit", []int{0,429,200}, 1000,1000,2,time.Hour},
+  {"forbidden", []int{403,200}, 1000,1000,1,6*time.Hour},
+  {"unauthorized", []int{401,200}, 1000,1000,1,6*time.Hour},
+  {"upstream_error", []int{503,200}, 1000,1000,1,15*time.Minute},
+ } {
+  t.Run(tc.name, func(t *testing.T) {
+   s,a,cfg:=newHunterTest(t)
+   fixed:=time.Now().UTC();s.now=func()time.Time{return fixed}
+   cfg.MaxPerHour,cfg.PerAccountMaxPerHour=tc.global,tc.account
+   _,err:=s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(context.Background(),&cfg,nil,nil);require.NoError(t,err)
+   waits,calls:=0,0
+   s.retryWait=func(context.Context)error{waits++;return nil}
+   s.probeOverride=func(_ context.Context,_ *Account,model string,_ TurnStateHunterSettings,p Proxy)openAITurnStateHuntAttempt{
+    status:=tc.statuses[calls];calls++
+    result:=openAITurnStateHuntAttempt{At:fixed,Model:model,ProxyID:p.ID,Status:status}
+    if status==0{result.Error="transport_error"}
+    return result
+   }
+   spent,_:=s.huntOne(context.Background(),a,cfg);require.True(t,spent)
+   require.Equal(t,tc.calls,calls)
+   if tc.name=="three_failures" { require.Equal(t,2,waits) }
+   latest,err:=s.fresh(context.Background(),a.ID);require.NoError(t,err)
+   st:=readOpenAITurnStateHuntState(latest)
+   require.Equal(t,tc.calls,st.HourCount);require.Len(t,st.Last,tc.calls)
+   require.Equal(t,tc.calls,st.Last[0].RetryAttempt)
+   if tc.backoff==0{require.True(t,st.NextAt.IsZero())}else{require.Equal(t,fixed.Add(tc.backoff),st.NextAt)}
+   raw,err:=s.gateway.settingService.settingRepo.GetValue(context.Background(),hunterBudgetKey);require.NoError(t,err)
+   var budget struct{Count int `json:"count"`};require.NoError(t,json.Unmarshal([]byte(raw),&budget));require.Equal(t,tc.calls,budget.Count)
+  })
+ }
+}
+
+func TestHunterRetryRechecksCancellationPolicyAndProxy(t *testing.T) {
+ for _,change:=range []string{"cancel","disable","identity","proxy","storage"}{
+  t.Run(change,func(t *testing.T){
+   s,a,cfg:=newHunterTest(t);ctx,cancel:=context.WithCancel(context.Background());defer cancel()
+   calls:=0
+   s.probeOverride=func(_ context.Context,_ *Account,model string,_ TurnStateHunterSettings,p Proxy)openAITurnStateHuntAttempt{calls++;return openAITurnStateHuntAttempt{At:s.now(),Model:model,ProxyID:p.ID,Error:"transport_error"}}
+   s.retryWait=func(context.Context)error{
+    switch change{
+    case "cancel":cancel();return ctx.Err()
+    case "disable":cfg.Enabled=false;_,err:=s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(ctx,&cfg,nil,nil);require.NoError(t,err)
+    case "identity":repo,ok:=s.accounts.(*hunterAccounts);require.True(t,ok);repo.account.Credentials["chatgpt_account_id"]="different"
+    case "proxy":repo,ok:=s.proxies.(*hunterProxies);require.True(t,ok);repo.values[0].Password="edited"
+    case "storage":repo,ok:=s.accounts.(*hunterAccounts);require.True(t,ok);repo.fail=true
+    }
+    return nil
+   }
+   spent,halt:=s.huntOne(ctx,a,cfg);require.True(t,spent);require.True(t,halt);require.Equal(t,1,calls)
+  })
+ }
+}
+
+type retryHunterUpstream struct {
+ HTTPUpstream
+ requests []*http.Request
+ bodies []*hunterBody
+}
+func(u *retryHunterUpstream)Do(r *http.Request,_ string,_ int64,_ int)(*http.Response,error){
+ u.requests=append(u.requests,r)
+ if len(u.requests)<3{return nil,fmt.Errorf("offline transport failure")}
+ b:=&hunterBody{};u.bodies=append(u.bodies,b)
+ return &http.Response{StatusCode:200,Header:http.Header{"X-Codex-Turn-State":[]string{turnStateFernetBlob(time.Now(),12)}},Body:b},nil
+}
+func TestHunterRetriesCreateFreshProbeRequests(t *testing.T){
+ s,a,cfg:=newHunterTest(t)
+ s.gateway.toolCorrector=NewCodexToolCorrector()
+ upstream:=&retryHunterUpstream{};s.gateway.httpUpstream=upstream
+ s.probeOverride=nil;s.retryWait=func(context.Context)error{return nil}
+ spent,halt:=s.huntOne(context.Background(),a,cfg);require.True(t,spent);require.False(t,halt)
+ require.Len(t,upstream.requests,3)
+ sessions:=map[string]bool{}
+ for _,r:=range upstream.requests{
+  require.True(t,r.Close);require.True(t,HTTPUpstreamFreshConnection(r.Context()));require.True(t,HTTPUpstreamRedirectsDisabled(r.Context()))
+  require.Empty(t,r.Header.Get(openAICodexTurnStateHeader))
+  session:=r.Header.Get("session-id");require.NotEmpty(t,session);require.False(t,sessions[session]);sessions[session]=true
+ }
+ require.True(t,upstream.bodies[0].closed);require.Zero(t,upstream.bodies[0].reads)
+ latest,err:=s.fresh(context.Background(),a.ID);require.NoError(t,err);pool,err:=s.gateway.decodeTurnStatePool(latest);require.NoError(t,err);require.Len(t,pool.Candidates,1)
 }

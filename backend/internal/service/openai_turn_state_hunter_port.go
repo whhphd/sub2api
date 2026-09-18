@@ -30,6 +30,7 @@ func openAITurnStateProbeContext(c *gin.Context) bool {
 }
 
 type openAITurnStateHuntAttempt struct {
+ RetryAttempt int `json:"retry_attempt,omitempty"`
 	At      time.Time `json:"at"`
 	Model   string    `json:"model"`
 	ProxyID int64     `json:"proxy_id"`
