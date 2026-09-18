@@ -379,32 +379,42 @@ func (u *retryHunterUpstream) Do(r *http.Request, _ string, _ int64, _ int) (*ht
 	return &http.Response{StatusCode: 200, Header: http.Header{"X-Codex-Turn-State": []string{turnStateFernetBlob(time.Now(), 12)}}, Body: b}, nil
 }
 func TestHunterRetriesCreateFreshProbeRequests(t *testing.T) {
-	s, a, cfg := newHunterTest(t)
-	s.gateway.toolCorrector = NewCodexToolCorrector()
-	upstream := &retryHunterUpstream{}
-	s.gateway.httpUpstream = upstream
-	s.probeOverride = nil
-	s.retryWait = func(context.Context) error { return nil }
-	spent, halt := s.huntOne(context.Background(), a, cfg)
-	require.True(t, spent)
-	require.False(t, halt)
-	require.Len(t, upstream.requests, 3)
-	sessions := map[string]bool{}
-	for _, r := range upstream.requests {
-		require.True(t, r.Close)
-		require.True(t, HTTPUpstreamFreshConnection(r.Context()))
-		require.True(t, HTTPUpstreamRedirectsDisabled(r.Context()))
-		require.Empty(t, r.Header.Get(openAICodexTurnStateHeader))
-		session := r.Header.Get("session-id")
-		require.NotEmpty(t, session)
-		require.False(t, sessions[session])
-		sessions[session] = true
+	for _, enhanced := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enhancement_%v", enhanced), func(t *testing.T) {
+			s, a, cfg := newHunterTest(t)
+			_, err := s.gateway.settingService.UpdateOpenAIOAuthRuntimeSettings(context.Background(), nil, nil, nil, nil, nil, nil, &enhanced)
+			require.NoError(t, err)
+			s.gateway.toolCorrector = NewCodexToolCorrector()
+			upstream := &retryHunterUpstream{}
+			s.gateway.httpUpstream = upstream
+			s.probeOverride = nil
+			s.retryWait = func(context.Context) error { return nil }
+			spent, halt := s.huntOne(context.Background(), a, cfg)
+			require.True(t, spent)
+			require.False(t, halt)
+			require.Len(t, upstream.requests, 3)
+			sessions := map[string]bool{}
+			for _, r := range upstream.requests {
+				require.True(t, r.Close)
+				require.True(t, HTTPUpstreamFreshConnection(r.Context()))
+				require.True(t, HTTPUpstreamRedirectsDisabled(r.Context()))
+				require.Empty(t, r.Header.Get(openAICodexTurnStateHeader))
+				header := "session_id"
+				if enhanced {
+					header = "session-id"
+				}
+				session := r.Header.Get(header)
+				require.NotEmpty(t, session)
+				require.False(t, sessions[session])
+				sessions[session] = true
+			}
+			require.True(t, upstream.bodies[0].closed)
+			require.Zero(t, upstream.bodies[0].reads)
+			latest, err := s.fresh(context.Background(), a.ID)
+			require.NoError(t, err)
+			pool, err := s.gateway.decodeTurnStatePool(latest)
+			require.NoError(t, err)
+			require.Len(t, pool.Candidates, 1)
+		})
 	}
-	require.True(t, upstream.bodies[0].closed)
-	require.Zero(t, upstream.bodies[0].reads)
-	latest, err := s.fresh(context.Background(), a.ID)
-	require.NoError(t, err)
-	pool, err := s.gateway.decodeTurnStatePool(latest)
-	require.NoError(t, err)
-	require.Len(t, pool.Candidates, 1)
 }
