@@ -127,6 +127,7 @@ func provideCleanup(
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
+ turnStateHunter *service.OpenAITurnStateHunterService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
 ) func() {
@@ -141,6 +142,7 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+ {"OpenAITurnStateHunterService",func()error{if turnStateHunter!=nil{turnStateHunter.Stop()};return nil}},
 			{"ProxyHealthService", func() error {
 				if proxyHealthBindings != nil && proxyHealthBindings.Service != nil {
 					proxyHealthBindings.Service.Stop()

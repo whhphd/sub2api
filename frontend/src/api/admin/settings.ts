@@ -1334,7 +1334,15 @@ export async function updateRateLimit429CooldownSettings(
 
 // ==================== OpenAI OAuth Runtime Settings ====================
 
+export interface TurnStateHunterConfig {
+ enabled: boolean; models: string[]; proxy_ids: number[];
+ max_per_hour: number; per_account_max_per_hour: number;
+ gap_seconds: number; lead_minutes: number; retry_minutes: number; idle_minutes: number;
+ reasoning_effort: string;
+}
+
 export interface OpenAIOAuthRuntimeSettings {
+  openai_oauth_turn_state_hunter?: TurnStateHunterConfig;
   openai_oauth_turn_state_auto_enabled?: boolean;
   openai_oauth_codex_fingerprint_enhancement_enabled: boolean;
   safe_pre_output_overload_retry_enabled: boolean;
@@ -1354,6 +1362,7 @@ export type UpdateOpenAIOAuthRuntimeSettingsRequest = Partial<
     | "openai_oauth_rate_limit_proxy_rotation_enabled"
     | "openai_oauth_codex_fingerprint_enhancement_enabled"
     | "openai_oauth_turn_state_auto_enabled"
+    | "openai_oauth_turn_state_hunter"
     | "openai_oauth_auto_reset_credit_global_enabled"
     | "grok_oauth_forbidden_same_account_retry_enabled"
   >

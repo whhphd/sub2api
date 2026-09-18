@@ -72,3 +72,9 @@ func WithHTTPUpstreamPublicHostsOnly(ctx context.Context) context.Context {
 func HTTPUpstreamPublicHostsOnly(ctx context.Context) bool {
 	return ctx != nil && ctx.Value(httpUpstreamPublicHostsOnlyContextKey{}) == true
 }
+
+// WithHTTPUpstreamFreshConnection requests an isolated one-shot connection.
+// The hunter must never reuse a live user's tunnel, even for the same proxy.
+type httpUpstreamFreshConnectionKey struct{}
+func WithHTTPUpstreamFreshConnection(ctx context.Context) context.Context { return context.WithValue(ctx,httpUpstreamFreshConnectionKey{},true) }
+func HTTPUpstreamFreshConnection(ctx context.Context)bool{return ctx!=nil && ctx.Value(httpUpstreamFreshConnectionKey{})==true}

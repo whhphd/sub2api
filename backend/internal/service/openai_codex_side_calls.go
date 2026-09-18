@@ -97,6 +97,7 @@ func codexSideThreadKey(accountID int64, threadID string) string {
 // req 只用于读取已定稿的身份头，不会被改动。构造器未初始化去重窗口时（单元测试里的裸结构体）
 // 整体停用，出站字节与调用前一致。
 func (s *OpenAIGatewayService) scheduleCodexSideCalls(c *gin.Context, account *Account, req *http.Request) {
+ if openAITurnStateProbeContext(c) { return } // Do not create an unbudgeted auxiliary connection for a rotating probe.
 	// 只有常规推理请求代表「线程有活动」；compact / 搜索 / models 不触发。
 	if req == nil || req.Method != http.MethodPost || req.URL == nil ||
 		!strings.HasSuffix(strings.TrimRight(req.URL.Path, "/"), "/responses") {

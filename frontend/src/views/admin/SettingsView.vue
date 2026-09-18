@@ -499,6 +499,7 @@
                   </template>
                 </div>
 
+                <TurnStateHunterSettings />
                 <div class="card space-y-4 p-6" data-testid="turn-state-auto-settings">
                   <div class="flex items-center justify-between gap-6">
                     <div>
@@ -9417,6 +9418,7 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
+import TurnStateHunterSettings from "@/components/admin/TurnStateHunterSettings.vue";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,

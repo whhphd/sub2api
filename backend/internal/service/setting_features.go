@@ -843,7 +843,7 @@ func (s *SettingService) readOpenAIOAuthRuntimeSettings(ctx context.Context) (*O
 
 func parseOpenAIOAuthRuntimeSettings(value string) (*OpenAIOAuthRuntimeSettings, error) {
 	if strings.TrimSpace(value) != "" {
-		var settings OpenAIOAuthRuntimeSettings
+		settings := *DefaultOpenAIOAuthRuntimeSettings(false)
 		if err := json.Unmarshal([]byte(value), &settings); err != nil {
 			return nil, fmt.Errorf("unmarshal OpenAI OAuth runtime settings: %w", err)
 		}
@@ -878,7 +878,14 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	planGatedModelCooldownEnabled *bool,
 	sameAccountRetrySettings ...*bool,
 ) (*OpenAIOAuthRuntimeSettings, error) {
-	if s == nil || s.settingRepo == nil {
+ return s.UpdateOpenAIOAuthRuntimePolicy(ctx,nil,safePreOutputOverloadRetryEnabled,planGatedModelCooldownEnabled,sameAccountRetrySettings...)
+}
+
+// UpdateOpenAIOAuthRuntimePolicy applies the entire admin PATCH in one CAS.
+// Old boolean-only callers keep their ordering through the wrapper above.
+func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hunter *TurnStateHunterSettings, safePreOutputOverloadRetryEnabled, planGatedModelCooldownEnabled *bool, sameAccountRetrySettings ...*bool) (*OpenAIOAuthRuntimeSettings,error) {
+ if hunter!=nil { if err:=hunter.validate();err!=nil{return nil,err} }
+ if s == nil || s.settingRepo == nil {
 		return nil, fmt.Errorf("setting service is unavailable")
 	}
 	rateLimitSameAccountRetryProvided := len(sameAccountRetrySettings) > 0 && sameAccountRetrySettings[0] != nil
@@ -887,7 +894,7 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	autoResetCreditGlobalProvided := len(sameAccountRetrySettings) > 3 && sameAccountRetrySettings[3] != nil
 	enhancementProvided := len(sameAccountRetrySettings) > 4 && sameAccountRetrySettings[4] != nil
 	turnStateProvided := len(sameAccountRetrySettings) > 5 && sameAccountRetrySettings[5] != nil
-	if turnStateProvided && *sameAccountRetrySettings[5] {
+	if (turnStateProvided && *sameAccountRetrySettings[5]) || (hunter != nil && hunter.Enabled) {
 		if s.cfg == nil || !s.cfg.Totp.EncryptionKeyConfigured {
 			return nil, fmt.Errorf("turn-state auto requires a configured AES encryption key")
 		}
@@ -896,7 +903,7 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 			return nil, fmt.Errorf("turn-state auto requires a valid AES encryption key")
 		}
 	}
-	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided && !proxyRotationProvided && !autoResetCreditGlobalProvided && !enhancementProvided && !turnStateProvided {
+	if hunter == nil && safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided && !proxyRotationProvided && !autoResetCreditGlobalProvided && !enhancementProvided && !turnStateProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -947,6 +954,10 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 		if proxyRotationProvided && *sameAccountRetrySettings[2] {
 			current.CodexFingerprintEnhancementEnabled = false
 		}
+        if hunter!=nil {
+            if hunter.Enabled && !current.TurnStateAutoEnabled { return nil,fmt.Errorf("enable turn-state takeover before the hunter") }
+            current.TurnStateHunter=hunter.clone()
+        }
 		normalized, err := normalizeOpenAIOAuthRuntimeSettings(current)
 		if err != nil {
 			return nil, err

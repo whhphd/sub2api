@@ -653,7 +653,7 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'upstream_balance',
  extra -> 'openai_turn_state_pool',
  extra -> 'openai_turn_state_observed',
- extra -> 'openai_turn_state_summary'
+ extra -> 'openai_turn_state_summary', extra -> 'openai_turn_state_hunt', credentials
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -683,6 +683,8 @@ func lockAndMergeAccountProbeExtra(
 		currentTurnStatePool         []byte
 		currentTurnStateObservation  []byte
 		currentTurnStateSummary      []byte
+ currentTurnStateHunt []byte
+ currentTurnStateCredentials []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -695,7 +697,7 @@ func lockAndMergeAccountProbeExtra(
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
 		&currentBalanceSnapshot,
-		&currentTurnStatePool, &currentTurnStateObservation, &currentTurnStateSummary,
+		&currentTurnStatePool, &currentTurnStateObservation, &currentTurnStateSummary, &currentTurnStateHunt, &currentTurnStateCredentials,
 	); err != nil {
 		return nil, err
 	}
@@ -703,10 +705,14 @@ func lockAndMergeAccountProbeExtra(
 		return nil, err
 	}
 
+    var oldCreds map[string]any
+    if len(currentTurnStateCredentials)>0 {if err:=json.Unmarshal(currentTurnStateCredentials,&oldCreds);err!=nil{return nil,err}}
+    credentialText:=func(m map[string]any,k string)string{v,_:=m[k].(string);return strings.TrimSpace(v)}
+ turnStateSameOwner:=credentialText(oldCreds,"chatgpt_account_id")==credentialText(account.Credentials,"chatgpt_account_id") && credentialText(oldCreds,"chatgpt_user_id")==credentialText(account.Credentials,"chatgpt_user_id")
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
-	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary} {
+	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary, service.CodexTurnStateHuntKey: currentTurnStateHunt} {
 		delete(extra, key)
-		if len(raw) > 0 {
+		if turnStateSameOwner && len(raw) > 0 {
 			var value any
 			if err := json.Unmarshal(raw, &value); err != nil {
 				return nil, err
@@ -2945,6 +2951,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		return 0, nil
 	}
 	updates.Extra = stripCodexFingerprintSeedFromExtraUpdate(updates.Extra)
+ updates.Extra = stripCodexTurnStateManagedExtra(updates.Extra)
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)

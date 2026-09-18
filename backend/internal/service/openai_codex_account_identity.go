@@ -295,3 +295,29 @@ func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, api
 		headers.Set(openAIWSTurnMetadataHeader, scopeCodexAccountTurnMetadata(raw, account, apiKeyID))
 	}
 }
+
+// Ported from KlN klno.12 a939a8174 (LGPL-3.0); retains CallAI compact policy gating.
+func stageCodexOAuthIdentity(c *gin.Context, account *Account, decoded map[string]any, isCompactRequest bool) bool {
+	modified := !isCompactRequest && applyCodexClientMetadata(decoded, account)
+	var fpIDs *codexFingerprintIDs
+	if isCompactRequest {
+		if codexDeviceWireProfileEnabled(c, account) {
+ fpIDs = resolveCodexFingerprintIDsForRequest(c, account, nil)
+ if applyCodexCompactPromptCacheKey(c, account, decoded) { modified = true }
+ }
+	} else {
+		fpIDs = resolveCodexFingerprintIDsWithBody(c, account, nil, decoded["client_metadata"])
+	}
+	source := codexAccountIdentitySource(c, account)
+	if !isCompactRequest && applyCodexAccountIdentityClientMetadataMap(decoded, source, getAPIKeyIDFromContext(c)) {
+		modified = true
+	}
+	if !isCompactRequest && fpIDs != nil && applyCodexFingerprintClientMetadata(decoded, fpIDs) {
+		modified = true
+	}
+	stageCodexFingerprintIDs(c, fpIDs)
+	if !isCompactRequest {
+		stageCodexConvergenceBodyIdentityMap(c, source, decoded)
+	}
+	return modified
+}

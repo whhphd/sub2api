@@ -1039,7 +1039,31 @@ export default {
         saved: '429 默认回避设置保存成功',
         saveFailed: '保存 429 默认回避设置失败'
       },
-      openaiOauthRuntime: {
+      turnStateHunter: {
+  "title": "Turn-State 292 猎手",
+  "description": "统一管理所有 OpenAI OAuth 账号（含后续新增账号）。通过指定代理主动补充 292/332 候选；探测消耗上游额度和代理流量，默认关闭。",
+  "enabled": "启用全局猎手",
+  "needsAuto": "运行需要同时开启 Turn-State 自动接管。",
+  "models": "目标上游模型（最多 8 个）",
+  "modelsPlaceholder": "模型名，用逗号分隔",
+  "proxies": "探测代理（最多 64 个）",
+  "searchProxies": "搜索代理名称或主机",
+  "noProxies": "没有匹配的代理",
+  "proxyHint": "Webshare -rotate 和 1024Proxy Rotating IP 使用新连接轮换；带 sid/t 的粘性会话按固定出口处理。代理凭据在代理管理中配置。",
+  "missingProxies": "已选代理不存在：{ids}，请重新选择。",
+  "max_per_hour": "全站每小时探测上限",
+  "per_account_max_per_hour": "单账号每小时探测上限",
+  "gap_seconds": "探测间隔（秒）",
+  "lead_minutes": "候选到期前开窗（分钟）",
+  "retry_minutes": "固定出口再次检查间隔（分钟）",
+  "idle_minutes": "模型空闲门槛（分钟，-1 不限制）",
+  "effort": "探测思考强度",
+  "invalid": "请检查模型、代理数量和参数范围；空闲门槛不能为 0。",
+  "saved": "全局猎手配置已保存",
+  "loadFailed": "加载猎手配置失败",
+  "saveFailed": "保存猎手配置失败"
+},
+    openaiOauthRuntime: {
 "turnStateTitle": "Codex Turn-State 自动接管",
 "turnStateHint": "全局覆盖 OpenAI OAuth 的 HTTP/SSE 请求。从自然响应积累候选，在会话出现非基线形态后按账号和模型使用候选；候选耗尽不停止调度。WS 保持透传，决策记录独立保存。该功能为实验性机制，不保证改善模型质量。",
 "turnStateSaved": "Turn-State 设置已保存",

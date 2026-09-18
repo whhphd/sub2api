@@ -104,3 +104,16 @@ func TestCodexTurnStateEncryptedStoreAndImportProtection(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, token, plaintext)
 }
+
+func TestHunterRuntimeSurvivesEditAndClearsOnIdentityChange(t *testing.T) {
+ ctx:=context.Background();repo:=NewAccountRepository(integrationEntClient,integrationDB,nil).(*accountRepository)
+ a:=&service.Account{Name:"hunter-integration",Platform:"openai",Type:"oauth",Credentials:map[string]any{"chatgpt_account_id":"original","access_token":"one"},Extra:map[string]any{},Status:"active",Concurrency:1}
+ require.NoError(t,repo.Create(ctx,a))
+ t.Cleanup(func(){_,_=integrationDB.Exec("DELETE FROM scheduler_outbox WHERE account_id=$1",a.ID);_,_=integrationDB.Exec("DELETE FROM accounts WHERE id=$1",a.ID)})
+ stale,err:=repo.GetByID(ctx,a.ID);require.NoError(t,err)
+ require.NoError(t,repo.MutateCodexTurnState(ctx,a.ID,func(*service.Account)(map[string]any,error){return map[string]any{service.CodexTurnStateHuntKey:map[string]any{"hour_count":7},service.CodexTurnStatePoolKey:"sealed"},nil}))
+ stale.Credentials["access_token"]="refreshed";require.NoError(t,repo.Update(ctx,stale))
+ latest,err:=repo.GetByID(ctx,a.ID);require.NoError(t,err);require.Contains(t,latest.Extra,service.CodexTurnStateHuntKey)
+ latest.Credentials["chatgpt_account_id"]="new-owner";require.NoError(t,repo.Update(ctx,latest))
+ latest,err=repo.GetByID(ctx,a.ID);require.NoError(t,err);require.NotContains(t,latest.Extra,service.CodexTurnStateHuntKey);require.NotContains(t,latest.Extra,service.CodexTurnStatePoolKey)
+}
