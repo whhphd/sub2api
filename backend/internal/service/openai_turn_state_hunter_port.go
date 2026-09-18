@@ -30,14 +30,14 @@ func openAITurnStateProbeContext(c *gin.Context) bool {
 }
 
 type openAITurnStateHuntAttempt struct {
- RetryAttempt int `json:"retry_attempt,omitempty"`
-	At      time.Time `json:"at"`
-	Model   string    `json:"model"`
-	ProxyID int64     `json:"proxy_id"`
-	Proxy   string    `json:"proxy"`
-	Status  int       `json:"status"`
-	Chars   int       `json:"chars"`
-	Healthy bool      `json:"healthy"`
+	RetryAttempt int       `json:"retry_attempt,omitempty"`
+	At           time.Time `json:"at"`
+	Model        string    `json:"model"`
+	ProxyID      int64     `json:"proxy_id"`
+	Proxy        string    `json:"proxy"`
+	Status       int       `json:"status"`
+	Chars        int       `json:"chars"`
+	Healthy      bool      `json:"healthy"`
 	// LatencyMs 是响应头到手的耗时（实测 0.5–2.3s）：探测在这一刻就断，后面不再计时。
 	LatencyMs int64 `json:"latency_ms"`
 	// Exit 是探测前解析到的出口 IP，只有固定出口有；轮换端点由供应商按连接选出口，为空。

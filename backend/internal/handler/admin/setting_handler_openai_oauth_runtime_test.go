@@ -248,14 +248,17 @@ func TestHunterRuntimePatchAloneAndInvalidMixedPatch(t *testing.T) {
 }
 
 func TestHunterRuntimeAcceptsConfiguredLimitsAbove600(t *testing.T) {
- h,repo:=newOpenAIOAuthRuntimeHandler()
- cfg:=service.DefaultTurnStateHunterSettings();cfg.MaxPerHour=10000;cfg.PerAccountMaxPerHour=3000
- r:=performOpenAIOAuthRuntimeRequest(t,h.UpdateOpenAIOAuthRuntimeSettings,http.MethodPatch,map[string]any{"openai_oauth_turn_state_hunter":cfg})
- require.Equal(t,http.StatusOK,r.Code,r.Body.String())
- var saved service.OpenAIOAuthRuntimeSettings
- require.NoError(t,json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]),&saved))
- require.Equal(t,10000,saved.TurnStateHunter.MaxPerHour);require.Equal(t,3000,saved.TurnStateHunter.PerAccountMaxPerHour)
- cfg.MaxPerHour=0
- r=performOpenAIOAuthRuntimeRequest(t,h.UpdateOpenAIOAuthRuntimeSettings,http.MethodPatch,map[string]any{"openai_oauth_turn_state_hunter":cfg})
- require.Equal(t,http.StatusBadRequest,r.Code)
+	h, repo := newOpenAIOAuthRuntimeHandler()
+	cfg := service.DefaultTurnStateHunterSettings()
+	cfg.MaxPerHour = 10000
+	cfg.PerAccountMaxPerHour = 3000
+	r := performOpenAIOAuthRuntimeRequest(t, h.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{"openai_oauth_turn_state_hunter": cfg})
+	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
+	var saved service.OpenAIOAuthRuntimeSettings
+	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings]), &saved))
+	require.Equal(t, 10000, saved.TurnStateHunter.MaxPerHour)
+	require.Equal(t, 3000, saved.TurnStateHunter.PerAccountMaxPerHour)
+	cfg.MaxPerHour = 0
+	r = performOpenAIOAuthRuntimeRequest(t, h.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{"openai_oauth_turn_state_hunter": cfg})
+	require.Equal(t, http.StatusBadRequest, r.Code)
 }
