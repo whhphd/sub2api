@@ -2,6 +2,10 @@
 
 ## 目的与边界
 
+口径纠正：CPA turn-state 项目所说的 **292/312 是 `X-Codex-Turn-State` 值的长度，不是 HTTP 状态码**。新增 `sent_state_length`、`received_state_length`、`before_length`、`after_length` 等字段，以去除首尾空白后的字节数记录；Base64url 状态是 ASCII，字符数与字节数一致。0 代表缺失/空值，其他长度也照实统计。HTTP 状态码单独记录，不能混为一谈。原有只记录 HMAC 和存在性的日志无法还原长度，因此必须开启新的观察窗口。
+
+长度观测覆盖既有 HTTP 出站/响应、状态守卫、延迟提交、WS response.create/response.metadata 路径。聚合只在实际发送/收到头或关键帧事件上统计一次，不能把同一 state 在守卫、响应和结束日志里的重复出现都当成新响应。分别按请求/响应方向、账号摘要、实际模型和尝试 ID 关联错误；缺失模型或截断事件标记不完整，不推测。292/312 暂时只作为长度分类，不标注“正常/降智”，不采集真实模板、不替换 state。
+
 被动观察真实状态链路，定位中转丢头、换号后错误回带、HTTP/SSE 上游错误和取消。没有状态采集 keeper，没有固定一小时 TTL，没有跨轮注入，不改变指纹、调度、额度、重试或计费。HTTP 292 仅按实际状态记录，200/292 不代表模型质量标签。
 
 官方参考：`openai/codex` 提交 `7498521d288b9b3b96ffba4eedf089d8d6e06a84`，`codex-rs/core/src/client.rs:270-297` 与 `core/tests/suite/turn_state.rs`：同轮保持路由状态，下一轮重置，认证归属变化时清除。实现沿用现有 KlN 移植模块，不引入另一份状态缓存。

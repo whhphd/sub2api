@@ -239,3 +239,20 @@ func TestCodexDiagnosticsAllAccountsFullCaptureDoesNotDropEvents(t *testing.T) {
 	a.Platform = PlatformGrok
 	require.Empty(t, s.codexDiagnosticFields(context.Background(), a))
 }
+
+func TestCodexDiagnosticStateLengthIsNotHTTPStatus(t *testing.T) {
+	for _, length := range []int{0, 1, 292, 312, 344} {
+		value := strings.Repeat("x", length)
+		for _, prefix := range []string{"sent_state", "received_state", "before", "after", "alternate_state"} {
+			enc := zapcore.NewMapObjectEncoder()
+			for _, field := range diagnosticStateFields(prefix, " \t"+value+"\r\n") {
+				field.AddTo(enc)
+			}
+			require.EqualValues(t, length, enc.Fields[prefix+"_length"])
+			require.Equal(t, length > 0, enc.Fields[prefix+"_present"])
+			require.Equal(t, codexDiagnosticHash(value), enc.Fields[prefix+"_ref"])
+			require.NotContains(t, enc.Fields, "upstream_status")
+			require.NotContains(t, enc.Fields, prefix+"_value")
+		}
+	}
+}

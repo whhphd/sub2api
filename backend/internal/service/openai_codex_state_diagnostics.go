@@ -127,7 +127,14 @@ func emitCodexDiagnostic(fields []zap.Field, event string, extra ...zap.Field) {
 }
 
 func diagnosticStateFields(prefix, state string) []zap.Field {
-	return []zap.Field{zap.Bool(prefix+"_present", strings.TrimSpace(state) != ""), zap.String(prefix+"_ref", codexDiagnosticHash(strings.TrimSpace(state)))}
+	value := strings.TrimSpace(state)
+	// 292/312 are opaque token lengths, NOT HTTP statuses or quality labels.
+	// Base64url tokens are ASCII, so their byte and character lengths agree.
+	return []zap.Field{
+		zap.Bool(prefix+"_present", value != ""),
+		zap.Int(prefix+"_length", len(value)),
+		zap.String(prefix+"_ref", codexDiagnosticHash(value)),
+	}
 }
 
 func (s *OpenAIGatewayService) observeCodexState(c *gin.Context, account *Account, event, before, after string) {
