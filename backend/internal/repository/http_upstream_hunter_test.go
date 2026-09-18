@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestProxyKeyForLogRemovesCredentials(t *testing.T) {
@@ -34,4 +35,21 @@ func TestHunterFreshTransportDoesNotPopulateSharedCache(t *testing.T) {
 	require.Equal(t, 302, resp.StatusCode)
 	require.Equal(t, 1, count)
 	require.Empty(t, s.clients)
+}
+
+func TestHunterReturnsCompressedHeadersBeforeBody(t *testing.T) {
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  w.Header().Set("Content-Encoding","gzip")
+  w.WriteHeader(http.StatusOK)
+  flusher,ok:=w.(http.Flusher);if !ok{return};flusher.Flush()
+  <-r.Context().Done()
+ }))
+ defer server.Close()
+ ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);defer cancel()
+ req,err:=http.NewRequestWithContext(ctx,http.MethodGet,server.URL,nil);require.NoError(t,err)
+ req.Header.Set("Accept-Encoding","gzip")
+ s:=&httpUpstreamService{}
+ resp,err:=s.doFreshUpstream(req,"",1,service.HTTPUpstreamProfileDefault)
+ require.NoError(t,err);require.NoError(t,ctx.Err(),"probe must not wait for a compressed body")
+ require.NoError(t,resp.Body.Close())
 }

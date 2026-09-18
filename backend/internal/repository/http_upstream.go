@@ -1588,7 +1588,7 @@ func (s *httpUpstreamService) doFreshUpstream(req *http.Request, proxyURL string
 		transport.CloseIdleConnections()
 		return nil, err
 	}
-	decompressResponseBody(resp)
+	// Headers-only probes must not initialize gzip/zstd readers before closing.
 	resp.Body = wrapTrackedBody(resp.Body, transport.CloseIdleConnections)
 	return resp, nil
 }
