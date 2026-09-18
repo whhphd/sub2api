@@ -945,7 +945,33 @@ const (
 )
 
 // GatewayConfig API网关相关配置
+type CodexStateDiagnosticsConfig struct {
+	Enabled       bool    `mapstructure:"enabled"`
+	AccountIDs    []int64 `mapstructure:"account_ids"`
+	SamplePercent int     `mapstructure:"sample_percent"`
+}
+
+func (c CodexStateDiagnosticsConfig) Validate() error {
+	if c.SamplePercent < 0 || c.SamplePercent > 100 {
+		return fmt.Errorf("gateway.codex_state_diagnostics.sample_percent must be between 0 and 100")
+	}
+	if len(c.AccountIDs) > 100 {
+		return fmt.Errorf("gateway.codex_state_diagnostics.account_ids supports at most 100 accounts")
+	}
+	for _, id := range c.AccountIDs {
+		if id <= 0 {
+			return fmt.Errorf("gateway.codex_state_diagnostics.account_ids must be positive")
+		}
+	}
+	if c.Enabled && (len(c.AccountIDs) == 0 || c.SamplePercent == 0) {
+		return fmt.Errorf("enabled codex state diagnostics requires account_ids and a positive sample_percent")
+	}
+	return nil
+}
+
 type GatewayConfig struct {
+	// Passive, bounded diagnostics for explicitly selected OpenAI OAuth accounts.
+	CodexStateDiagnostics CodexStateDiagnosticsConfig `mapstructure:"codex_state_diagnostics"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -2491,6 +2517,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.models_list_read_max_bytes", DefaultModelsListReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
+	viper.SetDefault("gateway.codex_state_diagnostics.enabled", false)
+	viper.SetDefault("gateway.codex_state_diagnostics.account_ids", []int64{})
+	viper.SetDefault("gateway.codex_state_diagnostics.sample_percent", 10)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
@@ -2667,6 +2696,9 @@ func setEnvReachableDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if err := c.Gateway.CodexStateDiagnostics.Validate(); err != nil {
+		return err
+	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)

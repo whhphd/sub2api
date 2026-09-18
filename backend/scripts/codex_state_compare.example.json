@@ -1,0 +1,16 @@
+{
+  "model": "REPLACE_WITH_THE_SAME_AVAILABLE_MODEL",
+  "reasoning_effort": "xhigh",
+  "arms": [
+    {
+      "base_url": "https://chatgpt.com/backend-api/codex",
+      "credential_env": "CODEX_PROBE_OAUTH_TOKEN",
+      "chatgpt_account_id_env": "CODEX_PROBE_CHATGPT_ACCOUNT_ID",
+      "proxy_env": "CODEX_PROBE_PROXY"
+    },
+    {
+      "base_url": "https://sub.callai.one/v1",
+      "credential_env": "CODEX_PROBE_GATEWAY_KEY"
+    }
+  ]
+}

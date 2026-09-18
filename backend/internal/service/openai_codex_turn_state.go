@@ -73,6 +73,7 @@ func (s *OpenAIGatewayService) relayOpenAICodexTurnState(c *gin.Context, account
 	}
 	canonical := http.CanonicalHeaderKey(openAICodexTurnStateHeader)
 	state := extractOpenAICodexTurnState(upstream)
+	s.observeCodexState(c, account, "http_relay", state, state)
 	if state == "" {
 		c.Writer.Header().Del(canonical)
 		return
@@ -108,6 +109,7 @@ func (s *OpenAIGatewayService) noteStagedOpenAICodexTurnStateCommitted(c *gin.Co
 	if staged == nil {
 		return
 	}
+	s.observeCodexState(c, account, "http_staged_commit", staged.Get(openAICodexTurnStateHeader), staged.Get(openAICodexTurnStateHeader))
 	s.noteOpenAICodexTurnStateOrigin(c, account, staged.Get(openAICodexTurnStateHeader))
 }
 
@@ -143,6 +145,7 @@ func (s *OpenAIGatewayService) noteOpenAICodexTurnStateOrigin(c *gin.Context, ac
 // → endpoint/responses_websocket.rs:764-767，头名大小写不敏感匹配见 sse/responses.rs:292）。
 // 不在这里记，纯 WS 会话就永远查不到铸造者，回声守卫等于空转。
 func (s *OpenAIGatewayService) noteOpenAICodexTurnStateFromWSEvent(c *gin.Context, account *Account, frame []byte) {
+	s.observeCodexWSFrame(c, account, frame, false, "downstream_boundary")
 	if s == nil || account == nil || len(frame) == 0 {
 		return
 	}
@@ -201,6 +204,8 @@ func (s *OpenAIGatewayService) guardOpenAICodexTurnStateEcho(c *gin.Context, acc
 	if s == nil || h == nil {
 		return
 	}
+	before := h.Get(openAICodexTurnStateHeader)
+	defer func() { s.observeCodexState(c, account, "http_state_guard", before, h.Get(openAICodexTurnStateHeader)) }()
 	if s.openAICodexTurnStateMintedByOther(c, account, h.Get(openAICodexTurnStateHeader)) {
 		h.Del(openAICodexTurnStateHeader)
 	}
@@ -212,8 +217,10 @@ func (s *OpenAIGatewayService) guardOpenAICodexTurnStateEcho(c *gin.Context, acc
 func (s *OpenAIGatewayService) guardOpenAICodexTurnStateValue(c *gin.Context, account *Account, state string) string {
 	state = strings.TrimSpace(state)
 	if state == "" || s.openAICodexTurnStateMintedByOther(c, account, state) {
+		s.observeCodexState(c, account, "ws_state_guard", state, "")
 		return ""
 	}
+	s.observeCodexState(c, account, "ws_state_guard", state, state)
 	return state
 }
 
@@ -227,6 +234,7 @@ func (s *OpenAIGatewayService) guardOpenAICodexWSFrameTurnState(c *gin.Context, 
 		return payload
 	}
 	if next, err := sjson.DeleteBytes(payload, path); err == nil {
+		s.observeCodexState(c, account, "ws_frame_state_stripped", state, "")
 		return next
 	}
 	return payload

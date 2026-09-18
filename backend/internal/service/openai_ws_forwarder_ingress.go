@@ -999,6 +999,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		payload = s.guardOpenAICodexWSFrameTurnState(c, account, payload)
 		payload = applyCodexWSFrameWireProfile(c, account, payload, clientTurnState)
 		s.scheduleCodexWSSideCalls(c, account, baseAcquireReq.Headers, payload)
+		s.observeCodexWSFrame(c, account, payload, true)
 		if err := writeCodexWSFrame(ctx, c, account, lease, payload, s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",

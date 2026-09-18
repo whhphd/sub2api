@@ -362,8 +362,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if marshalErr != nil {
 			return nil, wrapOpenAIWSFallback("write_request", marshalErr)
 		}
-		writeErr = lease.WriteTextWithContextTimeout(ctx, applyCodexWSFrameWireProfile(c, account, raw, clientTurnState), s.openAIWSWriteTimeout())
+		wirePayload := applyCodexWSFrameWireProfile(c, account, raw, clientTurnState)
+		s.observeCodexWSFrame(c, account, wirePayload, true)
+		writeErr = lease.WriteTextWithContextTimeout(ctx, wirePayload, s.openAIWSWriteTimeout())
 	} else {
+		if len(s.codexDiagnosticFields(ctx, account)) > 0 {
+			s.observeCodexWSFrame(c, account, payloadAsJSONBytes(payload), true)
+		}
 		writeErr = lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout())
 	}
 	if err := writeErr; err != nil {
@@ -577,6 +582,9 @@ readLoop:
 					pendingJSONDocuments = append(pendingJSONDocuments, documents[1:]...)
 				}
 			}
+		}
+		if readErr == nil {
+			s.observeCodexWSFrame(c, account, message, false)
 		}
 		markClientRequestCanceled()
 		if readErr == nil && !json.Valid(message) {
