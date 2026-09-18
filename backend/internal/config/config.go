@@ -949,6 +949,8 @@ type CodexStateDiagnosticsConfig struct {
 	Enabled       bool    `mapstructure:"enabled"`
 	AccountIDs    []int64 `mapstructure:"account_ids"`
 	SamplePercent int     `mapstructure:"sample_percent"`
+	AllAccounts   bool    `mapstructure:"all_accounts"`
+	FullCapture   bool    `mapstructure:"full_capture"`
 }
 
 func (c CodexStateDiagnosticsConfig) Validate() error {
@@ -963,7 +965,10 @@ func (c CodexStateDiagnosticsConfig) Validate() error {
 			return fmt.Errorf("gateway.codex_state_diagnostics.account_ids must be positive")
 		}
 	}
-	if c.Enabled && (len(c.AccountIDs) == 0 || c.SamplePercent == 0) {
+	if c.FullCapture && c.SamplePercent != 100 {
+		return fmt.Errorf("codex state full_capture requires sample_percent=100")
+	}
+	if c.Enabled && ((!c.AllAccounts && len(c.AccountIDs) == 0) || c.SamplePercent == 0) {
 		return fmt.Errorf("enabled codex state diagnostics requires account_ids and a positive sample_percent")
 	}
 	return nil
@@ -2520,6 +2525,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_state_diagnostics.enabled", false)
 	viper.SetDefault("gateway.codex_state_diagnostics.account_ids", []int64{})
 	viper.SetDefault("gateway.codex_state_diagnostics.sample_percent", 10)
+	viper.SetDefault("gateway.codex_state_diagnostics.all_accounts", false)
+	viper.SetDefault("gateway.codex_state_diagnostics.full_capture", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）

@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/time/rate"
 )
 
 func diagnosticTestService() *OpenAIGatewayService {
@@ -215,4 +216,26 @@ func TestCodexDiagnosticCompressedRequestAndDisabledFastPath(t *testing.T) {
 	body, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
 	require.Equal(t, encoded, body)
+}
+
+func TestCodexDiagnosticsAllAccountsFullCaptureDoesNotDropEvents(t *testing.T) {
+	s := diagnosticTestService()
+	s.cfg.Gateway.CodexStateDiagnostics.AllAccounts = true
+	s.cfg.Gateway.CodexStateDiagnostics.FullCapture = true
+	s.cfg.Gateway.CodexStateDiagnostics.AccountIDs = nil
+	a := &Account{ID: 90001, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	fields := s.codexDiagnosticFields(context.Background(), a)
+	require.NotEmpty(t, fields)
+	budget := rate.NewLimiter(0, 1)
+	require.True(t, budget.Allow())
+	for range 1000 {
+		require.True(t, codexDiagnosticEventAllowed(fields, budget))
+	}
+	s.cfg.Gateway.CodexStateDiagnostics.FullCapture = false
+	require.False(t, codexDiagnosticEventAllowed(s.codexDiagnosticFields(context.Background(), a), budget))
+	a.Type = AccountTypeAPIKey
+	require.Empty(t, s.codexDiagnosticFields(context.Background(), a))
+	a.Type = AccountTypeOAuth
+	a.Platform = PlatformGrok
+	require.Empty(t, s.codexDiagnosticFields(context.Background(), a))
 }

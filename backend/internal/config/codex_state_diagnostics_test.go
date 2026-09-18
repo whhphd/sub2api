@@ -31,3 +31,17 @@ func TestCodexDiagnosticsEnvironment(t *testing.T) {
 	require.True(t, cfg.Gateway.CodexStateDiagnostics.Enabled)
 	require.Equal(t, []int64{42, 43}, cfg.Gateway.CodexStateDiagnostics.AccountIDs)
 }
+
+func TestCodexDiagnosticsFullCaptureEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_CODEX_STATE_DIAGNOSTICS_ENABLED", "true")
+	t.Setenv("GATEWAY_CODEX_STATE_DIAGNOSTICS_ALL_ACCOUNTS", "true")
+	t.Setenv("GATEWAY_CODEX_STATE_DIAGNOSTICS_FULL_CAPTURE", "true")
+	t.Setenv("GATEWAY_CODEX_STATE_DIAGNOSTICS_SAMPLE_PERCENT", "100")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.CodexStateDiagnostics.AllAccounts)
+	require.True(t, cfg.Gateway.CodexStateDiagnostics.FullCapture)
+	require.Empty(t, cfg.Gateway.CodexStateDiagnostics.AccountIDs)
+	require.Error(t, (CodexStateDiagnosticsConfig{FullCapture: true, SamplePercent: 20}).Validate())
+}

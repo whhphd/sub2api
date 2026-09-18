@@ -22,6 +22,8 @@ gateway:
 
 等价环境变量：`GATEWAY_CODEX_STATE_DIAGNOSTICS_ENABLED`、`GATEWAY_CODEX_STATE_DIAGNOSTICS_ACCOUNT_IDS`（逗号分隔）、`GATEWAY_CODEX_STATE_DIAGNOSTICS_SAMPLE_PERCENT`。默认分别为 false、空列表、10；开启但无账号或采样为 0 时配置校验失败。先用少量账号和短时间窗口，完成后关闭。
 
+需要全账号、全请求观察时，设置 `all_accounts: true`、`sample_percent: 100`、`full_capture: true`（环境变量分别为 `GATEWAY_CODEX_STATE_DIAGNOSTICS_ALL_ACCOUNTS`、`GATEWAY_CODEX_STATE_DIAGNOSTICS_SAMPLE_PERCENT`、`GATEWAY_CODEX_STATE_DIAGNOSTICS_FULL_CAPTURE`）。`all_accounts` 自动覆盖当前及后续加入的 OpenAI OAuth 账号，仍排除 API Key、setup-token 和其他平台；此时可不填 account_ids。`full_capture` 要求采样比例为 100，并绕过下面的诊断事件限速，避免“请求全量但事件被丢弃”。应用日志必须为 info，且关闭应用日志采样；可通过现有管理员运行日志接口临时设置，记录原值并在窗口结束后恢复。这里的全量指符合条件请求的元数据观察，仍不记录正文或完整 state，仍保留解析大小边界。
+
 日志名为 `codex_state_diagnostic`，组件为 `service.codex_state_diagnostics`。写入既有应用日志，显式跳过 Ops 数据库系统日志索引，保留时间遵循现有日志轮转。进程级限速 10 条/秒、突发 20 条；`suppressed_events` 表示日志被限速丢弃，不能把不完整日志解释成丢失请求头。采样按服务端请求标识确定，同一请求的换号/重试共用选择结果；没有请求标识时退回按账号采样。
 
 字段说明：

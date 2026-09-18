@@ -59,7 +59,7 @@ func (s *OpenAIGatewayService) codexDiagnosticFields(ctx context.Context, accoun
 	if !cfg.Enabled || cfg.SamplePercent <= 0 {
 		return nil
 	}
-	selected := false
+	selected := cfg.AllAccounts
 	for _, id := range cfg.AccountIDs {
 		if id == account.ID {
 			selected = true
@@ -92,6 +92,9 @@ func (s *OpenAIGatewayService) codexDiagnosticFields(ctx context.Context, accoun
 	return []zap.Field{
 		zap.String("component", "service.codex_state_diagnostics"),
 		zap.Bool(logger.OpsSystemLogSkipField, true),
+		zap.Bool("all_accounts", cfg.AllAccounts),
+		zap.Bool("full_capture", cfg.FullCapture),
+		zap.Int("sample_percent", cfg.SamplePercent),
 		zap.String("request_ref", codexDiagnosticHash(requestID)),
 		zap.String("user_ref", codexDiagnosticHash("user:"+strconv.FormatInt(userID, 10))),
 		zap.String("account_ref", codexDiagnosticHash("account:"+strconv.FormatInt(account.ID, 10))),
@@ -99,11 +102,20 @@ func (s *OpenAIGatewayService) codexDiagnosticFields(ctx context.Context, accoun
 	}
 }
 
+func codexDiagnosticEventAllowed(fields []zap.Field, budget *rate.Limiter) bool {
+	for _, field := range fields {
+		if field.Key == "full_capture" && field.Integer == 1 {
+			return true
+		}
+	}
+	return budget.Allow()
+}
+
 func emitCodexDiagnostic(fields []zap.Field, event string, extra ...zap.Field) {
 	if len(fields) == 0 {
 		return
 	}
-	if !codexDiagnosticLogBudget.Allow() {
+	if !codexDiagnosticEventAllowed(fields, codexDiagnosticLogBudget) {
 		codexDiagnosticDropped.Add(1)
 		return
 	}
