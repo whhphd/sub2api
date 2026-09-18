@@ -34,7 +34,7 @@ func (s *OpenAIGatewayService) logTurnState(a *turnStateAttempt, event, reason s
 		return
 	}
 	// No inherited logger fields, error strings, raw models, tokens, or token prefixes.
-	record := map[string]any{"time": time.Now().UTC().Format(time.RFC3339Nano), "event": event, "reason": reason, "process_ref": codexDiagnosticHash("turn-state-process"), "attempt": a.ID, "request_ref": a.RequestRef, "account_ref": codexDiagnosticHash(a.Owner), "session_ref": a.Session, "model": diagnosticModel(a.Model), "auto_enabled": a.Enabled, "injected": a.Injected != "", "original_length": len(a.Original), "sent_length": len(a.Sent), "state_ref": codexDiagnosticHash(a.Injected)}
+	record := map[string]any{"time": time.Now().UTC().Format(time.RFC3339Nano), "event": event, "reason": reason, "process_ref": codexDiagnosticHash("turn-state-process"), "attempt": a.ID, "request_ref": a.RequestRef, "account_ref": codexDiagnosticHash(a.Owner), "session_ref": a.Session, "model": diagnosticModel(a.Model), "auto_enabled": a.Enabled, "hunter_probe": a.Probe, "candidate_source": a.CandidateSource, "injected": a.Injected != "", "original_length": len(a.Original), "sent_length": len(a.Sent), "state_ref": codexDiagnosticHash(a.Injected)}
 	for k, v := range extra {
 		record[k] = v
 	}

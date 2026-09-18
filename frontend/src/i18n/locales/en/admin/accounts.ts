@@ -1,6 +1,8 @@
 export default {
     accounts: {
       turnState: {
+hunterSummary: "Hunter reserved {count} probes this hour",hunterNext: "Next: {time}",hunterGate: {"ready": "Waiting for next cycle", "account_cap": "Account hourly limit reached", "global_cap": "Site hourly limit reached", "fresh": "Candidates still fresh", "idle": "No recent model traffic", "pool_unavailable": "Pool unavailable", "proxy_unavailable": "Proxies unavailable", "no_usable_exit": "No available exit or exit cooling"},
+
         parent: "Uses parent account #{id} state pool",
         inherited: "Parent managed",
         unknown: "Settings unavailable",

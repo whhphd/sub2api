@@ -226,3 +226,23 @@ func TestSettingHandlerCodexEnhancementMutualExclusion(t *testing.T) {
 	require.False(t, current.CodexFingerprintEnhancementEnabled)
 	require.False(t, current.OpenAIRateLimitProxyRotationEnabled)
 }
+
+func TestHunterRuntimePatchAloneAndInvalidMixedPatch(t *testing.T) {
+	h, repo := newOpenAIOAuthRuntimeHandler()
+	h.settingService = service.NewSettingService(repo, &config.Config{Totp: config.TotpConfig{EncryptionKeyConfigured: true, EncryptionKey: strings.Repeat("42", 32)}})
+	repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings] = `{"openai_oauth_turn_state_auto_enabled":true}`
+	cfg := service.DefaultTurnStateHunterSettings()
+	cfg.Enabled = true
+	cfg.Models = []string{"gpt-test"}
+	cfg.ProxyIDs = []int64{1}
+	r := performOpenAIOAuthRuntimeRequest(t, h.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{"openai_oauth_turn_state_hunter": cfg})
+	require.Equal(t, http.StatusOK, r.Code)
+	got := decodeOpenAIOAuthRuntimeResponse(t, r)
+	require.True(t, got.TurnStateAutoEnabled)
+	require.True(t, got.TurnStateHunter.Enabled)
+	cfg.MaxPerHour = 0
+	r = performOpenAIOAuthRuntimeRequest(t, h.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{"openai_oauth_turn_state_hunter": cfg, "openai_oauth_turn_state_auto_enabled": false})
+	require.Equal(t, http.StatusBadRequest, r.Code)
+	r = performOpenAIOAuthRuntimeRequest(t, h.GetOpenAIOAuthRuntimeSettings, http.MethodGet, nil)
+	require.True(t, decodeOpenAIOAuthRuntimeResponse(t, r).TurnStateAutoEnabled)
+}

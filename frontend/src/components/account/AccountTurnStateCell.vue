@@ -58,6 +58,12 @@
         </div>
         <p v-if="account.parent_account_id" class="pt-2 text-gray-300">{{ t('admin.accounts.turnState.parent', { id: account.parent_account_id }) }}</p>
         <template v-else>
+          <div v-if="hunt" class="space-y-1 border-b border-white/10 py-2 text-gray-300">
+            <div>{{ t('admin.accounts.turnState.hunterSummary', { count: hunt.hour_count }) }}</div>
+            <div>{{ t(`admin.accounts.turnState.hunterGate.${hunt.gate || 'ready'}`) }}</div>
+            <div v-if="hunt.next_at && Date.parse(hunt.next_at) > now">{{ t('admin.accounts.turnState.hunterNext', { time: formatTime(hunt.next_at) }) }}</div>
+            <div v-if="hunt.last?.[0]">{{ hunt.last[0].model }} · {{ hunt.last[0].chars || '--' }} · HTTP {{ hunt.last[0].status }} · {{ formatTime(hunt.last[0].at) }}</div>
+          </div>
           <div class="space-y-1 py-2">
             <div class="text-gray-400">{{ t('admin.accounts.turnState.latestObservation') }}</div>
             <template v-if="observed">
@@ -104,6 +110,8 @@ interface Candidate { model: string; expires_at: string; failed: boolean }
 interface ModelSummary { model: string; available: number; total: number; failed: number; expires: string }
 const observed = computed(() => props.account.extra?.openai_turn_state_observed as Observation | undefined)
 const formatTime = (value: string) => formatDateTime(value)
+interface HuntSummary { hour_count: number; gate?: string; next_at?: string; last?: { at: string; model: string; chars: number; status: number }[] }
+const hunt = computed(() => props.account.extra?.openai_turn_state_hunt as HuntSummary | undefined)
 const candidates = computed(() => {
   const summary = props.account.extra?.openai_turn_state_summary as { candidates?: Candidate[] } | undefined
   return Array.isArray(summary?.candidates) ? summary.candidates : []

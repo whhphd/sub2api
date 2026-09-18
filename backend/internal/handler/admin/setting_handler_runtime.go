@@ -164,14 +164,15 @@ func (h *SettingHandler) GetOpenAIOAuthRuntimeSettings(c *gin.Context) {
 // UpdateOpenAIOAuthRuntimeSettingsRequest supports independent saves from the
 // the System Settings cards. Pointer fields distinguish omission from false.
 type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
-	TurnStateAutoEnabled                 *bool `json:"openai_oauth_turn_state_auto_enabled"`
-	CodexFingerprintEnhancementEnabled   *bool `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
-	SafePreOutputOverloadRetryEnabled    *bool `json:"safe_pre_output_overload_retry_enabled"`
-	PlanGatedModelCooldownEnabled        *bool `json:"plan_gated_model_cooldown_enabled"`
-	RateLimitSameAccountRetryEnabled     *bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
-	RateLimitProxyRotationEnabled        *bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
-	AutoResetCreditGlobalEnabled         *bool `json:"openai_oauth_auto_reset_credit_global_enabled"`
-	GrokForbiddenSameAccountRetryEnabled *bool `json:"grok_oauth_forbidden_same_account_retry_enabled"`
+	TurnStateHunter                      *service.TurnStateHunterSettings `json:"openai_oauth_turn_state_hunter"`
+	TurnStateAutoEnabled                 *bool                            `json:"openai_oauth_turn_state_auto_enabled"`
+	CodexFingerprintEnhancementEnabled   *bool                            `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
+	SafePreOutputOverloadRetryEnabled    *bool                            `json:"safe_pre_output_overload_retry_enabled"`
+	PlanGatedModelCooldownEnabled        *bool                            `json:"plan_gated_model_cooldown_enabled"`
+	RateLimitSameAccountRetryEnabled     *bool                            `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
+	RateLimitProxyRotationEnabled        *bool                            `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
+	AutoResetCreditGlobalEnabled         *bool                            `json:"openai_oauth_auto_reset_credit_global_enabled"`
+	GrokForbiddenSameAccountRetryEnabled *bool                            `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 
 // UpdateOpenAIOAuthRuntimeSettings partially updates the global policy.
@@ -183,8 +184,8 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		return
 	}
 
-	settings, err := h.settingService.UpdateOpenAIOAuthRuntimeSettings(
-		c.Request.Context(),
+	settings, err := h.settingService.UpdateOpenAIOAuthRuntimePolicy(
+		c.Request.Context(), req.TurnStateHunter,
 		req.SafePreOutputOverloadRetryEnabled,
 		req.PlanGatedModelCooldownEnabled,
 		req.RateLimitSameAccountRetryEnabled,

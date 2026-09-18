@@ -1045,7 +1045,31 @@ export default {
         saved: '429 default cooldown settings saved',
         saveFailed: 'Failed to save 429 default cooldown settings'
       },
-      openaiOauthRuntime: {
+      turnStateHunter: {
+  "title": "Turn-State 292 hunter",
+  "description": "One policy for all OpenAI OAuth accounts, including new accounts. Probes obtain 292/332 candidates through selected proxies and consume upstream quota and proxy traffic. Disabled by default.",
+  "enabled": "Enable global hunter",
+  "needsAuto": "Turn-State automatic takeover must also be enabled.",
+  "models": "Upstream models (up to 8)",
+  "modelsPlaceholder": "Comma-separated model names",
+  "proxies": "Probe proxies (up to 64)",
+  "searchProxies": "Search name or host",
+  "noProxies": "No matching proxies",
+  "proxyHint": "Webshare -rotate and 1024Proxy Rotating IP use new connections; sticky sid/t sessions use fixed-exit handling. Manage credentials on the Proxies page.",
+  "missingProxies": "Selected proxies no longer exist: {ids}. Please select again.",
+  "max_per_hour": "Site-wide probes per hour",
+  "per_account_max_per_hour": "Probes per account per hour",
+  "gap_seconds": "Probe interval (seconds)",
+  "lead_minutes": "Refresh before expiry (minutes)",
+  "retry_minutes": "Fixed-exit recheck interval (minutes)",
+  "idle_minutes": "Model idle gate (minutes, -1 disables)",
+  "effort": "Probe reasoning effort",
+  "invalid": "Check model/proxy counts and numeric ranges. Idle gate cannot be 0.",
+  "saved": "Global hunter settings saved",
+  "loadFailed": "Failed to load hunter settings",
+  "saveFailed": "Failed to save hunter settings"
+},
+    openaiOauthRuntime: {
 "turnStateTitle": "Codex Turn-State automatic takeover",
 "turnStateHint": "Applies globally to OpenAI OAuth HTTP/SSE. Collects candidates from upstream responses and uses matching account/model candidates for sessions with non-baseline shapes. Exhaustion does not stop scheduling. WebSockets remain unchanged; decisions have independent logs. Experimental; quality improvement is not guaranteed.",
 "turnStateSaved": "Turn-State settings saved",

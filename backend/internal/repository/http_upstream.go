@@ -207,6 +207,9 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 		profile = service.HTTPUpstreamProfileFromContext(req.Context())
 	}
 
+	if service.HTTPUpstreamFreshConnection(req.Context()) {
+		return s.doFreshUpstream(req, proxyURL, accountConcurrency, profile)
+	}
 	// 获取或创建对应的客户端，并标记请求占用
 	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
 	if err != nil {
@@ -264,7 +267,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	}
 	proxyInfo := "direct"
 	if proxyURL != "" {
-		proxyInfo = proxyURL
+		proxyInfo = proxyKeyForLog(proxyURL)
 	}
 	slog.Debug("tls_fingerprint_enabled", "account_id", accountID, "target", targetHost, "proxy", proxyInfo, "profile", profile.Name)
 
@@ -524,7 +527,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 			atomic.AddInt64(&entry.inFlight, 1)
 		}
 		s.mu.RUnlock()
-		slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "cache_key", cacheKey)
+		slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "proxy", proxyKeyForLog(proxyURL))
 		return entry, nil
 	}
 	s.mu.RUnlock()
@@ -538,12 +541,12 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 				atomic.AddInt64(&entry.inFlight, 1)
 			}
 			s.mu.Unlock()
-			slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "cache_key", cacheKey)
+			slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "proxy", proxyKeyForLog(proxyURL))
 			return entry, nil
 		}
 		slog.Debug("tls_fingerprint_evicting_stale_client",
 			"account_id", accountID,
-			"cache_key", cacheKey,
+			"proxy", proxyKeyForLog(proxyURL),
 			"proxy_changed", entry.proxyKey != proxyKey,
 			"pool_changed", entry.poolKey != poolKey)
 		s.removeClientLocked(cacheKey, entry)
@@ -561,7 +564,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 
 	// 创建带 TLS 指纹的 Transport
-	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
+	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "proxy", proxyKeyForLog(proxyKey))
 	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
 	if err != nil {
 		s.mu.Unlock()
@@ -1133,7 +1136,7 @@ func (s *httpUpstreamService) recordOpenAIHTTP2Failure(profile service.HTTPUpstr
 	activated, until := state.recordFailure(time.Now(), settings.fallbackErrorThreshold, settings.fallbackWindow, settings.fallbackTTL)
 	if activated {
 		slog.Warn("openai_http2_proxy_fallback_activated",
-			"proxy", proxyKey,
+			"proxy", proxyKeyForLog(proxyKey),
 			"fallback_until", until.Format(time.RFC3339))
 	}
 }
@@ -1552,4 +1555,40 @@ func (d *decompressedBody) Close() error {
 		_ = rc.Close()
 	}
 	return d.closer.Close()
+}
+
+// Ported from KlN klno.12 2916a74b3; also covers reuse/eviction cache-key logs.
+func proxyKeyForLog(value string) string {
+	if value == "" || value == directProxyKey {
+		return "direct"
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return "invalid"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// A dedicated transport guarantees a new CONNECT even when a business request
+// already owns a cached tunnel. No shared protocol-health state is changed.
+func (s *httpUpstreamService) doFreshUpstream(req *http.Request, proxyURL string, concurrency int, profile service.HTTPUpstreamProfile) (*http.Response, error) {
+	proxyKey, parsed, err := normalizeProxyURL(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	settings := s.applyProfilePoolSettings(s.resolvePoolSettings(s.getIsolationMode(), concurrency), profile)
+	transport, err := buildUpstreamTransport(settings, parsed, s.resolveProtocolMode(profile, proxyKey, parsed))
+	if err != nil {
+		return nil, err
+	}
+	transport.DisableKeepAlives = true
+	client := s.httpClientForUpstreamRequest(&http.Client{Transport: transport}, req)
+	resp, err := servertiming.Do(client, req)
+	if err != nil {
+		transport.CloseIdleConnections()
+		return nil, err
+	}
+	// Headers-only probes must not initialize gzip/zstd readers before closing.
+	resp.Body = wrapTrackedBody(resp.Body, transport.CloseIdleConnections)
+	return resp, nil
 }

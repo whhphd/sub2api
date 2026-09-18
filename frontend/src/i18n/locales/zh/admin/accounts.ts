@@ -1,6 +1,8 @@
 export default {
     accounts: {
       turnState: {
+hunterSummary: "猎手本小时已预留 {count} 次探测",hunterNext: "下次：{time}",hunterGate: {"ready": "等待下一轮", "account_cap": "达到单账号上限", "global_cap": "达到全站上限", "fresh": "候选尚未到期", "idle": "模型近期无请求", "pool_unavailable": "候选池读取失败", "proxy_unavailable": "代理读取失败", "no_usable_exit": "没有可用出口或出口冷却中"},
+
         parent: "沿用母账号 #{id} 的状态池",
         inherited: "母账号管理",
         unknown: "设置待确认",
