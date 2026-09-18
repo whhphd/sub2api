@@ -1,6 +1,22 @@
 export default {
     accounts: {
- turnState: {"parent": "沿用母账号 #{id} 的状态池", "inherited": "母账号管理", "unknown": "设置待确认", "observeOnly": "仅观测", "waiting": "等待候选", "ready": "可接管", "rejected": "候选被拒绝", "expired": "候选过期", "baseline": "基线形态", "nonBaseline": "非基线形态", "available": "可用候选 {count} 条", "hint": "长度 / 密文块数；形态不代表质量结论。"},
+      turnState: {
+        parent: "沿用母账号 #{id} 的状态池",
+        inherited: "母账号管理",
+        unknown: "设置待确认",
+        observeOnly: "仅观测",
+        waiting: "等待候选",
+        ready: "可接管",
+        rejected: "候选被拒绝",
+        expired: "候选过期",
+        baseline: "基线形态",
+        nonBaseline: "非基线形态",
+        available: "可用候选 {count} 条",
+        latestObservation: "最近观测（长度 / 块数）",
+        coverage: "有可用候选的模型 {available}/{total}",
+        expires: "最晚到期：{time}",
+        viewDetails: "查看 Turn-State 详情",
+      },
       upstreamBalance: {
         title: '上游余额', refresh: '查询上游余额', queryFailed: '余额查询失败',
         updatedAt: '最后成功：{value}', nextQueryAt: '下次查询：{value}',
