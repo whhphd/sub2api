@@ -26,8 +26,8 @@ func DefaultTurnStateHunterSettings() TurnStateHunterSettings {
 	return TurnStateHunterSettings{Models: []string{}, ProxyIDs: []int64{}, MaxPerHour: 300, PerAccountMaxPerHour: 30, GapSeconds: 20, LeadMinutes: 10, RetryMinutes: 10, IdleMinutes: 60, ReasoningEffort: "high"}
 }
 func (c TurnStateHunterSettings) clone() TurnStateHunterSettings {
-	c.Models = append([]string{}, c.Models...)
-	c.ProxyIDs = append([]int64{}, c.ProxyIDs...)
+	c.Models = slices.Clone(c.Models)
+	c.ProxyIDs = slices.Clone(c.ProxyIDs)
 	return c
 }
 func (c TurnStateHunterSettings) validate() error {

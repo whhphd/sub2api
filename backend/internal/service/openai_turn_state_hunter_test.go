@@ -141,7 +141,9 @@ func TestHunterIdleFreshCapAndReadFailure(t *testing.T) {
 	require.Equal(t, 1, st.HourCount)
 	require.True(t, st.NextAt.After(s.now().Add(59*time.Minute)))
 	require.True(t, latest.Schedulable, "probe failure must not change scheduling")
-	s.accounts.(*hunterAccounts).fail = true
+	repo, ok := s.accounts.(*hunterAccounts)
+	require.True(t, ok)
+	repo.fail = true
 	spent, halt = s.huntOne(ctx, a, cfg)
 	require.False(t, spent)
 	require.False(t, halt)
@@ -211,8 +213,12 @@ func TestHunterProbeWireAndEncryptedPool(t *testing.T) {
 	blob := turnStateFernetBlob(time.Now(), 12)
 	up := &hunterUpstream{response: &http.Response{StatusCode: 200, Header: http.Header{"X-Codex-Turn-State": []string{blob}}, Body: b}}
 	g.httpUpstream = up
-	s.accounts.(*hunterAccounts).onMutate = func() { require.True(t, b.closed, "body must close before pool storage") }
-	p := s.proxies.(*hunterProxies).values[0]
+	repo, ok := s.accounts.(*hunterAccounts)
+	require.True(t, ok)
+	repo.onMutate = func() { require.True(t, b.closed, "body must close before pool storage") }
+	proxies, ok := s.proxies.(*hunterProxies)
+	require.True(t, ok)
+	p := proxies.values[0]
 	result := s.probe(context.Background(), a, "gpt-test", cfg, p)
 	require.Empty(t, result.Error)
 	require.True(t, result.Healthy)
