@@ -547,7 +547,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if currentClientPromptCacheKey, ok := decoded["prompt_cache_key"].(string); ok {
 			clientPromptCacheKey = currentClientPromptCacheKey
 		}
-		if stageCodexOAuthIdentity(c, account, decoded, isCompactRequest) { markDecodedModified() }
+		if stageCodexOAuthIdentity(c, account, decoded, isCompactRequest) {
+			markDecodedModified()
+		}
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
 		}

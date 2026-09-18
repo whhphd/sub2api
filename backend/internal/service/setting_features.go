@@ -878,14 +878,18 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	planGatedModelCooldownEnabled *bool,
 	sameAccountRetrySettings ...*bool,
 ) (*OpenAIOAuthRuntimeSettings, error) {
- return s.UpdateOpenAIOAuthRuntimePolicy(ctx,nil,safePreOutputOverloadRetryEnabled,planGatedModelCooldownEnabled,sameAccountRetrySettings...)
+	return s.UpdateOpenAIOAuthRuntimePolicy(ctx, nil, safePreOutputOverloadRetryEnabled, planGatedModelCooldownEnabled, sameAccountRetrySettings...)
 }
 
 // UpdateOpenAIOAuthRuntimePolicy applies the entire admin PATCH in one CAS.
 // Old boolean-only callers keep their ordering through the wrapper above.
-func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hunter *TurnStateHunterSettings, safePreOutputOverloadRetryEnabled, planGatedModelCooldownEnabled *bool, sameAccountRetrySettings ...*bool) (*OpenAIOAuthRuntimeSettings,error) {
- if hunter!=nil { if err:=hunter.validate();err!=nil{return nil,err} }
- if s == nil || s.settingRepo == nil {
+func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hunter *TurnStateHunterSettings, safePreOutputOverloadRetryEnabled, planGatedModelCooldownEnabled *bool, sameAccountRetrySettings ...*bool) (*OpenAIOAuthRuntimeSettings, error) {
+	if hunter != nil {
+		if err := hunter.validate(); err != nil {
+			return nil, err
+		}
+	}
+	if s == nil || s.settingRepo == nil {
 		return nil, fmt.Errorf("setting service is unavailable")
 	}
 	rateLimitSameAccountRetryProvided := len(sameAccountRetrySettings) > 0 && sameAccountRetrySettings[0] != nil
@@ -954,10 +958,12 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hun
 		if proxyRotationProvided && *sameAccountRetrySettings[2] {
 			current.CodexFingerprintEnhancementEnabled = false
 		}
-        if hunter!=nil {
-            if hunter.Enabled && !current.TurnStateAutoEnabled { return nil,fmt.Errorf("enable turn-state takeover before the hunter") }
-            current.TurnStateHunter=hunter.clone()
-        }
+		if hunter != nil {
+			if hunter.Enabled && !current.TurnStateAutoEnabled {
+				return nil, fmt.Errorf("enable turn-state takeover before the hunter")
+			}
+			current.TurnStateHunter = hunter.clone()
+		}
 		normalized, err := normalizeOpenAIOAuthRuntimeSettings(current)
 		if err != nil {
 			return nil, err

@@ -302,9 +302,11 @@ func stageCodexOAuthIdentity(c *gin.Context, account *Account, decoded map[strin
 	var fpIDs *codexFingerprintIDs
 	if isCompactRequest {
 		if codexDeviceWireProfileEnabled(c, account) {
- fpIDs = resolveCodexFingerprintIDsForRequest(c, account, nil)
- if applyCodexCompactPromptCacheKey(c, account, decoded) { modified = true }
- }
+			fpIDs = resolveCodexFingerprintIDsForRequest(c, account, nil)
+			if applyCodexCompactPromptCacheKey(c, account, decoded) {
+				modified = true
+			}
+		}
 	} else {
 		fpIDs = resolveCodexFingerprintIDsWithBody(c, account, nil, decoded["client_metadata"])
 	}

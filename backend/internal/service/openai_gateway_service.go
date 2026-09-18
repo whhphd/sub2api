@@ -515,7 +515,7 @@ type OpenAIGatewayService struct {
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	turnStateEncryptor          SecretEncryptor
 	turnStateSessions           turnStateSessions
- turnStateTraffic hunterTraffic
+	turnStateTraffic            hunterTraffic
 	turnStateLog                turnStateLog
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64

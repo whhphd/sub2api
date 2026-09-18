@@ -2,27 +2,33 @@
 // Ported from KlN-4096/sub2api v0.2.5-klno.12, 2916a74b31353575f4901659af99477caf0f72df.
 // Pure probe identity, backoff and state helpers; global policy/storage live in the CallAI adapter.
 package service
+
 import (
- "context"
- "encoding/json"
- "errors"
- "math/rand/v2"
- "net/http"
- "net/http/httptest"
- "strings"
- "time"
- "github.com/gin-gonic/gin"
- "github.com/google/uuid"
- "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"context"
+	"encoding/json"
+	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"math/rand/v2"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"time"
 )
+
 const (
- openAITurnStateHuntLastKeep=10
- openAITurnStateHuntExitsKeep=128
- openAITurnStateHuntExitCooldown=7*24*time.Hour
- openAITurnStateHuntExtraKey=CodexTurnStateHuntKey
- ctxKeyTurnStateProbe="callai_turn_state_hunter_probe"
+	openAITurnStateHuntLastKeep     = 10
+	openAITurnStateHuntExitsKeep    = 128
+	openAITurnStateHuntExitCooldown = 7 * 24 * time.Hour
+	openAITurnStateHuntExtraKey     = CodexTurnStateHuntKey
+	ctxKeyTurnStateProbe            = "callai_turn_state_hunter_probe"
 )
-func openAITurnStateProbeContext(c *gin.Context) bool { return c!=nil && c.GetBool(ctxKeyTurnStateProbe) }
+
+func openAITurnStateProbeContext(c *gin.Context) bool {
+	return c != nil && c.GetBool(ctxKeyTurnStateProbe)
+}
+
 type openAITurnStateHuntAttempt struct {
 	At      time.Time `json:"at"`
 	Model   string    `json:"model"`
@@ -48,7 +54,7 @@ type openAITurnStateHuntExit struct {
 
 // openAITurnStateHuntState 是 extra.openai_turn_state_hunt 的形态，每次探测后写一次。
 type openAITurnStateHuntState struct {
- Owner string `json:"owner"`
+	Owner     string                       `json:"owner"`
 	NextAt    time.Time                    `json:"next_at"`
 	HourStart time.Time                    `json:"hour_start"`
 	HourCount int                          `json:"hour_count"`
@@ -128,7 +134,9 @@ func readOpenAITurnStateHuntState(a *Account) openAITurnStateHuntState {
 	if err := json.Unmarshal(encoded, &st); err != nil {
 		return openAITurnStateHuntState{}
 	}
-	if st.Cursor < 0 || len(st.Last)>openAITurnStateHuntLastKeep || len(st.Exits)>openAITurnStateHuntExitsKeep || st.Owner != turnStateOwner(a) { return openAITurnStateHuntState{} }
+	if st.Cursor < 0 || len(st.Last) > openAITurnStateHuntLastKeep || len(st.Exits) > openAITurnStateHuntExitsKeep || st.Owner != turnStateOwner(a) {
+		return openAITurnStateHuntState{}
+	}
 	return st
 }
 
@@ -272,7 +280,7 @@ func (s *OpenAIGatewayService) buildOpenAITurnStateProbe(ctx context.Context, ac
 		return nil, nil, errors.New("turn-state probe: model is empty")
 	}
 	account = s.prepareCodexFingerprintAccount(ctx, account)
- ids := newOpenAITurnStateProbeIdentity(account)
+	ids := newOpenAITurnStateProbeIdentity(account)
 	c := newOpenAITurnStateProbeContext(ids)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, nil, err
@@ -302,4 +310,3 @@ func (s *OpenAIGatewayService) buildOpenAITurnStateProbe(ctx context.Context, ac
 	}
 	return c, req, nil
 }
-

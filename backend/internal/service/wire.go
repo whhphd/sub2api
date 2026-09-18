@@ -893,7 +893,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideOpenAIQuotaAutoResetService,
- ProvideOpenAITurnStateHunterService,
+	ProvideOpenAITurnStateHunterService,
 	ProvideGrokQuotaService,
 	ProvideCNProviderQuotaService,
 	ProvideCNProviderBalanceService,
@@ -1069,8 +1069,9 @@ func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.
 	return aggregator
 }
 
-func ProvideOpenAITurnStateHunterService(gateway *OpenAIGatewayService, accounts AccountRepository, proxies ProxyRepository, prober ProxyExitInfoProber, leader LeaderLockCache)*OpenAITurnStateHunterService {
- ipapi,_:=prober.(IPAPIProxyProber)
- svc:=NewOpenAITurnStateHunterService(gateway,accounts,proxies,ipapi,leader)
- svc.Start();return svc
+func ProvideOpenAITurnStateHunterService(gateway *OpenAIGatewayService, accounts AccountRepository, proxies ProxyRepository, prober ProxyExitInfoProber, leader LeaderLockCache) *OpenAITurnStateHunterService {
+	ipapi, _ := prober.(IPAPIProxyProber)
+	svc := NewOpenAITurnStateHunterService(gateway, accounts, proxies, ipapi, leader)
+	svc.Start()
+	return svc
 }

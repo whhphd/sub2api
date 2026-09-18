@@ -42,7 +42,7 @@ type CodexTurnStateStore interface {
 
 type turnStateCandidate struct {
 	Blob     string    `json:"blob"`
- Source string `json:"source,omitempty"`
+	Source   string    `json:"source,omitempty"`
 	Model    string    `json:"model"`
 	MintedAt time.Time `json:"minted_at"`
 	Failed   bool      `json:"failed,omitempty"`
@@ -154,8 +154,8 @@ type turnStateAttempt struct {
 	Owner, Model, Session, RequestRef string
 	Original, Sent, Injected          string
 	Enabled                           bool
- Probe bool
- CandidateSource string
+	Probe                             bool
+	CandidateSource                   string
 	Rejected                          atomic.Bool
 	Observed                          atomic.Bool
 }
@@ -200,7 +200,7 @@ func (s *OpenAIGatewayService) bindTurnStateAttempt(req *http.Request, c *gin.Co
 	session := codexDiagnosticHash(owner + "\x00" + tenant + "\x00" + rawSession + "\x00" + model)
 	attempt := &turnStateAttempt{ID: turnStateAttemptSequence.Add(1), AccountID: source.ID, Owner: owner, Model: model, Session: session, Original: req.Header.Get(openAICodexTurnStateHeader)}
 	attempt.RequestRef = turnStateRequestRef(req.Context())
- attempt.Probe = openAITurnStateProbeContext(c)
+	attempt.Probe = openAITurnStateProbeContext(c)
 	return req.WithContext(context.WithValue(req.Context(), turnStateAttemptKey{}, attempt))
 }
 
@@ -230,8 +230,10 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 		return
 	}
 	a.StartedAt = time.Now()
- if a.Probe { return }
- s.turnStateTraffic.note(a.AccountID,a.Model,a.StartedAt)
+	if a.Probe {
+		return
+	}
+	s.turnStateTraffic.note(a.AccountID, a.Model, a.StartedAt)
 	a.Enabled = s.turnStateAutoEnabled(req.Context())
 	a.Sent = a.Original
 	if !a.Enabled {
@@ -239,7 +241,7 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 		return
 	}
 	policy, _ := s.hunterPolicy(req.Context())
- if !s.turnStateSessions.needs(a.Session, time.Now()) && !policy.hunts(a.Model) {
+	if !s.turnStateSessions.needs(a.Session, time.Now()) && !policy.hunts(a.Model) {
 		s.logTurnState(a, "skip", "session_not_marked", nil)
 		return
 	}
@@ -272,8 +274,10 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 		return
 	}
 	a.Injected = candidate.Blob
- a.CandidateSource=candidate.Source
- if a.CandidateSource=="" {a.CandidateSource="natural"}
+	a.CandidateSource = candidate.Source
+	if a.CandidateSource == "" {
+		a.CandidateSource = "natural"
+	}
 	a.Sent = candidate.Blob
 	req.Header.Set(openAICodexTurnStateHeader, candidate.Blob)
 	s.logTurnState(a, "inject", "candidate_selected", map[string]any{"candidate_age_seconds": int64(time.Since(candidate.MintedAt).Seconds())})
@@ -404,8 +408,11 @@ func (s *OpenAIGatewayService) recordTurnStateObservation(parent context.Context
 		if !now.Before(minted.Add(turnStateTTL)) {
 			return updates, nil
 		}
-		source:="natural";if a.Probe{source="hunter"}
-		pool.Candidates = append([]turnStateCandidate{{Blob: value, Model: a.Model, MintedAt: minted,Source:source}}, pruneTurnStatePool(pool.Candidates, a.Model, now)...)
+		source := "natural"
+		if a.Probe {
+			source = "hunter"
+		}
+		pool.Candidates = append([]turnStateCandidate{{Blob: value, Model: a.Model, MintedAt: minted, Source: source}}, pruneTurnStatePool(pool.Candidates, a.Model, now)...)
 		encoded, encodeErr := s.encodeTurnStatePool(pool, now)
 		if encodeErr != nil {
 			return nil, encodeErr
@@ -457,7 +464,7 @@ func (s *OpenAIGatewayService) encodeTurnStatePool(pool turnStatePool, now time.
 	for _, v := range pool.Candidates {
 		fields := turnStateShapeFields(v.Blob)
 		fields["model"] = v.Model
- fields["source"]=v.Source
+		fields["source"] = v.Source
 		fields["minted_at"] = v.MintedAt.UTC().Format(time.RFC3339Nano)
 		fields["expires_at"] = v.MintedAt.Add(turnStateTTL).UTC().Format(time.RFC3339Nano)
 		fields["failed"] = v.Failed

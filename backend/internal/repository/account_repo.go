@@ -683,8 +683,8 @@ func lockAndMergeAccountProbeExtra(
 		currentTurnStatePool         []byte
 		currentTurnStateObservation  []byte
 		currentTurnStateSummary      []byte
- currentTurnStateHunt []byte
- currentTurnStateCredentials []byte
+		currentTurnStateHunt         []byte
+		currentTurnStateCredentials  []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -705,10 +705,14 @@ func lockAndMergeAccountProbeExtra(
 		return nil, err
 	}
 
-    var oldCreds map[string]any
-    if len(currentTurnStateCredentials)>0 {if err:=json.Unmarshal(currentTurnStateCredentials,&oldCreds);err!=nil{return nil,err}}
-    credentialText:=func(m map[string]any,k string)string{v,_:=m[k].(string);return strings.TrimSpace(v)}
- turnStateSameOwner:=credentialText(oldCreds,"chatgpt_account_id")==credentialText(account.Credentials,"chatgpt_account_id") && credentialText(oldCreds,"chatgpt_user_id")==credentialText(account.Credentials,"chatgpt_user_id")
+	var oldCreds map[string]any
+	if len(currentTurnStateCredentials) > 0 {
+		if err := json.Unmarshal(currentTurnStateCredentials, &oldCreds); err != nil {
+			return nil, err
+		}
+	}
+	credentialText := func(m map[string]any, k string) string { v, _ := m[k].(string); return strings.TrimSpace(v) }
+	turnStateSameOwner := credentialText(oldCreds, "chatgpt_account_id") == credentialText(account.Credentials, "chatgpt_account_id") && credentialText(oldCreds, "chatgpt_user_id") == credentialText(account.Credentials, "chatgpt_user_id")
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
 	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary, service.CodexTurnStateHuntKey: currentTurnStateHunt} {
 		delete(extra, key)
@@ -2951,7 +2955,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		return 0, nil
 	}
 	updates.Extra = stripCodexFingerprintSeedFromExtraUpdate(updates.Extra)
- updates.Extra = stripCodexTurnStateManagedExtra(updates.Extra)
+	updates.Extra = stripCodexTurnStateManagedExtra(updates.Extra)
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)

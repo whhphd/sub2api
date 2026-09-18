@@ -588,20 +588,20 @@ type RateLimit429CooldownSettings struct {
 // OpenAIOAuthRuntimeSettings contains the global OAuth runtime policies used by
 // the OpenAI-compatible gateway, including Grok-specific behavior switches.
 type OpenAIOAuthRuntimeSettings struct {
- TurnStateHunter TurnStateHunterSettings `json:"openai_oauth_turn_state_hunter"`
-	TurnStateAutoEnabled                      bool `json:"openai_oauth_turn_state_auto_enabled"`
-	CodexFingerprintEnhancementEnabled        bool `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
-	SafePreOutputOverloadRetryEnabled         bool `json:"safe_pre_output_overload_retry_enabled"`
-	PlanGatedModelCooldownEnabled             bool `json:"plan_gated_model_cooldown_enabled"`
-	OpenAIRateLimitSameAccountRetryEnabled    bool `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
-	OpenAIRateLimitProxyRotationEnabled       bool `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
-	OpenAIAutoResetCreditGlobalEnabled        bool `json:"openai_oauth_auto_reset_credit_global_enabled"`
-	GrokOAuthForbiddenSameAccountRetryEnabled bool `json:"grok_oauth_forbidden_same_account_retry_enabled"`
+	TurnStateHunter                           TurnStateHunterSettings `json:"openai_oauth_turn_state_hunter"`
+	TurnStateAutoEnabled                      bool                    `json:"openai_oauth_turn_state_auto_enabled"`
+	CodexFingerprintEnhancementEnabled        bool                    `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
+	SafePreOutputOverloadRetryEnabled         bool                    `json:"safe_pre_output_overload_retry_enabled"`
+	PlanGatedModelCooldownEnabled             bool                    `json:"plan_gated_model_cooldown_enabled"`
+	OpenAIRateLimitSameAccountRetryEnabled    bool                    `json:"openai_oauth_rate_limit_same_account_retry_enabled"`
+	OpenAIRateLimitProxyRotationEnabled       bool                    `json:"openai_oauth_rate_limit_proxy_rotation_enabled"`
+	OpenAIAutoResetCreditGlobalEnabled        bool                    `json:"openai_oauth_auto_reset_credit_global_enabled"`
+	GrokOAuthForbiddenSameAccountRetryEnabled bool                    `json:"grok_oauth_forbidden_same_account_retry_enabled"`
 }
 
 func DefaultOpenAIOAuthRuntimeSettings(_ bool) *OpenAIOAuthRuntimeSettings {
 	return &OpenAIOAuthRuntimeSettings{
- TurnStateHunter:DefaultTurnStateHunterSettings(),		SafePreOutputOverloadRetryEnabled:         false,
+		TurnStateHunter: DefaultTurnStateHunterSettings(), SafePreOutputOverloadRetryEnabled: false,
 		PlanGatedModelCooldownEnabled:             true,
 		OpenAIRateLimitSameAccountRetryEnabled:    false,
 		OpenAIRateLimitProxyRotationEnabled:       false,
@@ -615,7 +615,7 @@ func cloneOpenAIOAuthRuntimeSettings(settings *OpenAIOAuthRuntimeSettings) *Open
 		return DefaultOpenAIOAuthRuntimeSettings(false)
 	}
 	cloned := *settings
- cloned.TurnStateHunter=settings.TurnStateHunter.clone()
+	cloned.TurnStateHunter = settings.TurnStateHunter.clone()
 	return &cloned
 }
 

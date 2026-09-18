@@ -207,7 +207,9 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 		profile = service.HTTPUpstreamProfileFromContext(req.Context())
 	}
 
-    if service.HTTPUpstreamFreshConnection(req.Context()) { return s.doFreshUpstream(req,proxyURL,accountConcurrency,profile) }
+	if service.HTTPUpstreamFreshConnection(req.Context()) {
+		return s.doFreshUpstream(req, proxyURL, accountConcurrency, profile)
+	}
 	// 获取或创建对应的客户端，并标记请求占用
 	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
 	if err != nil {
@@ -1557,23 +1559,36 @@ func (d *decompressedBody) Close() error {
 
 // Ported from KlN klno.12 2916a74b3; also covers reuse/eviction cache-key logs.
 func proxyKeyForLog(value string) string {
- if value == "" || value == directProxyKey { return "direct" }
- u, err := url.Parse(value)
- if err != nil || u.Host == "" { return "invalid" }
- return u.Scheme+"://"+u.Host
+	if value == "" || value == directProxyKey {
+		return "direct"
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return "invalid"
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 // A dedicated transport guarantees a new CONNECT even when a business request
 // already owns a cached tunnel. No shared protocol-health state is changed.
-func (s *httpUpstreamService) doFreshUpstream(req *http.Request, proxyURL string, concurrency int, profile service.HTTPUpstreamProfile)(*http.Response,error){
- proxyKey,parsed,err:=normalizeProxyURL(proxyURL);if err!=nil{return nil,err}
- settings:=s.applyProfilePoolSettings(s.resolvePoolSettings(s.getIsolationMode(),concurrency),profile)
- transport,err:=buildUpstreamTransport(settings,parsed,s.resolveProtocolMode(profile,proxyKey,parsed));if err!=nil{return nil,err}
- transport.DisableKeepAlives=true
- client:=s.httpClientForUpstreamRequest(&http.Client{Transport:transport},req)
- resp,err:=servertiming.Do(client,req)
- if err!=nil{transport.CloseIdleConnections();return nil,err}
- decompressResponseBody(resp)
- resp.Body=wrapTrackedBody(resp.Body,transport.CloseIdleConnections)
- return resp,nil
+func (s *httpUpstreamService) doFreshUpstream(req *http.Request, proxyURL string, concurrency int, profile service.HTTPUpstreamProfile) (*http.Response, error) {
+	proxyKey, parsed, err := normalizeProxyURL(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	settings := s.applyProfilePoolSettings(s.resolvePoolSettings(s.getIsolationMode(), concurrency), profile)
+	transport, err := buildUpstreamTransport(settings, parsed, s.resolveProtocolMode(profile, proxyKey, parsed))
+	if err != nil {
+		return nil, err
+	}
+	transport.DisableKeepAlives = true
+	client := s.httpClientForUpstreamRequest(&http.Client{Transport: transport}, req)
+	resp, err := servertiming.Do(client, req)
+	if err != nil {
+		transport.CloseIdleConnections()
+		return nil, err
+	}
+	decompressResponseBody(resp)
+	resp.Body = wrapTrackedBody(resp.Body, transport.CloseIdleConnections)
+	return resp, nil
 }
