@@ -139,13 +139,14 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 		return service.ErrAccountNilInput
 	}
 
+	account.Extra = stripCodexTurnStateManagedExtra(account.Extra)
 	builder := client.Account.Create().
 		SetName(account.Name).
 		SetNillableNotes(account.Notes).
 		SetPlatform(account.Platform).
 		SetType(account.Type).
 		SetCredentials(normalizeJSONMap(account.Credentials)).
-		SetExtra(normalizeJSONMap(account.Extra)).
+		SetExtra(stripCodexTurnStateManagedExtra(normalizeJSONMap(account.Extra))).
 		SetConcurrency(account.Concurrency).
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
@@ -649,7 +650,10 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
 			extra -> 'ollama_cloud_usage_snapshot',
-			extra -> 'upstream_balance'
+			extra -> 'upstream_balance',
+ extra -> 'openai_turn_state_pool',
+ extra -> 'openai_turn_state_observed',
+ extra -> 'openai_turn_state_summary'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -676,6 +680,9 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaAutoRefresh     []byte
 		currentOllamaSnapshot        []byte
 		currentBalanceSnapshot       []byte
+		currentTurnStatePool         []byte
+		currentTurnStateObservation  []byte
+		currentTurnStateSummary      []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -688,6 +695,7 @@ func lockAndMergeAccountProbeExtra(
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
 		&currentBalanceSnapshot,
+		&currentTurnStatePool, &currentTurnStateObservation, &currentTurnStateSummary,
 	); err != nil {
 		return nil, err
 	}
@@ -696,6 +704,18 @@ func lockAndMergeAccountProbeExtra(
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
+	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary} {
+		delete(extra, key)
+		if len(raw) > 0 {
+			var value any
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return nil, err
+			}
+			if value != nil {
+				extra[key] = value
+			}
+		}
+	}
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,

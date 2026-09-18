@@ -769,6 +769,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			firstClientMessage = aliasedBody
 		}
 	}
+	if c != nil {
+		c.Set("callai_turn_state_ws", true)
+	}
 	turnState := ""
 	turnMetadata := ""
 	if c != nil {

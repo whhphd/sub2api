@@ -871,7 +871,7 @@ func parseOpenAIOAuthRuntimeSettings(value string) (*OpenAIOAuthRuntimeSettings,
 // optional settings preserve call compatibility: index 0 is OpenAI OAuth 429
 // retry, index 1 is Grok OAuth 403 retry, index 2 is short 429 proxy rotation,
 // index 3 globally enables automatic reset-credit use, and index 4 enables
-// Codex fingerprint enhancement.
+// Codex fingerprint enhancement. Index 5 enables automatic turn-state takeover.
 func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	ctx context.Context,
 	safePreOutputOverloadRetryEnabled *bool,
@@ -886,7 +886,17 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 	proxyRotationProvided := len(sameAccountRetrySettings) > 2 && sameAccountRetrySettings[2] != nil
 	autoResetCreditGlobalProvided := len(sameAccountRetrySettings) > 3 && sameAccountRetrySettings[3] != nil
 	enhancementProvided := len(sameAccountRetrySettings) > 4 && sameAccountRetrySettings[4] != nil
-	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided && !proxyRotationProvided && !autoResetCreditGlobalProvided && !enhancementProvided {
+	turnStateProvided := len(sameAccountRetrySettings) > 5 && sameAccountRetrySettings[5] != nil
+	if turnStateProvided && *sameAccountRetrySettings[5] {
+		if s.cfg == nil || !s.cfg.Totp.EncryptionKeyConfigured {
+			return nil, fmt.Errorf("turn-state auto requires a configured AES encryption key")
+		}
+		key, err := hex.DecodeString(s.cfg.Totp.EncryptionKey)
+		if err != nil || len(key) != 32 {
+			return nil, fmt.Errorf("turn-state auto requires a valid AES encryption key")
+		}
+	}
+	if safePreOutputOverloadRetryEnabled == nil && planGatedModelCooldownEnabled == nil && !rateLimitSameAccountRetryProvided && !grokForbiddenSameAccountRetryProvided && !proxyRotationProvided && !autoResetCreditGlobalProvided && !enhancementProvided && !turnStateProvided {
 		return nil, fmt.Errorf("at least one OpenAI OAuth runtime setting must be provided")
 	}
 
@@ -921,6 +931,9 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimeSettings(
 		}
 		if autoResetCreditGlobalProvided {
 			current.OpenAIAutoResetCreditGlobalEnabled = *sameAccountRetrySettings[3]
+		}
+		if turnStateProvided {
+			current.TurnStateAutoEnabled = *sameAccountRetrySettings[5]
 		}
 		if enhancementProvided && proxyRotationProvided && *sameAccountRetrySettings[4] && *sameAccountRetrySettings[2] {
 			return nil, fmt.Errorf("cannot enable both Codex fingerprint enhancement and short-rate-limit proxy rotation")

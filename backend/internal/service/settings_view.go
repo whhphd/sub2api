@@ -588,6 +588,7 @@ type RateLimit429CooldownSettings struct {
 // OpenAIOAuthRuntimeSettings contains the global OAuth runtime policies used by
 // the OpenAI-compatible gateway, including Grok-specific behavior switches.
 type OpenAIOAuthRuntimeSettings struct {
+	TurnStateAutoEnabled                      bool `json:"openai_oauth_turn_state_auto_enabled"`
 	CodexFingerprintEnhancementEnabled        bool `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
 	SafePreOutputOverloadRetryEnabled         bool `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled             bool `json:"plan_gated_model_cooldown_enabled"`

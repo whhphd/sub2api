@@ -785,7 +785,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 异步执行，读已定稿的身份头，不改本请求。
 	s.scheduleCodexSideCalls(c, account, req)
 
-	return req, nil
+	return s.bindTurnStateAttempt(req, c, account, body), nil
 }
 
 func stripOpenAILegacyResponsesBeta(headers http.Header) {

@@ -64,6 +64,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 	payload := s.buildOpenAIWSCreatePayload(reqBody, account)
 	payloadStrategy, removedKeys := applyOpenAIWSRetryPayloadStrategy(payload, attempt)
+	if c != nil {
+		c.Set("callai_turn_state_ws", true)
+	}
 	turnState := ""
 	turnMetadata := ""
 	if c != nil && c.Request != nil {

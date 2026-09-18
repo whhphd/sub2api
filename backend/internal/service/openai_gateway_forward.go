@@ -1590,7 +1590,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// 异步执行，读已定稿的身份头，不改本请求。
 	s.scheduleCodexSideCalls(c, account, req)
 
-	return req, nil
+	return s.bindTurnStateAttempt(req, c, account, body), nil
 }
 
 // codexIdentityOverrideUA 返回账号级显式配置的出站 User-Agent，供强制统一身份时作为覆写来源。

@@ -539,6 +539,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 	useHTTPBridge := forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID)
 	// 客户端回带的 turn-state：已知由其他账号铸造（failover 换号）则剥离。
+	if c != nil {
+		c.Set("callai_turn_state_ws", true)
+	}
 	turnState := s.guardOpenAICodexTurnStateValue(c, account, c.GetHeader(openAIWSTurnStateHeader))
 	// clientTurnState 只保存"客户端自己持有的值"，双开的帧内只承载它：真客户端的 turn_state
 	// 是每轮新建的 OnceLock（core/src/client.rs:292、:522-526），只可能来自本轮上游的

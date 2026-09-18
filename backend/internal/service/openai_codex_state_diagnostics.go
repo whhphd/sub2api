@@ -282,6 +282,7 @@ func (s *OpenAIGatewayService) observeCodexHTTPAttempt(req *http.Request, proxyU
 // Reader observation is bounded and fail-open. It returns exactly the bytes and
 // errors produced by the original body. Close and Read may run concurrently.
 type codexDiagnosticBody struct {
+	inspectError func([]byte)
 	io.ReadCloser
 	mu             sync.Mutex
 	ctx            context.Context
@@ -381,6 +382,9 @@ func (b *codexDiagnosticBody) consumeLine() {
 }
 
 func (b *codexDiagnosticBody) observeJSON(data []byte) {
+	if b.inspectError != nil {
+		b.inspectError(data)
+	}
 	if !gjson.ValidBytes(data) {
 		return
 	}
@@ -417,6 +421,9 @@ func (b *codexDiagnosticBody) finishLocked(err error) {
 		b.eventData = nil
 	}
 	if !b.sse {
+		if b.inspectError != nil {
+			b.inspectError(b.buf)
+		}
 		b.errorClass = diagnosticErrorClass(b.status, b.buf)
 	}
 	if b.errorClass == "" {

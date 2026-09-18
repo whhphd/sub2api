@@ -164,6 +164,7 @@ func (h *SettingHandler) GetOpenAIOAuthRuntimeSettings(c *gin.Context) {
 // UpdateOpenAIOAuthRuntimeSettingsRequest supports independent saves from the
 // the System Settings cards. Pointer fields distinguish omission from false.
 type UpdateOpenAIOAuthRuntimeSettingsRequest struct {
+	TurnStateAutoEnabled                 *bool `json:"openai_oauth_turn_state_auto_enabled"`
 	CodexFingerprintEnhancementEnabled   *bool `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
 	SafePreOutputOverloadRetryEnabled    *bool `json:"safe_pre_output_overload_retry_enabled"`
 	PlanGatedModelCooldownEnabled        *bool `json:"plan_gated_model_cooldown_enabled"`
@@ -191,6 +192,7 @@ func (h *SettingHandler) UpdateOpenAIOAuthRuntimeSettings(c *gin.Context) {
 		req.RateLimitProxyRotationEnabled,
 		req.AutoResetCreditGlobalEnabled,
 		req.CodexFingerprintEnhancementEnabled,
+		req.TurnStateAutoEnabled,
 	)
 	if err != nil {
 		response.BadRequest(c, err.Error())
