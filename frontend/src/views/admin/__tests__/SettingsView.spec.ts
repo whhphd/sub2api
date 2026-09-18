@@ -1705,6 +1705,17 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).not.toHaveBeenCalled();
   });
 
+  it("saves global turn-state takeover without changing fingerprint or proxy flags", async () => {
+    getOpenAIOAuthRuntimeSettings.mockResolvedValue({openai_oauth_turn_state_auto_enabled:false,openai_oauth_codex_fingerprint_enhancement_enabled:true,openai_oauth_rate_limit_proxy_rotation_enabled:false});
+    updateOpenAIOAuthRuntimeSettings.mockResolvedValue({openai_oauth_turn_state_auto_enabled:true,openai_oauth_codex_fingerprint_enhancement_enabled:true,openai_oauth_rate_limit_proxy_rotation_enabled:false});
+    const wrapper=mountView();await flushPromises();await openGatewayTab(wrapper);
+    await wrapper.get('[data-testid="turn-state-auto-toggle"]').setValue(true);
+    await wrapper.get('[data-testid="turn-state-auto-save"]').trigger("click");await flushPromises();
+    expect(updateOpenAIOAuthRuntimeSettings).toHaveBeenCalledWith({openai_oauth_turn_state_auto_enabled:true});
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect((wrapper.get('[data-testid="openai-oauth-codex-fingerprint-enhancement-toggle"]').element as HTMLInputElement).checked).toBe(true);
+  });
+
   it("saves fingerprint enhancement and reflects both server policy flags", async () => {
     getOpenAIOAuthRuntimeSettings.mockResolvedValue({openai_oauth_codex_fingerprint_enhancement_enabled:false,openai_oauth_rate_limit_proxy_rotation_enabled:true});
     updateOpenAIOAuthRuntimeSettings.mockResolvedValue({openai_oauth_codex_fingerprint_enhancement_enabled:true,openai_oauth_rate_limit_proxy_rotation_enabled:false});

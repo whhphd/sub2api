@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -15,6 +17,20 @@ import (
 
 type openAIOAuthRuntimeHandlerRepo struct {
 	values map[string]string
+}
+
+func TestSettingHandlerTurnStateGlobalSwitchIsIndependent(t *testing.T) {
+	h, repo := newOpenAIOAuthRuntimeHandler()
+	h.settingService = service.NewSettingService(repo, &config.Config{Totp: config.TotpConfig{EncryptionKeyConfigured: true, EncryptionKey: strings.Repeat("42", 32)}})
+	repo.values[service.SettingKeyOpenAIOAuthRuntimeSettings] = `{"openai_oauth_codex_fingerprint_enhancement_enabled":true}`
+	r := performOpenAIOAuthRuntimeRequest(t, h.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{"openai_oauth_turn_state_auto_enabled": true})
+	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
+	settings := decodeOpenAIOAuthRuntimeResponse(t, r)
+	require.True(t, settings.TurnStateAutoEnabled)
+	require.True(t, settings.CodexFingerprintEnhancementEnabled)
+	r = performOpenAIOAuthRuntimeRequest(t, h.UpdateOpenAIOAuthRuntimeSettings, http.MethodPatch, map[string]any{"openai_oauth_turn_state_auto_enabled": false})
+	require.Equal(t, http.StatusOK, r.Code)
+	require.False(t, decodeOpenAIOAuthRuntimeResponse(t, r).TurnStateAutoEnabled)
 }
 
 func newOpenAIOAuthRuntimeHandlerRepo() *openAIOAuthRuntimeHandlerRepo {
