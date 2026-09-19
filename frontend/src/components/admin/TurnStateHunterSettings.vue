@@ -28,6 +28,8 @@
       <p class="text-xs text-gray-500">{{ t('admin.settings.turnStateHunter.usageHint') }}</p>
       <p v-if="form.usage_accounting_enabled && !form.usage_api_key_id" role="status" class="text-sm text-amber-600">{{ t('admin.settings.turnStateHunter.usageMissing') }}</p>
       <p class="text-xs text-gray-500">{{ t('admin.settings.turnStateHunter.holdHint') }}</p>
+      <label class="block text-sm">{{ t('admin.settings.turnStateHunter.holdExclusions') }}<input v-model="excludedModelsText" class="input mt-1 w-full" data-testid="hunter-hold-exclusions" placeholder="gpt-5.6-terra" /></label>
+      <p class="text-xs text-gray-500">{{ t('admin.settings.turnStateHunter.holdExclusionsHint') }}</p>
       <div class="flex justify-end"><button type="button" class="btn btn-primary" data-testid="hunter-save" @click="save">{{ saving ? t('common.saving') : t('common.save') }}</button></div>
     </fieldset>
   </div>
@@ -44,8 +46,9 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 const { t } = useI18n()
 const app = useAppStore()
 const loading = ref(true), saving = ref(false), loadError = ref(''), autoEnabled = ref(false)
+const excludedModelsText = ref('')
 const modelsText = ref(''), proxySearch = ref(''), proxies = ref<Proxy[]>([])
-const form = reactive<TurnStateHunterConfig>({ enabled: false, models: [], proxy_ids: [], auto_models: false, rotating_proxy_ids: [], hold_when_degraded: false, usage_accounting_enabled: true, usage_api_key_id: 0, max_per_hour: 300, per_account_max_per_hour: 30, gap_seconds: 20, lead_minutes: 10, retry_minutes: 10, idle_minutes: 60, reasoning_effort: 'high' })
+const form = reactive<TurnStateHunterConfig>({ enabled: false, models: [], hold_excluded_models: ['gpt-5.6-terra'], proxy_ids: [], auto_models: false, rotating_proxy_ids: [], hold_when_degraded: false, usage_accounting_enabled: true, usage_api_key_id: 0, max_per_hour: 300, per_account_max_per_hour: 30, gap_seconds: 20, lead_minutes: 10, retry_minutes: 10, idle_minutes: 60, reasoning_effort: 'high' })
 const numericFields = [
   { key: 'max_per_hour', min: 1, max: undefined }, { key: 'per_account_max_per_hour', min: 1, max: undefined },
   { key: 'gap_seconds', min: 1, max: 600 }, { key: 'lead_minutes', min: 1, max: 55 },
@@ -61,21 +64,22 @@ async function load() {
     const [settings, list] = await Promise.all([adminAPI.settings.getOpenAIOAuthRuntimeSettings(), adminAPI.proxies.getAll()])
     autoEnabled.value = settings.openai_oauth_turn_state_auto_enabled ?? false
     if (settings.openai_oauth_turn_state_hunter) Object.assign(form, settings.openai_oauth_turn_state_hunter)
-    modelsText.value = form.models.join(', '); proxies.value = list
+    excludedModelsText.value = (form.hold_excluded_models ?? []).join(', '); modelsText.value = form.models.join(', '); proxies.value = list
   } catch (e) { loadError.value = extractApiErrorMessage(e, t('admin.settings.turnStateHunter.loadFailed')) }
   finally { loading.value = false }
 }
 async function save() {
+ const excluded = [...new Set(excludedModelsText.value.split(/[,，\n]/).map(v => v.trim().toLowerCase()).filter(Boolean))]
   const models = [...new Set(modelsText.value.split(/[,，\n]/).map(v => v.trim().toLowerCase()).filter(Boolean))]
   const invalidNumbers = numericFields.some(f => !Number.isSafeInteger(form[f.key]) || form[f.key] < f.min || (f.max !== undefined && form[f.key] > f.max)) || form.idle_minutes === 0
-  if (models.length > 8 || !Number.isSafeInteger(form.usage_api_key_id ?? 0) || (form.usage_api_key_id ?? 0) < 0 || form.proxy_ids.length > 64 || (form.rotating_proxy_ids ?? []).some(id => !form.proxy_ids.includes(id)) || invalidNumbers || (form.enabled && ((!models.length && !form.auto_models) || !form.proxy_ids.length || missingProxyIDs.value.length))) {
+  if (excluded.length > 64 || models.length > 8 || !Number.isSafeInteger(form.usage_api_key_id ?? 0) || (form.usage_api_key_id ?? 0) < 0 || form.proxy_ids.length > 64 || (form.rotating_proxy_ids ?? []).some(id => !form.proxy_ids.includes(id)) || invalidNumbers || (form.enabled && ((!models.length && !form.auto_models) || !form.proxy_ids.length || missingProxyIDs.value.length))) {
     app.showError(t('admin.settings.turnStateHunter.invalid')); return
   }
   saving.value = true
   try {
-    const result = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({ openai_oauth_turn_state_hunter: { ...form, models, proxy_ids: [...form.proxy_ids], rotating_proxy_ids: [...(form.rotating_proxy_ids ?? [])] } })
+    const result = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({ openai_oauth_turn_state_hunter: { ...form, models, hold_excluded_models: excluded, proxy_ids: [...form.proxy_ids], rotating_proxy_ids: [...(form.rotating_proxy_ids ?? [])] } })
     if (result.openai_oauth_turn_state_hunter) Object.assign(form, result.openai_oauth_turn_state_hunter)
-    modelsText.value = form.models.join(', '); autoEnabled.value = result.openai_oauth_turn_state_auto_enabled ?? false
+    excludedModelsText.value = (form.hold_excluded_models ?? []).join(', '); modelsText.value = form.models.join(', '); autoEnabled.value = result.openai_oauth_turn_state_auto_enabled ?? false
     app.showSuccess(result.turn_state_hold_release?.complete ? t('admin.settings.turnStateHunter.released', { count: result.turn_state_hold_release.released }) : t('admin.settings.turnStateHunter.saved'))
   } catch (e) { app.showError(extractApiErrorMessage(e, t('admin.settings.turnStateHunter.saveFailed'))) }
   finally { saving.value = false }

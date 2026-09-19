@@ -233,6 +233,8 @@ hunterSummary: "Hunter reserved {count} probes this hour",hunterNext: "Next: {ti
         limited: 'Limited',
         rateLimited: 'Rate Limited',
         overloaded: 'Overloaded',
+        holdCompact: 'Waiting',
+        holdDetail: 'Only these models are paused. Other models keep their normal scheduling rules.',
         turnStateHold: 'Waiting for baseline candidate',
         turnStateHoldWaiting: 'Hunting a candidate for {model}',
         tempUnschedulable: 'Temp Unschedulable',

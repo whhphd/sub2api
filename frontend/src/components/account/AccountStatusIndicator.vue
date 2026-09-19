@@ -32,7 +32,7 @@
       </span>
     </template>
 
-    <span v-for="model in heldModels" :key="model" class="badge badge-warning text-xs" :title="t('admin.accounts.status.turnStateHoldWaiting', { model })">{{ model }} · {{ t('admin.accounts.status.turnStateHold') }}</span>
+    <ModelHoldBadge :models="heldModels" :account-id="account.id" />
     <!-- Error Info Indicator -->
     <div v-if="hasError && account.error_message" class="group/error relative">
       <svg
@@ -163,6 +163,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import ModelHoldBadge from './ModelHoldBadge.vue'
 import type { Account } from '@/types'
 import { formatCountdown, formatDateTime, formatDateTimeToMinute, formatCountdownWithSuffix, formatTime } from '@/utils/format'
 

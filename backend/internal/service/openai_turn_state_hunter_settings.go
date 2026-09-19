@@ -10,6 +10,7 @@ import (
 )
 
 type TurnStateHunterSettings struct {
+	HoldExcludedModels     []string `json:"hold_excluded_models"`
 	Enabled                bool     `json:"enabled"`
 	Models                 []string `json:"models"`
 	ProxyIDs               []int64  `json:"proxy_ids"`
@@ -28,15 +29,26 @@ type TurnStateHunterSettings struct {
 }
 
 func DefaultTurnStateHunterSettings() TurnStateHunterSettings {
-	return TurnStateHunterSettings{Models: []string{}, ProxyIDs: []int64{}, RotatingProxyIDs: []int64{}, MaxPerHour: 300, PerAccountMaxPerHour: 30, GapSeconds: 20, LeadMinutes: 10, RetryMinutes: 10, IdleMinutes: 60, ReasoningEffort: "high", UsageAccountingEnabled: true}
+	return TurnStateHunterSettings{HoldExcludedModels: []string{"gpt-5.6-terra"}, Models: []string{}, ProxyIDs: []int64{}, RotatingProxyIDs: []int64{}, MaxPerHour: 300, PerAccountMaxPerHour: 30, GapSeconds: 20, LeadMinutes: 10, RetryMinutes: 10, IdleMinutes: 60, ReasoningEffort: "high", UsageAccountingEnabled: true}
 }
 func (c TurnStateHunterSettings) clone() TurnStateHunterSettings {
 	c.Models = slices.Clone(c.Models)
+	c.HoldExcludedModels = slices.Clone(c.HoldExcludedModels)
 	c.ProxyIDs = slices.Clone(c.ProxyIDs)
 	c.RotatingProxyIDs = slices.Clone(c.RotatingProxyIDs)
 	return c
 }
 func (c TurnStateHunterSettings) validate() error {
+	if len(c.HoldExcludedModels) > 64 {
+		return fmt.Errorf("at most 64 hold-exempt models")
+	}
+	exempt := map[string]bool{}
+	for _, m := range c.HoldExcludedModels {
+		if turnStateModel(m) == "" || m != turnStateModel(m) || exempt[m] {
+			return fmt.Errorf("hold-exempt models must be unique normalized model names")
+		}
+		exempt[m] = true
+	}
 	if len(c.Models) > 8 || len(c.ProxyIDs) > 64 || len(c.RotatingProxyIDs) > 64 {
 		return fmt.Errorf("hunter supports at most 8 models and 64 proxies")
 	}
@@ -96,4 +108,8 @@ func stripTurnStateRuntimeExtra(extra map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+func (c TurnStateHunterSettings) HoldExempt(model string) bool {
+	return slices.Contains(c.HoldExcludedModels, turnStateModel(model))
 }

@@ -1072,6 +1072,8 @@ export default {
   "holdHint": "Pause only the affected account/model when it has no usable baseline candidate and fail over; return 503 if none remain. Resume after a matching candidate is available. Saving the switch as off immediately releases these holds and refreshes scheduling caches. Other quota and fault cooldowns are retained. WebSockets remain unchanged.",
   "usageApiKey": "Probe billing API key ID (0 = no billing)",
   "usageAccounting": "Enable probe usage accounting",
+  "holdExclusions": "Models exempt from candidate holds (comma-separated)",
+  "holdExclusionsHint": "Exact upstream model names. Forward without candidates, inject when available, and keep hunting. Saving releases their candidate holds immediately. Real quota limits and credential faults remain enforced.",
   "holdWhenDegraded": "Pause the affected model when candidates are missing",
   "invalid": "Check model/proxy counts and numeric ranges. Idle gate cannot be 0.",
   "saved": "Global hunter settings saved",
