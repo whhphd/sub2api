@@ -1000,15 +1000,18 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hun
 		if s.onUpdate != nil {
 			s.onUpdate()
 		}
-  result := cloneOpenAIOAuthRuntimeSettings(normalized)
-  if (hunter != nil || turnStateProvided) && (!result.TurnStateAutoEnabled || !result.TurnStateHunter.Enabled || !result.TurnStateHunter.HoldWhenDegraded) && s.turnStateHoldReleaser != nil {
-   releaseCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-   count, releaseErr := s.turnStateHoldReleaser.ReleaseTurnStateHoldsIfDisabled(releaseCtx)
-   done()
-   if releaseErr != nil { return nil, fmt.Errorf("settings saved, but immediate turn-state hold release/cache refresh failed; save OFF again to retry: %w", releaseErr) }
-   result.TurnStateHoldRelease = &TurnStateHoldReleaseResult{Released:count,Complete:true}
-  }
-  return result,nil
+		result := cloneOpenAIOAuthRuntimeSettings(normalized)
+		if (hunter != nil || turnStateProvided) && (!result.TurnStateAutoEnabled || !result.TurnStateHunter.Enabled || !result.TurnStateHunter.HoldWhenDegraded) && s.turnStateHoldReleaser != nil {
+			releaseCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+			count, releaseErr := s.turnStateHoldReleaser.ReleaseTurnStateHoldsIfDisabled(releaseCtx)
+ if releaseErr == nil && s.turnStateSchedulerRefresh != nil {releaseErr=s.turnStateSchedulerRefresh(releaseCtx)}
+			done()
+			if releaseErr != nil {
+				return nil, fmt.Errorf("settings saved, but immediate turn-state hold release/cache refresh failed; save OFF again to retry: %w", releaseErr)
+			}
+			result.TurnStateHoldRelease = &TurnStateHoldReleaseResult{Released: count, Complete: true}
+		}
+		return result, nil
 	}
 	return nil, fmt.Errorf("runtime settings changed concurrently; retry the update")
 }

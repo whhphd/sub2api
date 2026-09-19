@@ -1731,3 +1731,19 @@ func (l *fallbackLimiter) Allow() bool {
 	l.count++
 	return true
 }
+
+// RefreshOpenAIHunterScheduling restores group membership synchronously after a
+// hold is disabled, including buckets that dropped every held account earlier.
+func(s *SchedulerSnapshotService)RefreshOpenAIHunterScheduling(ctx context.Context) error {
+ accounts,err:=s.accountRepo.ListByPlatform(ctx,PlatformOpenAI);if err!=nil{return err}
+ groups:=map[int64]bool{0:true};for _,a:=range accounts{for _,id:=range a.GroupIDs{groups[id]=true}}
+ ids:=make([]int64,0,len(groups));for id:=range groups{ids=append(ids,id)};sort.Slice(ids,func(i,j int)bool{return ids[i]<ids[j]})
+ buckets:=s.bucketsForPlatform(PlatformOpenAI,ids,nil)
+ for {
+  tasks,e:=s.prepareBucketWriteTasks(ctx,buckets);if e!=nil{return e}
+  e=s.rebuildPreparedBucketTasks(ctx,tasks,"hunter_hold_disabled",true,newSchedulerAccountQueryCache(tasks))
+  if e==nil{return nil}
+  if !errors.Is(e,ErrSchedulerBucketRebuildBusy)&&!errors.Is(e,ErrSchedulerBucketWriteFenced){return e}
+  timer:=time.NewTimer(50*time.Millisecond);select{case <-ctx.Done():timer.Stop();return ctx.Err();case <-timer.C:}
+ }
+}

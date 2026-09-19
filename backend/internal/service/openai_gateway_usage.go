@@ -39,7 +39,7 @@ type OpenAIRecordUsageInput struct {
 	PricingAt time.Time
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
 	CyberBlocked bool
-	RequestType RequestType
+	RequestType  RequestType
 	// NativeCompactionV2 is an orthogonal semantic flag captured by the
 	// Responses handler from stream=true + compaction_trigger. It never stores
 	// the request payload and does not replace the transport request type.

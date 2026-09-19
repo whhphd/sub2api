@@ -10,8 +10,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"sort"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,10 +48,18 @@ func (t *hunterTraffic) note(id int64, model string, now time.Time) {
 func (t *hunterTraffic) noteMinted(id int64, model string, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.minted == nil { t.minted = map[string]time.Time{} }
+	if t.minted == nil {
+		t.minted = map[string]time.Time{}
+	}
 	key := strconv.FormatInt(id, 10) + "\x00" + strings.ToLower(strings.TrimSpace(model))
-for k, at := range t.minted { if now.Sub(at) > 24*time.Hour { delete(t.minted,k) } }
- if len(t.minted)<16384 || !t.minted[key].IsZero() { t.minted[key]=now }
+	for k, at := range t.minted {
+		if now.Sub(at) > 24*time.Hour {
+			delete(t.minted, k)
+		}
+	}
+	if len(t.minted) < 16384 || !t.minted[key].IsZero() {
+		t.minted[key] = now
+	}
 }
 func (t *hunterTraffic) autoModels(id int64, since time.Time) []string {
 	t.mu.Lock()
@@ -59,12 +67,18 @@ func (t *hunterTraffic) autoModels(id int64, since time.Time) []string {
 	seen := map[string]bool{}
 	prefix := strconv.FormatInt(id, 10) + "\x00"
 	for key, at := range t.seen {
-		if !strings.HasPrefix(key, prefix) || !at.After(since) { continue }
+		if !strings.HasPrefix(key, prefix) || !at.After(since) {
+			continue
+		}
 		model := strings.TrimPrefix(key, prefix)
-		if !t.minted[prefix+model].IsZero() && !isOpenAIImageGenerationModel(model) { seen[model] = true }
+		if !t.minted[prefix+model].IsZero() && !isOpenAIImageGenerationModel(model) {
+			seen[model] = true
+		}
 	}
 	models := make([]string, 0, len(seen))
-	for model := range seen { models = append(models, model) }
+	for model := range seen {
+		models = append(models, model)
+	}
 	sort.Strings(models)
 	return models
 }
@@ -97,15 +111,26 @@ func sameHunterPolicy(a, b TurnStateHunterSettings) bool {
 }
 
 func (s *OpenAIGatewayService) hunterModelsForAccount(cfg TurnStateHunterSettings, accountID int64, now time.Time) []string {
-	if !cfg.AutoModels { return slices.Clone(cfg.Models) }
-	if cfg.IdleMinutes <= 0 { return s.turnStateTraffic.autoModels(accountID, now.Add(-24*time.Hour)) }
+	if !cfg.AutoModels {
+		return slices.Clone(cfg.Models)
+	}
+	if cfg.IdleMinutes <= 0 {
+		return s.turnStateTraffic.autoModels(accountID, now.Add(-24*time.Hour))
+	}
 	return s.turnStateTraffic.autoModels(accountID, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute))
 }
 
 func (s *OpenAIGatewayService) hunterManagesModel(cfg TurnStateHunterSettings, accountID int64, model string, now time.Time) bool {
-	if !cfg.Enabled {return false}; if !cfg.AutoModels { return cfg.hunts(model) }
+	if !cfg.Enabled {
+		return false
+	}
+	if !cfg.AutoModels {
+		return cfg.hunts(model)
+	}
 	for _, candidate := range s.hunterModelsForAccount(cfg, accountID, now) {
-		if candidate == strings.ToLower(strings.TrimSpace(model)) { return true }
+		if candidate == strings.ToLower(strings.TrimSpace(model)) {
+			return true
+		}
 	}
 	return false
 }
@@ -128,7 +153,10 @@ func openAITurnStateHuntProxyRotating(cfg TurnStateHunterSettings, p Proxy) bool
 	return within("1024proxy.io") && u != "" && !strings.Contains(u, "-sid-") && !strings.Contains(u, "-t-")
 }
 
-type hunterUsageAPIKeys interface { APIKeyQuotaUpdater; GetByID(context.Context,int64)(*APIKey,error) }
+type hunterUsageAPIKeys interface {
+	APIKeyQuotaUpdater
+	GetByID(context.Context, int64) (*APIKey, error)
+}
 
 type OpenAITurnStateHunterService struct {
 	gateway     *OpenAIGatewayService
@@ -136,7 +164,7 @@ type OpenAITurnStateHunterService struct {
 	proxies     ProxyRepository
 	prober      IPAPIProxyProber
 	apiKeys     hunterUsageAPIKeys
- recordUsage func(context.Context,*OpenAIRecordUsageInput) error
+	recordUsage func(context.Context, *OpenAIRecordUsageInput) error
 	leader      LeaderLockCache
 	owner       string
 	cursor      int64
@@ -151,8 +179,8 @@ type OpenAITurnStateHunterService struct {
 }
 
 func NewOpenAITurnStateHunterService(g *OpenAIGatewayService, a AccountRepository, p ProxyRepository, prober IPAPIProxyProber, leader LeaderLockCache) *OpenAITurnStateHunterService {
- ctx,cancel:=context.WithCancel(context.Background())
- return &OpenAITurnStateHunterService{gateway:g,accounts:a,proxies:p,prober:prober,leader:leader,owner:uuid.NewString(),ctx:ctx,cancel:cancel,now:time.Now}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &OpenAITurnStateHunterService{gateway: g, accounts: a, proxies: p, prober: prober, leader: leader, owner: uuid.NewString(), ctx: ctx, cancel: cancel, now: time.Now}
 }
 
 func (s *OpenAITurnStateHunterService) Start() {
@@ -218,7 +246,12 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 		s.log(nil, "", "hunter_error", "accounts_unavailable", nil)
 		return
 	}
- for i := range accounts { s.syncHold(ctx,&accounts[i]) }; if !cfg.Enabled { return }
+	for i := range accounts {
+		s.syncHold(ctx, &accounts[i])
+	}
+	if !cfg.Enabled {
+		return
+	}
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].ID < accounts[j].ID })
 	// One bounded probe sequence per account per pass prevents budget monopolization.
 	for len(accounts) > 0 && ctx.Err() == nil {
@@ -335,7 +368,9 @@ func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg Tu
 			return false, err
 		}
 		if swapped {
-   if len(reservedWindow)>0 && reservedWindow[0]!=nil { *reservedWindow[0]=st.Start }
+			if len(reservedWindow) > 0 && reservedWindow[0] != nil {
+				*reservedWindow[0] = st.Start
+			}
 			return true, nil
 		}
 	}
@@ -357,7 +392,10 @@ func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context, reserv
 		if err != nil {
 			return err
 		}
-		var st struct { Start time.Time `json:"start"`; Count int `json:"count"` }
+		var st struct {
+			Start time.Time `json:"start"`
+			Count int       `json:"count"`
+		}
 		if err := json.Unmarshal([]byte(raw), &st); err != nil {
 			return err
 		}
@@ -367,8 +405,12 @@ func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context, reserv
 		st.Count--
 		next, _ := json.Marshal(st)
 		updated, err := cas.CompareAndSwap(op, hunterBudgetKey, raw, string(next))
-		if err != nil { return err }
-		if updated { return nil }
+		if err != nil {
+			return err
+		}
+		if updated {
+			return nil
+		}
 	}
 	return errors.New("budget contention")
 }
@@ -396,8 +438,10 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 	}
 	models := []string{}
 	configuredModels := s.gateway.hunterModelsForAccount(cfg, a.ID, now)
- held := openAITurnStateHeldModel(a,now)
- if cfg.HoldWhenDegraded && held!="" && (cfg.AutoModels || cfg.hunts(held)) && !isOpenAIImageGenerationModel(held) && !slices.Contains(configuredModels,held) { configuredModels=append(configuredModels,held) }
+	held := openAITurnStateHeldModel(a, now)
+	if cfg.HoldWhenDegraded && held != "" && (cfg.AutoModels || cfg.hunts(held)) && !isOpenAIImageGenerationModel(held) && !slices.Contains(configuredModels, held) {
+		configuredModels = append(configuredModels, held)
+	}
 	active := false
 	for _, model := range configuredModels {
 		if model != held && cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
@@ -532,7 +576,7 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 			return spent, false
 		}
 		var reservedWindow time.Time
- allowed, err := s.reserveGlobal(ctx, cfg, &reservedWindow)
+		allowed, err := s.reserveGlobal(ctx, cfg, &reservedWindow)
 		if err != nil {
 			s.log(a, model, "hunter_storage_error", "budget_unavailable", nil)
 			return spent, true
@@ -644,7 +688,9 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	}
 	// Close before DB access; never wait for text generation to finish.
 	_ = resp.Body.Close()
- if cfg.UsageAccountingEnabled { defer func(){s.recordProbeUsage(op,a,model,cfg,req,resp.Header,result)}() }
+	if cfg.UsageAccountingEnabled {
+		defer func() { s.recordProbeUsage(op, a, model, cfg, req, resp.Header, result) }()
+	}
 	value := extractOpenAICodexTurnState(resp.Header)
 	if value == "" || len(value) > turnStateMaxBlob {
 		result.Error = "missing_or_oversize_state"
@@ -664,7 +710,7 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	attempt.Enabled = true
 	attempt.Probe = true
 	s.gateway.recordTurnStateObservation(ctx, attempt, value)
- s.syncHold(ctx,a)
+	s.syncHold(ctx, a)
 	return result
 }
 
@@ -672,7 +718,10 @@ func (s *OpenAITurnStateHunterService) recordProbeUsage(ctx context.Context, acc
 	if s == nil || !cfg.UsageAccountingEnabled || account == nil || req == nil || account.Platform != PlatformOpenAI {
 		return
 	}
- if s.apiKeys == nil || cfg.UsageAPIKeyID <= 0 { s.log(account,model,"hunter_usage_error","usage_not_configured",nil);return }
+	if s.apiKeys == nil || cfg.UsageAPIKeyID <= 0 {
+		s.log(account, model, "hunter_usage_error", "usage_not_configured", nil)
+		return
+	}
 	key, err := s.apiKeys.GetByID(ctx, cfg.UsageAPIKeyID)
 	if err != nil || key == nil || key.User == nil || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() || !key.User.IsActive() {
 		s.log(account, model, "hunter_usage_error", "usage_api_key_unavailable", map[string]any{"api_key_id": cfg.UsageAPIKeyID})
@@ -680,7 +729,10 @@ func (s *OpenAITurnStateHunterService) recordProbeUsage(ctx context.Context, acc
 	}
 	var subscription *UserSubscription
 	if key.Group != nil && key.Group.IsSubscriptionType() && key.GroupID != nil {
-		if s.gateway.userSubRepo==nil {s.log(account,model,"hunter_usage_error","usage_subscription_unavailable",nil);return}
+		if s.gateway.userSubRepo == nil {
+			s.log(account, model, "hunter_usage_error", "usage_subscription_unavailable", nil)
+			return
+		}
 		subscription, err = s.gateway.userSubRepo.GetActiveByUserIDAndGroupID(ctx, key.User.ID, *key.GroupID)
 		if err != nil || subscription == nil {
 			s.log(account, model, "hunter_usage_error", "usage_subscription_unavailable", map[string]any{"api_key_id": cfg.UsageAPIKeyID})
@@ -697,8 +749,10 @@ func (s *OpenAITurnStateHunterService) recordProbeUsage(ctx context.Context, acc
 		Duration: time.Duration(attempt.LatencyMs) * time.Millisecond,
 	}
 	record := s.gateway.RecordUsage
- if s.recordUsage != nil {record=s.recordUsage}
- err = record(ctx, &OpenAIRecordUsageInput{
+	if s.recordUsage != nil {
+		record = s.recordUsage
+	}
+	err = record(ctx, &OpenAIRecordUsageInput{
 		Result: result, APIKey: key, User: key.User, Account: account,
 		Subscription: subscription, InboundEndpoint: "turn-state-probe", UpstreamEndpoint: req.URL.Path,
 		UserAgent: req.Header.Get("User-Agent"), SessionID: req.Header.Get("session-id"),
@@ -712,10 +766,16 @@ func (s *OpenAITurnStateHunterService) recordProbeUsage(ctx context.Context, acc
 
 func openAITurnStateProbeInputTokens(model, effort string) int {
 	raw, err := json.Marshal(openAITurnStateProbeBody(model, effort, openAITurnStateProbeIdentity{}))
-	if err != nil { return 1 }
+	if err != nil {
+		return 1
+	}
 	var request openAIInputTokensCountRequest
-	if err := json.Unmarshal(raw, &request); err != nil { return 1 }
+	if err := json.Unmarshal(raw, &request); err != nil {
+		return 1
+	}
 	count, err := estimateOpenAIInputTokens(request)
-	if err != nil || count <= 0 { return 1 }
+	if err != nil || count <= 0 {
+		return 1
+	}
 	return count
 }

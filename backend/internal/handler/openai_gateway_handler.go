@@ -1740,9 +1740,13 @@ func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, 
 	}
 	if failoverErr != nil && failoverErr.Reason == service.OpenAITurnStateHoldReason {
 		status := failoverErr.ClientStatusCode
-		if status <= 0 { status = http.StatusServiceUnavailable }
+		if status <= 0 {
+			status = http.StatusServiceUnavailable
+		}
 		message := strings.TrimSpace(failoverErr.ClientMessage)
-		if message == "" { message = "account paused while the hunter looks for a healthy turn-state" }
+		if message == "" {
+			message = "account paused while the hunter looks for a healthy turn-state"
+		}
 		h.anthropicStreamingAwareError(c, status, "api_error", message, streamStarted)
 		return
 	}
@@ -3548,9 +3552,13 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	}
 	if failoverErr.Reason == service.OpenAITurnStateHoldReason {
 		status := failoverErr.ClientStatusCode
-		if status <= 0 { status = http.StatusServiceUnavailable }
+		if status <= 0 {
+			status = http.StatusServiceUnavailable
+		}
 		message := strings.TrimSpace(failoverErr.ClientMessage)
-		if message == "" { message = "account paused while the hunter looks for a healthy turn-state" }
+		if message == "" {
+			message = "account paused while the hunter looks for a healthy turn-state"
+		}
 		service.SetOpsUpstreamError(c, status, message, "")
 		h.handleStreamingAwareError(c, status, "server_error", message, streamStarted)
 		return

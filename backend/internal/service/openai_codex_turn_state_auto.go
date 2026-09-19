@@ -231,8 +231,8 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 		return
 	}
 	a.HoldModel = ""
- a.Injected = ""
- a.CandidateSource = ""
+	a.Injected = ""
+	a.CandidateSource = ""
 	a.StartedAt = time.Now()
 	if a.Probe {
 		return
@@ -275,7 +275,7 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 	candidate, found := pickTurnStateCandidate(pool, a.Model, time.Now())
 	if !found {
 		s.logTurnState(a, "skip", "no_live_candidate", nil)
-  s.holdTurnStateIfUnfilled(req, latest, policy)
+		s.holdTurnStateIfUnfilled(req, latest, policy)
 
 		return
 	}
@@ -320,7 +320,9 @@ func (s *OpenAIGatewayService) observeTurnStateHTTP(req *http.Request, resp *htt
 	if a == nil {
 		return
 	}
- if a.HoldModel != "" { return }
+	if a.HoldModel != "" {
+		return
+	}
 	if err != nil {
 		s.logTurnState(a, "transport_end", "transport_error", nil)
 		return
@@ -362,7 +364,7 @@ func (s *OpenAIGatewayService) recordTurnStateObservation(parent context.Context
 	maintain := a.Enabled && s.turnStateAutoEnabled(context.WithoutCancel(parent))
 	// Session state only follows natural (not injected) responses, matching klno.9.
 	if maintain && a.Injected == "" && !a.Probe {
-s.turnStateTraffic.noteMinted(a.AccountID, a.Model, time.Now())
+		s.turnStateTraffic.noteMinted(a.AccountID, a.Model, time.Now())
 		s.turnStateSessions.set(a.Session, !healthy, time.Now())
 	}
 	store, ok := s.accountRepo.(CodexTurnStateStore)

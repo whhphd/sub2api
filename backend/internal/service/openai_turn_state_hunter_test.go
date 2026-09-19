@@ -307,7 +307,9 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 			st := readOpenAITurnStateHuntState(latest)
 			nonTransport := 0
 			for _, status := range tc.statuses[:min(len(tc.statuses), calls)] {
-				if status != 0 { nonTransport++ }
+				if status != 0 {
+					nonTransport++
+				}
 			}
 			require.Equal(t, nonTransport, st.HourCount)
 			require.Len(t, st.Last, tc.calls)

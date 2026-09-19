@@ -10,21 +10,21 @@ import (
 )
 
 type TurnStateHunterSettings struct {
-	Enabled              bool     `json:"enabled"`
-	Models               []string `json:"models"`
-	ProxyIDs             []int64  `json:"proxy_ids"`
-	AutoModels           bool     `json:"auto_models,omitempty"`
-	RotatingProxyIDs     []int64  `json:"rotating_proxy_ids,omitempty"`
-	HoldWhenDegraded     bool     `json:"hold_when_degraded,omitempty"`
-	UsageAccountingEnabled bool   `json:"usage_accounting_enabled"`
-	UsageAPIKeyID        int64    `json:"usage_api_key_id,omitempty"`
-	MaxPerHour           int      `json:"max_per_hour"`
-	PerAccountMaxPerHour int      `json:"per_account_max_per_hour"`
-	GapSeconds           int      `json:"gap_seconds"`
-	LeadMinutes          int      `json:"lead_minutes"`
-	RetryMinutes         int      `json:"retry_minutes"`
-	IdleMinutes          int      `json:"idle_minutes"`
-	ReasoningEffort      string   `json:"reasoning_effort"`
+	Enabled                bool     `json:"enabled"`
+	Models                 []string `json:"models"`
+	ProxyIDs               []int64  `json:"proxy_ids"`
+	AutoModels             bool     `json:"auto_models,omitempty"`
+	RotatingProxyIDs       []int64  `json:"rotating_proxy_ids,omitempty"`
+	HoldWhenDegraded       bool     `json:"hold_when_degraded,omitempty"`
+	UsageAccountingEnabled bool     `json:"usage_accounting_enabled"`
+	UsageAPIKeyID          int64    `json:"usage_api_key_id,omitempty"`
+	MaxPerHour             int      `json:"max_per_hour"`
+	PerAccountMaxPerHour   int      `json:"per_account_max_per_hour"`
+	GapSeconds             int      `json:"gap_seconds"`
+	LeadMinutes            int      `json:"lead_minutes"`
+	RetryMinutes           int      `json:"retry_minutes"`
+	IdleMinutes            int      `json:"idle_minutes"`
+	ReasoningEffort        string   `json:"reasoning_effort"`
 }
 
 func DefaultTurnStateHunterSettings() TurnStateHunterSettings {
