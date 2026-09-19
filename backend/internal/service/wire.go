@@ -1069,9 +1069,9 @@ func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.
 	return aggregator
 }
 
-func ProvideOpenAITurnStateHunterService(gateway *OpenAIGatewayService, accounts AccountRepository, proxies ProxyRepository, prober ProxyExitInfoProber, leader LeaderLockCache) *OpenAITurnStateHunterService {
+func ProvideOpenAITurnStateHunterService(gateway *OpenAIGatewayService, accounts AccountRepository, proxies ProxyRepository, prober ProxyExitInfoProber, apiKeys *APIKeyService, leader LeaderLockCache) *OpenAITurnStateHunterService {
 	ipapi, _ := prober.(IPAPIProxyProber)
-	svc := NewOpenAITurnStateHunterService(gateway, accounts, proxies, ipapi, leader)
+	svc := NewOpenAITurnStateHunterService(gateway, accounts, proxies, ipapi, apiKeys, leader)
 	svc.Start()
 	return svc
 }

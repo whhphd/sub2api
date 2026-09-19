@@ -156,6 +156,7 @@ type turnStateAttempt struct {
 	Enabled                           bool
 	Probe                             bool
 	CandidateSource                   string
+	HoldModel                         string
 	Rejected                          atomic.Bool
 	Observed                          atomic.Bool
 }
@@ -241,7 +242,7 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 		return
 	}
 	policy, _ := s.hunterPolicy(req.Context())
-	if !s.turnStateSessions.needs(a.Session, time.Now()) && !policy.hunts(a.Model) {
+	if !s.turnStateSessions.needs(a.Session, time.Now()) && !s.hunterManagesModel(policy, a.AccountID, a.Model, time.Now()) {
 		s.logTurnState(a, "skip", "session_not_marked", nil)
 		return
 	}
@@ -271,6 +272,13 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 	candidate, found := pickTurnStateCandidate(pool, a.Model, time.Now())
 	if !found {
 		s.logTurnState(a, "skip", "no_live_candidate", nil)
+		if policy.HoldWhenDegraded && s.hunterManagesModel(policy, a.AccountID, a.Model, time.Now()) {
+			a.HoldModel = a.Model
+			holdCtx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), turnStateTimeout)
+			_ = s.accountRepo.SetTempUnschedulable(holdCtx, a.AccountID, time.Now().Add(24*time.Hour), "turn_state_hold:"+a.Model)
+			cancel()
+			s.logTurnState(a, "hold", "no_live_candidate", map[string]any{"model": a.Model})
+		}
 		return
 	}
 	a.Injected = candidate.Blob
@@ -355,6 +363,9 @@ func (s *OpenAIGatewayService) recordTurnStateObservation(parent context.Context
 	maintain := a.Enabled && s.turnStateAutoEnabled(context.WithoutCancel(parent))
 	// Session state only follows natural (not injected) responses, matching klno.9.
 	if maintain && a.Injected == "" && !a.Probe {
+		if healthy {
+			s.turnStateTraffic.noteMinted(a.AccountID, a.Model, time.Now())
+		}
 		s.turnStateSessions.set(a.Session, !healthy, time.Now())
 	}
 	store, ok := s.accountRepo.(CodexTurnStateStore)

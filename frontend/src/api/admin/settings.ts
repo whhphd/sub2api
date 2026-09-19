@@ -1336,6 +1336,8 @@ export async function updateRateLimit429CooldownSettings(
 
 export interface TurnStateHunterConfig {
  enabled: boolean; models: string[]; proxy_ids: number[];
+	auto_models?: boolean; rotating_proxy_ids?: number[]; hold_when_degraded?: boolean;
+	usage_accounting_enabled?: boolean; usage_api_key_id?: number;
  max_per_hour: number; per_account_max_per_hour: number;
  gap_seconds: number; lead_minutes: number; retry_minutes: number; idle_minutes: number;
  reasoning_effort: string;

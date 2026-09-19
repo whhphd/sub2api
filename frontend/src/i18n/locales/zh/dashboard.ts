@@ -407,6 +407,7 @@ export default {
     allCompactionTypes: '全部请求',
     compactionOnly: '仅原生压缩',
     cyber: '安全策略',
+    probe: '猎手探测',
     live: 'Live',
     unknown: '未知',
     in: '输入',

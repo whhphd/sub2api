@@ -857,6 +857,14 @@ func parseOpenAIOAuthRuntimeSettings(value string) (*OpenAIOAuthRuntimeSettings,
 		if _, exists := raw["plan_gated_model_cooldown_enabled"]; !exists {
 			settings.PlanGatedModelCooldownEnabled = true
 		}
+		if hunterRaw, exists := raw["openai_oauth_turn_state_hunter"]; exists {
+			var hunter map[string]json.RawMessage
+			if err := json.Unmarshal(hunterRaw, &hunter); err == nil {
+				if _, exists := hunter["usage_accounting_enabled"]; !exists {
+					settings.TurnStateHunter.UsageAccountingEnabled = true
+				}
+			}
+		}
 		normalized, err := normalizeOpenAIOAuthRuntimeSettings(&settings)
 		if err != nil {
 			return nil, fmt.Errorf("validate OpenAI OAuth runtime settings: %w", err)

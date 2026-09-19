@@ -13,6 +13,11 @@ type TurnStateHunterSettings struct {
 	Enabled              bool     `json:"enabled"`
 	Models               []string `json:"models"`
 	ProxyIDs             []int64  `json:"proxy_ids"`
+	AutoModels           bool     `json:"auto_models,omitempty"`
+	RotatingProxyIDs     []int64  `json:"rotating_proxy_ids,omitempty"`
+	HoldWhenDegraded     bool     `json:"hold_when_degraded,omitempty"`
+	UsageAccountingEnabled bool   `json:"usage_accounting_enabled"`
+	UsageAPIKeyID        int64    `json:"usage_api_key_id,omitempty"`
 	MaxPerHour           int      `json:"max_per_hour"`
 	PerAccountMaxPerHour int      `json:"per_account_max_per_hour"`
 	GapSeconds           int      `json:"gap_seconds"`
@@ -23,18 +28,19 @@ type TurnStateHunterSettings struct {
 }
 
 func DefaultTurnStateHunterSettings() TurnStateHunterSettings {
-	return TurnStateHunterSettings{Models: []string{}, ProxyIDs: []int64{}, MaxPerHour: 300, PerAccountMaxPerHour: 30, GapSeconds: 20, LeadMinutes: 10, RetryMinutes: 10, IdleMinutes: 60, ReasoningEffort: "high"}
+	return TurnStateHunterSettings{Models: []string{}, ProxyIDs: []int64{}, MaxPerHour: 300, PerAccountMaxPerHour: 30, GapSeconds: 20, LeadMinutes: 10, RetryMinutes: 10, IdleMinutes: 60, ReasoningEffort: "high", UsageAccountingEnabled: true}
 }
 func (c TurnStateHunterSettings) clone() TurnStateHunterSettings {
 	c.Models = slices.Clone(c.Models)
 	c.ProxyIDs = slices.Clone(c.ProxyIDs)
+	c.RotatingProxyIDs = slices.Clone(c.RotatingProxyIDs)
 	return c
 }
 func (c TurnStateHunterSettings) validate() error {
-	if len(c.Models) > 8 || len(c.ProxyIDs) > 64 {
+	if len(c.Models) > 8 || len(c.ProxyIDs) > 64 || len(c.RotatingProxyIDs) > 64 {
 		return fmt.Errorf("hunter supports at most 8 models and 64 proxies")
 	}
-	if c.Enabled && (len(c.Models) == 0 || len(c.ProxyIDs) == 0) {
+	if c.Enabled && ((!c.AutoModels && len(c.Models) == 0) || len(c.ProxyIDs) == 0) {
 		return fmt.Errorf("hunter requires models and proxies")
 	}
 	models := map[string]bool{}
@@ -50,6 +56,16 @@ func (c TurnStateHunterSettings) validate() error {
 			return fmt.Errorf("hunter proxy IDs must be unique positive integers")
 		}
 		ids[id] = true
+	}
+	rotating := map[int64]bool{}
+	for _, id := range c.RotatingProxyIDs {
+		if id <= 0 || ids[id] == false || rotating[id] {
+			return fmt.Errorf("rotating proxy IDs must be selected probe proxies and unique positive integers")
+		}
+		rotating[id] = true
+	}
+	if c.UsageAPIKeyID < 0 {
+		return fmt.Errorf("hunter usage API key ID must be non-negative")
 	}
 	if c.MaxPerHour < 1 || c.PerAccountMaxPerHour < 1 {
 		return fmt.Errorf("hunter hourly limits must be positive integers")
