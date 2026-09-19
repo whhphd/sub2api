@@ -1738,6 +1738,18 @@ func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, 
 	if failoverErr != nil {
 		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
 	}
+	if failoverErr != nil && failoverErr.Reason == service.OpenAITurnStateHoldReason {
+		status := failoverErr.ClientStatusCode
+		if status <= 0 {
+			status = http.StatusServiceUnavailable
+		}
+		message := strings.TrimSpace(failoverErr.ClientMessage)
+		if message == "" {
+			message = "account paused while the hunter looks for a healthy turn-state"
+		}
+		h.anthropicStreamingAwareError(c, status, "api_error", message, streamStarted)
+		return
+	}
 	if failoverErr != nil && failoverErr.IsCredentialFailure() {
 		status, message := credentialFailoverClientResponse(failoverErr)
 		h.anthropicStreamingAwareError(c, status, "api_error", message, streamStarted)
@@ -3536,6 +3548,19 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 			message = "previous_response_id requires an OpenAI API-key account for HTTP requests"
 		}
 		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", message, streamStarted)
+		return
+	}
+	if failoverErr.Reason == service.OpenAITurnStateHoldReason {
+		status := failoverErr.ClientStatusCode
+		if status <= 0 {
+			status = http.StatusServiceUnavailable
+		}
+		message := strings.TrimSpace(failoverErr.ClientMessage)
+		if message == "" {
+			message = "account paused while the hunter looks for a healthy turn-state"
+		}
+		service.SetOpsUpstreamError(c, status, message, "")
+		h.handleStreamingAwareError(c, status, "server_error", message, streamStarted)
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)

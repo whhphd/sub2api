@@ -2432,7 +2432,8 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 			updated_at = NOW()
 		WHERE id = $3
 			AND deleted_at IS NULL
-			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < $1)
+			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < $1
+ OR (temp_unschedulable_reason LIKE 'turn_state_hold:%' AND $2 NOT LIKE 'turn_state_hold:%'))
 	`, until, reason, id)
 	if err != nil {
 		return err

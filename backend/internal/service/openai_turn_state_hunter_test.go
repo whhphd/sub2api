@@ -172,13 +172,17 @@ func TestHunterProviderRotationAndBackoff(t *testing.T) {
 		{"p.webshare.io", "user-us-rotate", true}, {"p.webshare.io", "user-us-1", false}, {"evilwebshare.io", "user-rotate", false},
 		{"us.1024proxy.io", "user-region-US", true}, {"us.1024proxy.io", "user-region-US-sid-example-t-5", false}, {"1024proxy.io.evil.test", "user", false}, {"other.invalid", "user-rotate", false},
 	} {
-		require.Equal(t, tc.want, openAITurnStateHuntProxyRotating(Proxy{Host: tc.host, Username: tc.user}))
+		require.Equal(t, tc.want, openAITurnStateHuntProxyRotating(DefaultTurnStateHunterSettings(), Proxy{Host: tc.host, Username: tc.user}))
 	}
+	cfg := DefaultTurnStateHunterSettings()
+	cfg.ProxyIDs = []int64{9}
+	cfg.RotatingProxyIDs = []int64{9}
+	require.True(t, openAITurnStateHuntProxyRotating(cfg, Proxy{ID: 9, Host: "other.invalid", Username: "fixed"}))
 	require.Equal(t, time.Hour, openAITurnStateHuntBackoff(429))
 	require.Equal(t, 6*time.Hour, openAITurnStateHuntBackoff(401))
 	now := time.Now()
 	st := openAITurnStateHuntState{NextAt: now.Add(time.Hour), CapWait: true, HourCount: 30}
-	cfg := DefaultTurnStateHunterSettings()
+	cfg = DefaultTurnStateHunterSettings()
 	require.True(t, st.waiting(cfg, now))
 	cfg.PerAccountMaxPerHour = 40
 	require.False(t, st.waiting(cfg, now))
@@ -267,8 +271,8 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 	}{
 		{"recovers", []int{0, 200}, 1000, 1000, 2, 0},
 		{"three_failures", []int{0, 0, 0, 200}, 1000, 1000, 3, time.Minute},
-		{"global_budget", []int{0, 0, 200}, 2, 1000, 2, time.Minute},
-		{"account_budget", []int{0, 0, 200}, 1000, 2, 2, time.Hour},
+		{"global_budget_refunded", []int{0, 0, 200}, 1, 1000, 3, 0},
+		{"account_budget_refunded", []int{0, 0, 200}, 1000, 1, 3, 0},
 		{"rate_limit", []int{0, 429, 200}, 1000, 1000, 2, time.Hour},
 		{"forbidden", []int{403, 200}, 1000, 1000, 1, 6 * time.Hour},
 		{"unauthorized", []int{401, 200}, 1000, 1000, 1, 6 * time.Hour},
@@ -301,7 +305,13 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 			latest, err := s.fresh(context.Background(), a.ID)
 			require.NoError(t, err)
 			st := readOpenAITurnStateHuntState(latest)
-			require.Equal(t, tc.calls, st.HourCount)
+			nonTransport := 0
+			for _, status := range tc.statuses[:min(len(tc.statuses), calls)] {
+				if status != 0 {
+					nonTransport++
+				}
+			}
+			require.Equal(t, nonTransport, st.HourCount)
 			require.Len(t, st.Last, tc.calls)
 			require.Equal(t, tc.calls, st.Last[0].RetryAttempt)
 			if tc.backoff == 0 {
@@ -315,7 +325,7 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 				Count int `json:"count"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(raw), &budget))
-			require.Equal(t, tc.calls, budget.Count)
+			require.Equal(t, nonTransport, budget.Count)
 		})
 	}
 }

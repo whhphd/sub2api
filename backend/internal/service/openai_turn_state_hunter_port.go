@@ -41,8 +41,9 @@ type openAITurnStateHuntAttempt struct {
 	// LatencyMs 是响应头到手的耗时（实测 0.5–2.3s）：探测在这一刻就断，后面不再计时。
 	LatencyMs int64 `json:"latency_ms"`
 	// Exit 是探测前解析到的出口 IP，只有固定出口有；轮换端点由供应商按连接选出口，为空。
-	Exit  string `json:"exit,omitempty"`
-	Error string `json:"error,omitempty"`
+	Exit      string `json:"exit,omitempty"`
+	Error     string `json:"error,omitempty"`
+	transport bool
 }
 
 // openAITurnStateHuntExit 记一个出口 IP 最近一次探测的结果，冷却判定的依据。
@@ -153,7 +154,9 @@ func (st *openAITurnStateHuntState) push(attempt openAITurnStateHuntAttempt) {
 	if len(st.Last) > openAITurnStateHuntLastKeep {
 		st.Last = st.Last[:openAITurnStateHuntLastKeep]
 	}
-	st.HourCount++
+	if !attempt.transport {
+		st.HourCount++
+	}
 	st.LastError = attempt.Error
 	st.UpdatedAt = attempt.At
 	st.noteExit(attempt)

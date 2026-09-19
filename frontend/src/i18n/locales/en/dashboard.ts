@@ -402,6 +402,7 @@ export default {
     allCompactionTypes: 'All Requests',
     compactionOnly: 'Compaction Only',
     cyber: 'Cyber',
+    probe: 'Hunter probe',
     live: 'Live',
     unknown: 'Unknown',
     in: 'In',

@@ -156,6 +156,7 @@ type turnStateAttempt struct {
 	Enabled                           bool
 	Probe                             bool
 	CandidateSource                   string
+	HoldModel                         string
 	Rejected                          atomic.Bool
 	Observed                          atomic.Bool
 }
@@ -229,6 +230,9 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 	if a == nil {
 		return
 	}
+	a.HoldModel = ""
+	a.Injected = ""
+	a.CandidateSource = ""
 	a.StartedAt = time.Now()
 	if a.Probe {
 		return
@@ -241,7 +245,7 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 		return
 	}
 	policy, _ := s.hunterPolicy(req.Context())
-	if !s.turnStateSessions.needs(a.Session, time.Now()) && !policy.hunts(a.Model) {
+	if !s.turnStateSessions.needs(a.Session, time.Now()) && !s.hunterManagesModel(policy, a.AccountID, a.Model, time.Now()) {
 		s.logTurnState(a, "skip", "session_not_marked", nil)
 		return
 	}
@@ -271,6 +275,8 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 	candidate, found := pickTurnStateCandidate(pool, a.Model, time.Now())
 	if !found {
 		s.logTurnState(a, "skip", "no_live_candidate", nil)
+		s.holdTurnStateIfUnfilled(req, latest, policy)
+
 		return
 	}
 	a.Injected = candidate.Blob
@@ -314,6 +320,9 @@ func (s *OpenAIGatewayService) observeTurnStateHTTP(req *http.Request, resp *htt
 	if a == nil {
 		return
 	}
+	if a.HoldModel != "" {
+		return
+	}
 	if err != nil {
 		s.logTurnState(a, "transport_end", "transport_error", nil)
 		return
@@ -355,6 +364,7 @@ func (s *OpenAIGatewayService) recordTurnStateObservation(parent context.Context
 	maintain := a.Enabled && s.turnStateAutoEnabled(context.WithoutCancel(parent))
 	// Session state only follows natural (not injected) responses, matching klno.9.
 	if maintain && a.Injected == "" && !a.Probe {
+		s.turnStateTraffic.noteMinted(a.AccountID, a.Model, time.Now())
 		s.turnStateSessions.set(a.Session, !healthy, time.Now())
 	}
 	store, ok := s.accountRepo.(CodexTurnStateStore)

@@ -11,6 +11,9 @@ func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (response *http.Response, resultErr error) {
 	s.prepareTurnStateHTTP(request)
 	defer func() { s.observeTurnStateHTTP(request, response, resultErr) }()
+	if err := turnStateHoldError(request); err != nil {
+		return nil, err
+	}
 	finish := s.observeCodexHTTPAttempt(request, proxyURL, account)
 	defer func() { finish(response, resultErr) }()
 	if err := requireOpenAIProxyBinding(account, proxyURL); err != nil {

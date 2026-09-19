@@ -857,6 +857,14 @@ func parseOpenAIOAuthRuntimeSettings(value string) (*OpenAIOAuthRuntimeSettings,
 		if _, exists := raw["plan_gated_model_cooldown_enabled"]; !exists {
 			settings.PlanGatedModelCooldownEnabled = true
 		}
+		if hunterRaw, exists := raw["openai_oauth_turn_state_hunter"]; exists {
+			var hunter map[string]json.RawMessage
+			if err := json.Unmarshal(hunterRaw, &hunter); err == nil {
+				if _, exists := hunter["usage_accounting_enabled"]; !exists {
+					settings.TurnStateHunter.UsageAccountingEnabled = true
+				}
+			}
+		}
 		normalized, err := normalizeOpenAIOAuthRuntimeSettings(&settings)
 		if err != nil {
 			return nil, fmt.Errorf("validate OpenAI OAuth runtime settings: %w", err)
@@ -992,7 +1000,20 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hun
 		if s.onUpdate != nil {
 			s.onUpdate()
 		}
-		return cloneOpenAIOAuthRuntimeSettings(normalized), nil
+		result := cloneOpenAIOAuthRuntimeSettings(normalized)
+		if (hunter != nil || turnStateProvided) && (!result.TurnStateAutoEnabled || !result.TurnStateHunter.Enabled || !result.TurnStateHunter.HoldWhenDegraded) && s.turnStateHoldReleaser != nil {
+			releaseCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+			count, releaseErr := s.turnStateHoldReleaser.ReleaseTurnStateHoldsIfDisabled(releaseCtx)
+			if releaseErr == nil && s.turnStateSchedulerRefresh != nil {
+				releaseErr = s.turnStateSchedulerRefresh(releaseCtx)
+			}
+			done()
+			if releaseErr != nil {
+				return nil, fmt.Errorf("settings saved, but immediate turn-state hold release/cache refresh failed; save OFF again to retry: %w", releaseErr)
+			}
+			result.TurnStateHoldRelease = &TurnStateHoldReleaseResult{Released: count, Complete: true}
+		}
+		return result, nil
 	}
 	return nil, fmt.Errorf("runtime settings changed concurrently; retry the update")
 }

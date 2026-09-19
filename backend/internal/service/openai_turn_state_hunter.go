@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 // Coordinator adapted from KlN klno.12 (2916a74b3): expiry/idle gates,
 // per-account/model round robin, fresh proxy connections and bounded retries.
+// klno.13 controls adapted from 7f3855150586 (KlN-4096/sub2api).
 // CallAI additions: global policy/budget, encrypted storage and independent logs.
 package service
 
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,8 +25,9 @@ const hunterBudgetKey = "openai_turn_state_hunter_budget"
 const hunterLeaderKey = "openai:turn-state-hunter:leader"
 
 type hunterTraffic struct {
-	mu   sync.Mutex
-	seen map[string]time.Time
+	mu     sync.Mutex
+	seen   map[string]time.Time
+	minted map[string]time.Time
 }
 
 func (t *hunterTraffic) note(id int64, model string, now time.Time) {
@@ -42,6 +45,43 @@ func (t *hunterTraffic) note(id int64, model string, now time.Time) {
 	if len(t.seen) < 16384 || !t.seen[key].IsZero() {
 		t.seen[key] = now
 	}
+}
+func (t *hunterTraffic) noteMinted(id int64, model string, now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.minted == nil {
+		t.minted = map[string]time.Time{}
+	}
+	key := strconv.FormatInt(id, 10) + "\x00" + strings.ToLower(strings.TrimSpace(model))
+	for k, at := range t.minted {
+		if now.Sub(at) > 24*time.Hour {
+			delete(t.minted, k)
+		}
+	}
+	if len(t.minted) < 16384 || !t.minted[key].IsZero() {
+		t.minted[key] = now
+	}
+}
+func (t *hunterTraffic) autoModels(id int64, since time.Time) []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	seen := map[string]bool{}
+	prefix := strconv.FormatInt(id, 10) + "\x00"
+	for key, at := range t.seen {
+		if !strings.HasPrefix(key, prefix) || !at.After(since) {
+			continue
+		}
+		model := strings.TrimPrefix(key, prefix)
+		if !t.minted[prefix+model].IsZero() && !isOpenAIImageGenerationModel(model) {
+			seen[model] = true
+		}
+	}
+	models := make([]string, 0, len(seen))
+	for model := range seen {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models
 }
 func (t *hunterTraffic) active(id int64, model string, since time.Time) bool {
 	t.mu.Lock()
@@ -71,9 +111,40 @@ func sameHunterPolicy(a, b TurnStateHunterSettings) bool {
 	return string(x) == string(y)
 }
 
+func (s *OpenAIGatewayService) hunterModelsForAccount(cfg TurnStateHunterSettings, accountID int64, now time.Time) []string {
+	if !cfg.AutoModels {
+		return slices.Clone(cfg.Models)
+	}
+	if cfg.IdleMinutes <= 0 {
+		return s.turnStateTraffic.autoModels(accountID, now.Add(-24*time.Hour))
+	}
+	return s.turnStateTraffic.autoModels(accountID, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute))
+}
+
+func (s *OpenAIGatewayService) hunterManagesModel(cfg TurnStateHunterSettings, accountID int64, model string, now time.Time) bool {
+	if !cfg.Enabled {
+		return false
+	}
+	if !cfg.AutoModels {
+		return cfg.hunts(model)
+	}
+	for _, candidate := range s.hunterModelsForAccount(cfg, accountID, now) {
+		if candidate == strings.ToLower(strings.TrimSpace(model)) {
+			return true
+		}
+	}
+	return false
+}
+
 // Normalized DNS boundaries prevent unrelated hosts being treated as providers.
 // 1024 rotating usernames omit sid/t; sticky credentials are never rewritten.
-func openAITurnStateHuntProxyRotating(p Proxy) bool {
+// Other providers can be marked explicitly in the global hunter settings.
+func openAITurnStateHuntProxyRotating(cfg TurnStateHunterSettings, p Proxy) bool {
+	for _, id := range cfg.RotatingProxyIDs {
+		if id == p.ID {
+			return true
+		}
+	}
 	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(p.Host)), ".")
 	u := strings.ToLower(p.Username)
 	within := func(d string) bool { return h == d || strings.HasSuffix(h, "."+d) }
@@ -83,11 +154,18 @@ func openAITurnStateHuntProxyRotating(p Proxy) bool {
 	return within("1024proxy.io") && u != "" && !strings.Contains(u, "-sid-") && !strings.Contains(u, "-t-")
 }
 
+type hunterUsageAPIKeys interface {
+	APIKeyQuotaUpdater
+	GetByID(context.Context, int64) (*APIKey, error)
+}
+
 type OpenAITurnStateHunterService struct {
 	gateway     *OpenAIGatewayService
 	accounts    AccountRepository
 	proxies     ProxyRepository
 	prober      IPAPIProxyProber
+	apiKeys     hunterUsageAPIKeys
+	recordUsage func(context.Context, *OpenAIRecordUsageInput) error
 	leader      LeaderLockCache
 	owner       string
 	cursor      int64
@@ -105,6 +183,7 @@ func NewOpenAITurnStateHunterService(g *OpenAIGatewayService, a AccountRepositor
 	ctx, cancel := context.WithCancel(context.Background())
 	return &OpenAITurnStateHunterService{gateway: g, accounts: a, proxies: p, prober: prober, leader: leader, owner: uuid.NewString(), ctx: ctx, cancel: cancel, now: time.Now}
 }
+
 func (s *OpenAITurnStateHunterService) Start() {
 	s.start.Do(func() {
 		s.wg.Add(1)
@@ -145,7 +224,7 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 	ctx, cancel := context.WithTimeout(parent, 15*time.Minute)
 	defer cancel()
 	cfg, err := s.gateway.hunterPolicy(ctx)
-	if err != nil || !cfg.Enabled {
+	if err != nil {
 		return
 	}
 	// A failed lock never permits spending. No best-effort unlocked fallback.
@@ -166,6 +245,12 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 	done()
 	if err != nil {
 		s.log(nil, "", "hunter_error", "accounts_unavailable", nil)
+		return
+	}
+	for i := range accounts {
+		s.syncHold(ctx, &accounts[i])
+	}
+	if !cfg.Enabled {
 		return
 	}
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].ID < accounts[j].ID })
@@ -248,7 +333,7 @@ func (s *OpenAITurnStateHunterService) gate(ctx context.Context, a *Account, st 
 	_ = s.save(ctx, a, st)
 	s.log(a, "", "hunter_gate", reason, nil)
 }
-func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg TurnStateHunterSettings) (bool, error) {
+func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg TurnStateHunterSettings, reservedWindow ...*time.Time) (bool, error) {
 	repo := s.gateway.settingService.settingRepo
 	cas, ok := repo.(SettingCompareAndSwapper)
 	if !ok {
@@ -284,14 +369,55 @@ func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg Tu
 			return false, err
 		}
 		if swapped {
+			if len(reservedWindow) > 0 && reservedWindow[0] != nil {
+				*reservedWindow[0] = st.Start
+			}
 			return true, nil
 		}
 	}
 	return false, errors.New("budget contention")
 }
+
+// releaseGlobal gives back a reservation when the proxy failed before an HTTP
+// response. Such a failure consumes no upstream request budget in KlN's model.
+func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context, reservedWindow time.Time) error {
+	repo := s.gateway.settingService.settingRepo
+	cas, ok := repo.(SettingCompareAndSwapper)
+	if !ok {
+		return errors.New("atomic settings unavailable")
+	}
+	op, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	for i := 0; i < 5; i++ {
+		raw, err := repo.GetValue(op, hunterBudgetKey)
+		if err != nil {
+			return err
+		}
+		var st struct {
+			Start time.Time `json:"start"`
+			Count int       `json:"count"`
+		}
+		if err := json.Unmarshal([]byte(raw), &st); err != nil {
+			return err
+		}
+		if !st.Start.Equal(reservedWindow) || st.Count <= 0 {
+			return nil
+		}
+		st.Count--
+		next, _ := json.Marshal(st)
+		updated, err := cas.CompareAndSwap(op, hunterBudgetKey, raw, string(next))
+		if err != nil {
+			return err
+		}
+		if updated {
+			return nil
+		}
+	}
+	return errors.New("budget contention")
+}
 func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account, cfg TurnStateHunterSettings) (spent, halt bool) {
 	a, err := s.fresh(ctx, old.ID)
-	if err != nil || a.Status != StatusActive || turnStateOwner(a) == "" || turnStateOwner(a) != turnStateOwner(old) {
+	if err != nil || a == nil || a.Status != StatusActive || turnStateOwner(a) == "" || turnStateOwner(a) != turnStateOwner(old) {
 		return false, false
 	}
 	st := readOpenAITurnStateHuntState(a)
@@ -312,9 +438,14 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 		return false, false
 	}
 	models := []string{}
+	configuredModels := s.gateway.hunterModelsForAccount(cfg, a.ID, now)
+	held := openAITurnStateHeldModel(a, now)
+	if cfg.HoldWhenDegraded && held != "" && (cfg.AutoModels || cfg.hunts(held)) && !isOpenAIImageGenerationModel(held) && !slices.Contains(configuredModels, held) {
+		configuredModels = append(configuredModels, held)
+	}
 	active := false
-	for _, model := range cfg.Models {
-		if cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
+	for _, model := range configuredModels {
+		if model != held && cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
 			continue
 		}
 		active = true
@@ -354,7 +485,7 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 				continue
 			}
 			exit = ""
-			if !openAITurnStateHuntProxyRotating(p) {
+			if !openAITurnStateHuntProxyRotating(cfg, p) {
 				if s.prober == nil {
 					continue
 				}
@@ -401,7 +532,7 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 }
 
 // Only transport failures with no HTTP response receive short retries. All three
-// attempts build new requests/connections and reserve independent budget entries.
+// attempts build new requests/connections; transport errors refund their reservations.
 // Backoff is persisted after each failure so interruption cannot skip it.
 func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Context, account *Account, model string, cfg TurnStateHunterSettings, selected Proxy, exit string, st openAITurnStateHuntState) (spent, halt bool) {
 	const maxAttempts = 3
@@ -445,7 +576,8 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 			s.gate(ctx, a, st, "account_cap")
 			return spent, false
 		}
-		allowed, err := s.reserveGlobal(ctx, cfg)
+		var reservedWindow time.Time
+		allowed, err := s.reserveGlobal(ctx, cfg, &reservedWindow)
 		if err != nil {
 			s.log(a, model, "hunter_storage_error", "budget_unavailable", nil)
 			return spent, true
@@ -470,16 +602,22 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 		spent = true
 		result.Exit = exit
 		result.RetryAttempt = attempt
+		transportFailure := result.Status == 0 && result.Error == "transport_error"
+		result.transport = transportFailure
 		st.HourCount-- // push consumes the allowance reserved above.
 		st.push(result)
-		transportFailure := result.Status == 0 && result.Error == "transport_error"
+		if transportFailure {
+			if err := s.releaseGlobal(context.WithoutCancel(ctx), reservedWindow); err != nil {
+				s.log(a, model, "hunter_storage_error", "transport_budget_release_failed", nil)
+			}
+		}
 		if transportFailure {
 			st.NextAt = s.now().Add(time.Minute)
 		} else if result.Status != http.StatusOK || result.Error != "" {
 			st.NextAt = s.now().Add(openAITurnStateHuntBackoff(result.Status))
 		}
 		s.log(a, model, "hunter_attempt", result.Error, map[string]any{"proxy_id": result.ProxyID, "http_status": result.Status, "length": result.Chars, "baseline": result.Healthy, "headers_ms": result.LatencyMs, "hour_count": st.HourCount, "retry_attempt": attempt})
-		if s.save(ctx, a, st) != nil {
+		if s.save(context.WithoutCancel(ctx), a, st) != nil {
 			return spent, true
 		}
 		if ctx.Err() != nil {
@@ -535,6 +673,7 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	result.LatencyMs = s.now().Sub(started).Milliseconds()
 	if err != nil {
 		result.Error = "transport_error"
+		result.transport = true
 		return result
 	}
 	if resp == nil || resp.Body == nil {
@@ -550,6 +689,9 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	}
 	// Close before DB access; never wait for text generation to finish.
 	_ = resp.Body.Close()
+	if cfg.UsageAccountingEnabled {
+		defer func() { s.recordProbeUsage(op, a, model, cfg, req, resp.Header, result) }()
+	}
 	value := extractOpenAICodexTurnState(resp.Header)
 	if value == "" || len(value) > turnStateMaxBlob {
 		result.Error = "missing_or_oversize_state"
@@ -569,5 +711,74 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	attempt.Enabled = true
 	attempt.Probe = true
 	s.gateway.recordTurnStateObservation(ctx, attempt, value)
+	if latest, e := s.fresh(ctx, a.ID); e == nil {
+		s.syncHold(ctx, latest)
+	}
 	return result
+}
+
+func (s *OpenAITurnStateHunterService) recordProbeUsage(ctx context.Context, account *Account, model string, cfg TurnStateHunterSettings, req *http.Request, headers http.Header, attempt openAITurnStateHuntAttempt) {
+	if s == nil || !cfg.UsageAccountingEnabled || account == nil || req == nil || account.Platform != PlatformOpenAI {
+		return
+	}
+	if s.apiKeys == nil || cfg.UsageAPIKeyID <= 0 {
+		s.log(account, model, "hunter_usage_error", "usage_not_configured", nil)
+		return
+	}
+	key, err := s.apiKeys.GetByID(ctx, cfg.UsageAPIKeyID)
+	if err != nil || key == nil || key.User == nil || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() || !key.User.IsActive() {
+		s.log(account, model, "hunter_usage_error", "usage_api_key_unavailable", map[string]any{"api_key_id": cfg.UsageAPIKeyID})
+		return
+	}
+	var subscription *UserSubscription
+	if key.Group != nil && key.Group.IsSubscriptionType() && key.GroupID != nil {
+		if s.gateway.userSubRepo == nil {
+			s.log(account, model, "hunter_usage_error", "usage_subscription_unavailable", nil)
+			return
+		}
+		subscription, err = s.gateway.userSubRepo.GetActiveByUserIDAndGroupID(ctx, key.User.ID, *key.GroupID)
+		if err != nil || subscription == nil {
+			s.log(account, model, "hunter_usage_error", "usage_subscription_unavailable", map[string]any{"api_key_id": cfg.UsageAPIKeyID})
+			return
+		}
+	}
+	requestID := "turn_state_probe:" + uuid.NewString()
+	effort := cfg.ReasoningEffort
+	inputTokens := openAITurnStateProbeInputTokens(model, effort)
+	result := &OpenAIForwardResult{
+		RequestID: requestID, UpstreamHeaders: headers, Model: model,
+		Usage: OpenAIUsage{InputTokens: inputTokens}, Stream: true,
+		UpstreamEndpoint: req.URL.Path, ReasoningEffort: &effort,
+		Duration: time.Duration(attempt.LatencyMs) * time.Millisecond,
+	}
+	record := s.gateway.RecordUsage
+	if s.recordUsage != nil {
+		record = s.recordUsage
+	}
+	err = record(ctx, &OpenAIRecordUsageInput{
+		Result: result, APIKey: key, User: key.User, Account: account,
+		Subscription: subscription, InboundEndpoint: "turn-state-probe", UpstreamEndpoint: req.URL.Path,
+		UserAgent: req.Header.Get("User-Agent"), SessionID: req.Header.Get("session-id"),
+		APIKeyService: s.apiKeys, QuotaPlatform: PlatformOpenAI, PricingAt: attempt.At,
+		RequestType: RequestTypeTurnStateProbe,
+	})
+	if err != nil {
+		s.log(account, model, "hunter_usage_error", "usage_record_failed", map[string]any{"api_key_id": cfg.UsageAPIKeyID})
+	}
+}
+
+func openAITurnStateProbeInputTokens(model, effort string) int {
+	raw, err := json.Marshal(openAITurnStateProbeBody(model, effort, openAITurnStateProbeIdentity{}))
+	if err != nil {
+		return 1
+	}
+	var request openAIInputTokensCountRequest
+	if err := json.Unmarshal(raw, &request); err != nil {
+		return 1
+	}
+	count, err := estimateOpenAIInputTokens(request)
+	if err != nil || count <= 0 {
+		return 1
+	}
+	return count
 }

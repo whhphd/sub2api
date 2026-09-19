@@ -322,8 +322,11 @@ const overloadCountdown = computed(() => {
   return formatCountdownWithSuffix(props.account.overload_until)
 })
 
+const heldModel = computed(() => props.account.temp_unschedulable_reason?.startsWith('turn_state_hold:') ? props.account.temp_unschedulable_reason.slice('turn_state_hold:'.length) : '')
+
 const tempUnschedRecoveryText = computed(() => {
   if (!isTempUnschedulable.value || !props.account.temp_unschedulable_until) return ''
+  if (heldModel.value) return t('admin.accounts.status.turnStateHoldWaiting', { model: heldModel.value })
   return t('admin.accounts.status.tempUnschedulableUntil', {
     time: formatDateTime(props.account.temp_unschedulable_until)
   })
@@ -358,6 +361,7 @@ const statusText = computed(() => {
     if (isCodexQuotaOverdraftPause.value) {
       return t('admin.accounts.status.codexQuotaPaused')
     }
+    if (heldModel.value) return t('admin.accounts.status.turnStateHold')
     return t('admin.accounts.status.tempUnschedulable')
   }
   if (props.account.status !== 'active') {

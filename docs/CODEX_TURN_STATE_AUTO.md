@@ -59,3 +59,15 @@ PR #7315 的主动采票、前端完整采集配置及动态代理模板已另�
 - 原版CPR管理客户端不存在于CallAI部署，不新增CPR模块。原版依赖完整Turn-State用量列的SQL筛选不移植；本地292/332块数判据及独立统计保留。现有独立日志不因全站warn过滤，探测只记分类、长度、耗时、来源和结果；不记录正文、完整state、代理密码。
 
 验证：离线模拟上游、真实本地HTTP回显、全局设置原子更新/禁用、预算竞争、候选与账号隔离、出口分类、身份/compact回归、数据库并发更新及编辑保护。完成本地开发与前端检查后提交实验分支，再以Git同步服务器进行后端完整、unit、integration、race、lint和镜像构建。上线保持既有自动接管开关，新猎手默认关闭；配置模型与代理后由管理员显式开启。
+
+## klno.13 global controls
+
+Selective port of KlN-4096/sub2api `v0.2.5-klno.13`, commit `7f3855150586` (LGPL-3.0). Keep CallAI global settings, encrypted candidates and independent diagnostic logs; no per-account hunter settings.
+
+- `auto_models`: choose non-image models with real traffic and naturally observed state (including non-baseline state). Process-local bounded marks expire after 24 hours; after restart real traffic rebuilds them. Disabled by default, preserving configured model lists.
+- `rotating_proxy_ids`: explicit rotation flags must reference selected proxies. Existing Webshare and 1024 rotating detection remains.
+- Transport failures without an HTTP response refund the same global budget window and the account reservation. Existing max-three short attempts and 429/401/403 cooldowns remain. A refund failure is visible and conservatively retains the reservation.
+- `hold_when_degraded`: default off. For hunted HTTP/SSE requests with no usable model candidate and no fresh acceptable client echo, fail over before contacting upstream and apply an account hold. This is account-wide scheduling exclusion, not a model-only scheduler filter. A shorter genuine credential/transport fault supersedes it. Candidate recovery checks the held model; release is identity/old-state guarded and cannot clear another fault.
+- Saving hold OFF (or hunter/takeover OFF) synchronously clears only `turn_state_hold:` pauses, refreshes account snapshots and rebuilds OpenAI group membership. Policy row locking prevents late ON requests from re-inserting holds after OFF. Failed cleanup is reported as settings-saved/cleanup-failed; saving OFF again retries, including cache refresh. The background task remains a fallback.
+- `usage_accounting_enabled`: code default true; production rollout explicitly sets false per user instruction, and does not create a billing key. When enabled with a dedicated key, HTTP 200 probes use estimated input tokens (output zero), standard billing and request type `probe`. Missing key logs an explicit reason without stopping hunter. Probe accounting does not clear ordinary request 403 counters. Migration 239 extends the existing constraint without scanning the large usage table (`NOT VALID` still enforces new rows).
+- Rollback: first disable hold and wait for confirmed release/cache refresh; then restore the previous hash image. No full DB backup. Existing settings/models/proxies/budgets retained.
