@@ -23,6 +23,7 @@
         <label class="text-sm">{{ t('admin.settings.turnStateHunter.effort') }}<select v-model="form.reasoning_effort" class="input mt-1 w-full"><option v-for="v in ['minimal', 'low', 'medium', 'high', 'xhigh']" :key="v" :value="v">{{ v }}</option></select></label>
         <label class="text-sm">{{ t('admin.settings.turnStateHunter.usageApiKey') }}<input v-model.number="form.usage_api_key_id" class="input mt-1 w-full" type="number" min="0" step="1" data-testid="hunter-usage-api-key" /></label>
       </div>
+      <p class="text-xs text-gray-500">{{ t('admin.settings.turnStateHunter.accountIntervalHint') }}</p>
       <label class="flex items-center justify-between gap-4 text-sm"><span>{{ t('admin.settings.turnStateHunter.usageAccounting') }}</span><Toggle  :model-value="!!form.usage_accounting_enabled" @update:model-value="form.usage_accounting_enabled = $event" data-testid="hunter-usage-accounting" /></label>
       <label class="flex items-center justify-between gap-4 text-sm"><span>{{ t('admin.settings.turnStateHunter.holdWhenDegraded') }}</span><Toggle  :model-value="!!form.hold_when_degraded" @update:model-value="form.hold_when_degraded = $event" data-testid="hunter-hold-degraded" /></label>
       <p class="text-xs text-gray-500">{{ t('admin.settings.turnStateHunter.usageHint') }}</p>
