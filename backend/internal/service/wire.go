@@ -1075,7 +1075,9 @@ func ProvideOpenAITurnStateHunterService(gateway *OpenAIGatewayService, accounts
 	svc.apiKeys = apiKeys
 	if gateway != nil && gateway.settingService != nil {
 		gateway.settingService.turnStateHoldReleaser, _ = accounts.(TurnStateHoldReleaser)
-  if gateway.schedulerSnapshot != nil {gateway.settingService.turnStateSchedulerRefresh = gateway.schedulerSnapshot.RefreshOpenAIHunterScheduling}
+		if gateway.schedulerSnapshot != nil {
+			gateway.settingService.turnStateSchedulerRefresh = gateway.schedulerSnapshot.RefreshOpenAIHunterScheduling
+		}
 	}
 	svc.Start()
 	return svc

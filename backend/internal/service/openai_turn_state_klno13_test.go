@@ -138,7 +138,8 @@ func TestHunterHoldOnlyMatchingLiveCandidateReleases(t *testing.T) {
 			}
 			encoded, err := s.gateway.encodeTurnStatePool(turnStatePool{Owner: turnStateOwner(a), Candidates: []turnStateCandidate{c}}, time.Now())
 			require.NoError(t, err)
-			repo := s.accounts.(*hunterAccounts)
+			repo, ok := s.accounts.(*hunterAccounts)
+ require.True(t,ok)
 			require.NoError(t, repo.MutateCodexTurnState(ctx, a.ID, func(*Account) (map[string]any, error) { return encoded, nil }))
 			switch kind {
 			case "other_fault":
@@ -223,4 +224,16 @@ func TestHunterSavingOffSynchronouslyReleasesAndRetries(t *testing.T) {
 	require.Equal(t, 2, r.calls)
 }
 
-func sameHoldTime(a,b *time.Time)bool {if a==nil || b==nil {return a==nil && b==nil};return a.Equal(*b)}
+func sameHoldTime(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Equal(*b)
+}
+
+func TestHunterHoldPreventsNetworkAndAllowsFreshEcho(t *testing.T){
+ s,a,cfg:=newHunterTest(t);cfg.HoldWhenDegraded=true;_,err:=s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(context.Background(),&cfg,nil,nil);require.NoError(t,err)
+ req:=stateBoundRequest(s.gateway,a,1,"held","gpt-test");resp,err:=s.gateway.doOpenAIUpstream(req,"",a)
+ require.Nil(t,resp);var fe *UpstreamFailoverError;require.ErrorAs(t,err,&fe);require.Equal(t,OpenAITurnStateHoldReason,fe.Reason)
+ echo:=stateBoundRequest(s.gateway,a,1,"echo","gpt-test");at:=turnStateAttemptFrom(echo.Context());at.Original=turnStateFernetBlob(time.Now(),12);s.gateway.prepareTurnStateHTTP(echo);require.NoError(t,turnStateHoldError(echo))
+}

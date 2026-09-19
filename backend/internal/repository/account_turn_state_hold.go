@@ -20,7 +20,7 @@ func turnStateHoldPolicyLocked(ctx context.Context, tx *dbent.Tx) (bool, error) 
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
+	defer func(){_ = rows.Close()}()
 	if !rows.Next() {
 		return false, rows.Err()
 	}

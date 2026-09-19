@@ -233,6 +233,8 @@ hunterSummary: "Hunter reserved {count} probes this hour",hunterNext: "Next: {ti
         limited: 'Limited',
         rateLimited: 'Rate Limited',
         overloaded: 'Overloaded',
+        turnStateHold: 'Waiting for baseline candidate',
+        turnStateHoldWaiting: 'Hunting a candidate for {model}',
         tempUnschedulable: 'Temp Unschedulable',
         codexQuotaPaused: 'Quota Paused',
         quotaExceeded: 'Quota Exceeded',

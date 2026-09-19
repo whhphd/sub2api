@@ -250,3 +250,10 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).toContain('admin.accounts.status.creditsExhausted')
   })
 })
+
+it('distinguishes hunter hold from quota and credential faults', () => {
+ const wrapper = mount(AccountStatusIndicator,{props:{account:makeAccount({platform:'openai',temp_unschedulable_until:'2099-01-01T00:00:00Z',temp_unschedulable_reason:'turn_state_hold:gpt-5.5'})}})
+ expect(wrapper.text()).toContain('admin.accounts.status.turnStateHold')
+ expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulableUntil')
+ wrapper.unmount()
+})

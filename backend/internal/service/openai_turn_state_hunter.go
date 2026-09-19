@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 // Coordinator adapted from KlN klno.12 (2916a74b3): expiry/idle gates,
 // per-account/model round robin, fresh proxy connections and bounded retries.
+// klno.13 controls adapted from 7f3855150586 (KlN-4096/sub2api).
 // CallAI additions: global policy/budget, encrypted storage and independent logs.
 package service
 
@@ -710,7 +711,7 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	attempt.Enabled = true
 	attempt.Probe = true
 	s.gateway.recordTurnStateObservation(ctx, attempt, value)
-	s.syncHold(ctx, a)
+	if latest, e := s.fresh(ctx,a.ID); e == nil {s.syncHold(ctx, latest)}
 	return result
 }
 

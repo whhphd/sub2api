@@ -452,6 +452,8 @@ hunterSummary: "猎手本小时已预留 {count} 次探测",hunterNext: "下次�
         limited: '限流',
         rateLimited: '限流中',
         overloaded: '过载中',
+        turnStateHold: '等待基线候选',
+        turnStateHoldWaiting: '正在为 {model} 补充候选',
         tempUnschedulable: '临时不可调度',
         codexQuotaPaused: '额度暂停',
         quotaExceeded: '配额超限',

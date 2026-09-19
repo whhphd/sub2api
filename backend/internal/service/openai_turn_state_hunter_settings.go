@@ -13,11 +13,11 @@ type TurnStateHunterSettings struct {
 	Enabled                bool     `json:"enabled"`
 	Models                 []string `json:"models"`
 	ProxyIDs               []int64  `json:"proxy_ids"`
-	AutoModels             bool     `json:"auto_models,omitempty"`
-	RotatingProxyIDs       []int64  `json:"rotating_proxy_ids,omitempty"`
-	HoldWhenDegraded       bool     `json:"hold_when_degraded,omitempty"`
+	AutoModels             bool     `json:"auto_models"`
+	RotatingProxyIDs       []int64  `json:"rotating_proxy_ids"`
+	HoldWhenDegraded       bool     `json:"hold_when_degraded"`
 	UsageAccountingEnabled bool     `json:"usage_accounting_enabled"`
-	UsageAPIKeyID          int64    `json:"usage_api_key_id,omitempty"`
+	UsageAPIKeyID          int64    `json:"usage_api_key_id"`
 	MaxPerHour             int      `json:"max_per_hour"`
 	PerAccountMaxPerHour   int      `json:"per_account_max_per_hour"`
 	GapSeconds             int      `json:"gap_seconds"`
@@ -28,7 +28,7 @@ type TurnStateHunterSettings struct {
 }
 
 func DefaultTurnStateHunterSettings() TurnStateHunterSettings {
-	return TurnStateHunterSettings{Models: []string{}, ProxyIDs: []int64{}, MaxPerHour: 300, PerAccountMaxPerHour: 30, GapSeconds: 20, LeadMinutes: 10, RetryMinutes: 10, IdleMinutes: 60, ReasoningEffort: "high", UsageAccountingEnabled: true}
+	return TurnStateHunterSettings{Models: []string{}, ProxyIDs: []int64{}, RotatingProxyIDs: []int64{}, MaxPerHour: 300, PerAccountMaxPerHour: 30, GapSeconds: 20, LeadMinutes: 10, RetryMinutes: 10, IdleMinutes: 60, ReasoningEffort: "high", UsageAccountingEnabled: true}
 }
 func (c TurnStateHunterSettings) clone() TurnStateHunterSettings {
 	c.Models = slices.Clone(c.Models)
@@ -59,7 +59,7 @@ func (c TurnStateHunterSettings) validate() error {
 	}
 	rotating := map[int64]bool{}
 	for _, id := range c.RotatingProxyIDs {
-		if id <= 0 || ids[id] == false || rotating[id] {
+		if id <= 0 || !ids[id] || rotating[id] {
 			return fmt.Errorf("rotating proxy IDs must be selected probe proxies and unique positive integers")
 		}
 		rotating[id] = true
