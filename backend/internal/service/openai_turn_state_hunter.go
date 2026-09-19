@@ -50,10 +50,8 @@ func (t *hunterTraffic) noteMinted(id int64, model string, now time.Time) {
 	defer t.mu.Unlock()
 	if t.minted == nil { t.minted = map[string]time.Time{} }
 	key := strconv.FormatInt(id, 10) + "\x00" + strings.ToLower(strings.TrimSpace(model))
-	t.minted[key] = now
-	if len(t.minted) > 16384 {
-		for k, at := range t.minted { if now.Sub(at) > 24*time.Hour { delete(t.minted, k) } }
-	}
+for k, at := range t.minted { if now.Sub(at) > 24*time.Hour { delete(t.minted,k) } }
+ if len(t.minted)<16384 || !t.minted[key].IsZero() { t.minted[key]=now }
 }
 func (t *hunterTraffic) autoModels(id int64, since time.Time) []string {
 	t.mu.Lock()
@@ -63,7 +61,7 @@ func (t *hunterTraffic) autoModels(id int64, since time.Time) []string {
 	for key, at := range t.seen {
 		if !strings.HasPrefix(key, prefix) || !at.After(since) { continue }
 		model := strings.TrimPrefix(key, prefix)
-		if t.minted[prefix+model].After(since) && !isOpenAIImageGenerationModel(model) { seen[model] = true }
+		if !t.minted[prefix+model].IsZero() && !isOpenAIImageGenerationModel(model) { seen[model] = true }
 	}
 	models := make([]string, 0, len(seen))
 	for model := range seen { models = append(models, model) }
@@ -105,7 +103,7 @@ func (s *OpenAIGatewayService) hunterModelsForAccount(cfg TurnStateHunterSetting
 }
 
 func (s *OpenAIGatewayService) hunterManagesModel(cfg TurnStateHunterSettings, accountID int64, model string, now time.Time) bool {
-	if !cfg.AutoModels { return cfg.hunts(model) }
+	if !cfg.Enabled {return false}; if !cfg.AutoModels { return cfg.hunts(model) }
 	for _, candidate := range s.hunterModelsForAccount(cfg, accountID, now) {
 		if candidate == strings.ToLower(strings.TrimSpace(model)) { return true }
 	}
@@ -149,18 +147,11 @@ type OpenAITurnStateHunterService struct {
 	retryWait     func(context.Context) error
 }
 
-func NewOpenAITurnStateHunterService(g *OpenAIGatewayService, a AccountRepository, p ProxyRepository, prober IPAPIProxyProber, extras ...any) *OpenAITurnStateHunterService {
-	ctx, cancel := context.WithCancel(context.Background())
-	var apiKeys *APIKeyService
-	var leader LeaderLockCache
-	for _, extra := range extras {
-		switch value := extra.(type) {
-		case *APIKeyService: apiKeys = value
-		case LeaderLockCache: leader = value
-		}
-	}
-	return &OpenAITurnStateHunterService{gateway: g, accounts: a, proxies: p, prober: prober, apiKeys: apiKeys, leader: leader, owner: uuid.NewString(), ctx: ctx, cancel: cancel, now: time.Now}
+func NewOpenAITurnStateHunterService(g *OpenAIGatewayService, a AccountRepository, p ProxyRepository, prober IPAPIProxyProber, leader LeaderLockCache) *OpenAITurnStateHunterService {
+ ctx,cancel:=context.WithCancel(context.Background())
+ return &OpenAITurnStateHunterService{gateway:g,accounts:a,proxies:p,prober:prober,leader:leader,owner:uuid.NewString(),ctx:ctx,cancel:cancel,now:time.Now}
 }
+
 func (s *OpenAITurnStateHunterService) Start() {
 	s.start.Do(func() {
 		s.wg.Add(1)
@@ -201,7 +192,7 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 	ctx, cancel := context.WithTimeout(parent, 15*time.Minute)
 	defer cancel()
 	cfg, err := s.gateway.hunterPolicy(ctx)
-	if err != nil || !cfg.Enabled {
+	if err != nil {
 		return
 	}
 	// A failed lock never permits spending. No best-effort unlocked fallback.
@@ -224,6 +215,7 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 		s.log(nil, "", "hunter_error", "accounts_unavailable", nil)
 		return
 	}
+ for i := range accounts { s.syncHold(ctx,&accounts[i]) }; if !cfg.Enabled { return }
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].ID < accounts[j].ID })
 	// One bounded probe sequence per account per pass prevents budget monopolization.
 	for len(accounts) > 0 && ctx.Err() == nil {
@@ -378,7 +370,7 @@ func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context) error 
 }
 func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account, cfg TurnStateHunterSettings) (spent, halt bool) {
 	a, err := s.fresh(ctx, old.ID)
-	if err != nil || a.Status != StatusActive || turnStateOwner(a) == "" || turnStateOwner(a) != turnStateOwner(old) {
+	if err != nil || a == nil || a.Status != StatusActive || turnStateOwner(a) == "" || turnStateOwner(a) != turnStateOwner(old) {
 		return false, false
 	}
 	st := readOpenAITurnStateHuntState(a)
@@ -398,20 +390,13 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 		s.gate(ctx, a, st, "pool_unavailable")
 		return false, false
 	}
-	heldModel := strings.TrimPrefix(a.TempUnschedulableReason, "turn_state_hold:")
-	_, heldCandidate := pickTurnStateCandidate(pool, heldModel, now)
-	if strings.HasPrefix(a.TempUnschedulableReason, "turn_state_hold:") && (!cfg.HoldWhenDegraded || heldCandidate) {
-		if clearErr := s.accounts.ClearTempUnschedulable(ctx, a.ID); clearErr == nil {
-			a.TempUnschedulableUntil = nil
-			a.TempUnschedulableReason = ""
-			s.log(a, "", "hunter_hold_released", "candidate_available", nil)
-		}
-	}
 	models := []string{}
 	configuredModels := s.gateway.hunterModelsForAccount(cfg, a.ID, now)
+ held := openAITurnStateHeldModel(a,now)
+ if cfg.HoldWhenDegraded && held!="" && (cfg.AutoModels || cfg.hunts(held)) && !isOpenAIImageGenerationModel(held) && !slices.Contains(configuredModels,held) { configuredModels=append(configuredModels,held) }
 	active := false
 	for _, model := range configuredModels {
-		if cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
+		if model != held && cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
 			continue
 		}
 		active = true
@@ -652,11 +637,9 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 		result.Error = diagnosticErrorClass(resp.StatusCode, peek)
 		return result
 	}
-	if resp.StatusCode == http.StatusOK && cfg.UsageAccountingEnabled {
-		s.recordProbeUsage(op, a, model, cfg, req, resp.Header, result)
-	}
 	// Close before DB access; never wait for text generation to finish.
 	_ = resp.Body.Close()
+ if cfg.UsageAccountingEnabled { defer func(){s.recordProbeUsage(op,a,model,cfg,req,resp.Header,result)}() }
 	value := extractOpenAICodexTurnState(resp.Header)
 	if value == "" || len(value) > turnStateMaxBlob {
 		result.Error = "missing_or_oversize_state"
@@ -676,6 +659,7 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	attempt.Enabled = true
 	attempt.Probe = true
 	s.gateway.recordTurnStateObservation(ctx, attempt, value)
+ s.syncHold(ctx,a)
 	return result
 }
 

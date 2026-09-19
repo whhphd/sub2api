@@ -230,6 +230,9 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 	if a == nil {
 		return
 	}
+	a.HoldModel = ""
+ a.Injected = ""
+ a.CandidateSource = ""
 	a.StartedAt = time.Now()
 	if a.Probe {
 		return
@@ -272,13 +275,8 @@ func (s *OpenAIGatewayService) prepareTurnStateHTTP(req *http.Request) {
 	candidate, found := pickTurnStateCandidate(pool, a.Model, time.Now())
 	if !found {
 		s.logTurnState(a, "skip", "no_live_candidate", nil)
-		if policy.HoldWhenDegraded && s.hunterManagesModel(policy, a.AccountID, a.Model, time.Now()) {
-			a.HoldModel = a.Model
-			holdCtx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), turnStateTimeout)
-			_ = s.accountRepo.SetTempUnschedulable(holdCtx, a.AccountID, time.Now().Add(24*time.Hour), "turn_state_hold:"+a.Model)
-			cancel()
-			s.logTurnState(a, "hold", "no_live_candidate", map[string]any{"model": a.Model})
-		}
+  s.holdTurnStateIfUnfilled(req, latest, policy)
+
 		return
 	}
 	a.Injected = candidate.Blob
@@ -322,6 +320,7 @@ func (s *OpenAIGatewayService) observeTurnStateHTTP(req *http.Request, resp *htt
 	if a == nil {
 		return
 	}
+ if a.HoldModel != "" { return }
 	if err != nil {
 		s.logTurnState(a, "transport_end", "transport_error", nil)
 		return
@@ -363,9 +362,7 @@ func (s *OpenAIGatewayService) recordTurnStateObservation(parent context.Context
 	maintain := a.Enabled && s.turnStateAutoEnabled(context.WithoutCancel(parent))
 	// Session state only follows natural (not injected) responses, matching klno.9.
 	if maintain && a.Injected == "" && !a.Probe {
-		if healthy {
-			s.turnStateTraffic.noteMinted(a.AccountID, a.Model, time.Now())
-		}
+s.turnStateTraffic.noteMinted(a.AccountID, a.Model, time.Now())
 		s.turnStateSessions.set(a.Session, !healthy, time.Now())
 	}
 	store, ok := s.accountRepo.(CodexTurnStateStore)

@@ -224,7 +224,7 @@ func (a *Account) IsCredentialUsableForShadow() bool {
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
 	}
-	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
+	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) && openAITurnStateHeldModel(a, now) == "" {
 		return false
 	}
 	return true
