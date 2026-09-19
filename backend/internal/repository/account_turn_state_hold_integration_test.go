@@ -119,3 +119,19 @@ func TestTurnStateModelHoldsMigrateLegacyAndPreserveQuota(t *testing.T) {
 	require.True(t, v.IsSchedulableForModel("gpt-c"))
 	require.False(t, v.IsSchedulableForModel("gpt-b"))
 }
+
+func TestTurnStateHoldExemptSaveReleasesOnlyExemptModels(t *testing.T){
+ ctx:=context.Background();repo:=NewAccountRepository(integrationEntClient,integrationDB,nil).(*accountRepository)
+ key:=service.SettingKeyOpenAIOAuthRuntimeSettings
+ _,err:=integrationDB.Exec(`INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,key,`{"openai_oauth_turn_state_auto_enabled":true,"openai_oauth_turn_state_hunter":{"enabled":true,"hold_when_degraded":true}}`);require.NoError(t,err)
+ a:=&service.Account{Name:"hold-exempt",Platform:"openai",Type:"oauth",Credentials:map[string]any{"chatgpt_account_id":"owner"},Extra:map[string]any{},Status:"active",Schedulable:true,Concurrency:1};require.NoError(t,repo.Create(ctx,a))
+ t.Cleanup(func(){_,_=integrationDB.Exec("DELETE FROM scheduler_outbox WHERE account_id=$1",a.ID);_,_=integrationDB.Exec("DELETE FROM accounts WHERE id=$1",a.ID);_,_=integrationDB.Exec("DELETE FROM settings WHERE key=$1",key)})
+ old,err:=repo.GetByID(ctx,a.ID);require.NoError(t,err);until:=time.Now().Add(time.Hour)
+ for _,model:=range []string{"gpt-5.6-terra","gpt-test"}{ok,e:=repo.CompareAndSwapTurnStateHold(ctx,old,&until,"turn_state_hold:"+model);require.NoError(t,e);require.True(t,ok)}
+ require.NoError(t,repo.SetModelRateLimit(ctx,a.ID,"gpt-real",until,"real_quota"))
+ _,err=integrationDB.Exec(`UPDATE settings SET value=$2 WHERE key=$1`,key,`{"openai_oauth_turn_state_auto_enabled":true,"openai_oauth_turn_state_hunter":{"enabled":true,"hold_when_degraded":true,"hold_excluded_models":["gpt-5.6-terra"]}}`);require.NoError(t,err)
+ n,err:=repo.ReleaseTurnStateHoldsIfDisabled(ctx);require.NoError(t,err);require.Equal(t,1,n)
+ fresh,err:=repo.GetByID(ctx,a.ID);require.NoError(t,err);require.True(t,fresh.IsSchedulableForModel("gpt-5.6-terra"));require.False(t,fresh.IsSchedulableForModel("gpt-test"));require.False(t,fresh.IsSchedulableForModel("gpt-real"))
+ ok,err:=repo.CompareAndSwapTurnStateHold(ctx,old,&until,"turn_state_hold:gpt-5.6-terra");require.NoError(t,err);require.False(t,ok,"old ON policy must not re-hold exempt model")
+ n,err=repo.ReleaseTurnStateHoldsIfDisabled(ctx);require.NoError(t,err);require.Zero(t,n)
+}

@@ -76,7 +76,7 @@ func openAITurnStateHeldModel(a *Account, now time.Time) string {
 
 func (s *OpenAIGatewayService) holdTurnStateIfUnfilled(req *http.Request, latest *Account, policy TurnStateHunterSettings) {
 	a := turnStateAttemptFrom(req.Context())
-	if a == nil || a.Probe || !policy.Enabled || !policy.HoldWhenDegraded || !s.hunterManagesModel(policy, a.AccountID, a.Model, time.Now()) {
+	if a == nil || a.Probe || !policy.Enabled || !policy.HoldWhenDegraded || policy.HoldExempt(a.Model) || !s.hunterManagesModel(policy, a.AccountID, a.Model, time.Now()) {
 		return
 	}
 	// A fresh baseline echoed by this account can still pass, as in the donor.
@@ -142,7 +142,7 @@ func (s *OpenAITurnStateHunterService) syncHold(ctx context.Context, account *Ac
 		if err != nil || latest == nil {
 			return
 		}
-		release := !policy.Enabled || !policy.HoldWhenDegraded || latest.Status != StatusActive || turnStateOwner(latest) == "" || (!policy.AutoModels && !policy.hunts(model)) || (policy.AutoModels && isOpenAIImageGenerationModel(model))
+		release := policy.HoldExempt(model) || !policy.Enabled || !policy.HoldWhenDegraded || latest.Status != StatusActive || turnStateOwner(latest) == "" || (!policy.AutoModels && !policy.hunts(model)) || (policy.AutoModels && isOpenAIImageGenerationModel(model))
 		if !release {
 			pool, e := s.gateway.decodeTurnStatePool(latest)
 			if e != nil {

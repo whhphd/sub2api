@@ -1001,7 +1001,7 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hun
 			s.onUpdate()
 		}
 		result := cloneOpenAIOAuthRuntimeSettings(normalized)
-		if (hunter != nil || turnStateProvided) && (!result.TurnStateAutoEnabled || !result.TurnStateHunter.Enabled || !result.TurnStateHunter.HoldWhenDegraded) && s.turnStateHoldReleaser != nil {
+		if (hunter != nil || turnStateProvided) && (!result.TurnStateAutoEnabled || !result.TurnStateHunter.Enabled || !result.TurnStateHunter.HoldWhenDegraded || len(result.TurnStateHunter.HoldExcludedModels)>0) && s.turnStateHoldReleaser != nil {
 			releaseCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 			count, releaseErr := s.turnStateHoldReleaser.ReleaseTurnStateHoldsIfDisabled(releaseCtx)
 			if releaseErr == nil && s.turnStateSchedulerRefresh != nil {
@@ -1009,7 +1009,7 @@ func (s *SettingService) UpdateOpenAIOAuthRuntimePolicy(ctx context.Context, hun
 			}
 			done()
 			if releaseErr != nil {
-				return nil, fmt.Errorf("settings saved, but immediate turn-state hold release/cache refresh failed; save OFF again to retry: %w", releaseErr)
+				return nil, fmt.Errorf("settings saved, but immediate turn-state hold release/cache refresh failed; save the same settings again to retry: %w", releaseErr)
 			}
 			result.TurnStateHoldRelease = &TurnStateHoldReleaseResult{Released: count, Complete: true}
 		}

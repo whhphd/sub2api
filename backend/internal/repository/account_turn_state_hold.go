@@ -15,7 +15,7 @@ var _ service.TurnStateHoldReleaser = (*accountRepository)(nil)
 
 // Lock the same policy row that the settings CAS updates. Once an OFF save has
 // committed, an in-flight request with an old policy cannot insert another hold.
-func turnStateHoldPolicyLocked(ctx context.Context, tx *dbent.Tx) (bool, error) {
+func turnStateHoldPolicyLocked(ctx context.Context, tx *dbent.Tx, exemptions ...*[]string) (bool, error) {
 	rows, err := tx.Client().QueryContext(ctx, "SELECT value FROM settings WHERE key=$1 FOR SHARE", service.SettingKeyOpenAIOAuthRuntimeSettings)
 	if err != nil {
 		return false, err
@@ -32,7 +32,8 @@ func turnStateHoldPolicyLocked(ctx context.Context, tx *dbent.Tx) (bool, error) 
 	if err = json.Unmarshal([]byte(raw), &p); err != nil {
 		return false, err
 	}
-	return p.TurnStateAutoEnabled && p.TurnStateHunter.Enabled && p.TurnStateHunter.HoldWhenDegraded, nil
+	if len(exemptions)>0 && exemptions[0]!=nil{*exemptions[0]=p.TurnStateHunter.HoldExcludedModels}
+ return p.TurnStateAutoEnabled && p.TurnStateHunter.Enabled && p.TurnStateHunter.HoldWhenDegraded, nil
 }
 
 func (r *accountRepository) CompareAndSwapTurnStateHold(ctx context.Context, expected *service.Account, until *time.Time, reason string) (bool, error) {
@@ -66,8 +67,10 @@ func (r *accountRepository) CompareAndSwapTurnStateHold(ctx context.Context, exp
 	}
 	defer func() { _ = tx.Rollback() }()
 	if until != nil {
-		enabled, e := turnStateHoldPolicyLocked(ctx, tx)
-		if e != nil || !enabled {
+		var excluded []string
+ enabled, e := turnStateHoldPolicyLocked(ctx, tx,&excluded)
+ exempt:=false;for _,v:=range excluded{if v==model{exempt=true}}
+		if e != nil || !enabled || exempt {
 			return false, e
 		}
 	}
@@ -104,19 +107,23 @@ func (r *accountRepository) ReleaseTurnStateHoldsIfDisabled(ctx context.Context)
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	enabled, err := turnStateHoldPolicyLocked(ctx, tx)
+	var excluded []string
+ enabled, err := turnStateHoldPolicyLocked(ctx, tx,&excluded)
 	if err != nil {
 		return 0, err
 	}
-	if enabled {
-		return 0, errors.New("hold was enabled concurrently; reload settings")
-	}
-	result, err := tx.Client().ExecContext(ctx, `WITH released AS (
- UPDATE accounts SET extra=COALESCE(extra,'{}'::jsonb)-'openai_turn_state_model_holds',
- temp_unschedulable_until=CASE WHEN temp_unschedulable_reason LIKE 'turn_state_hold:%' THEN NULL ELSE temp_unschedulable_until END,
- temp_unschedulable_reason=CASE WHEN temp_unschedulable_reason LIKE 'turn_state_hold:%' THEN NULL ELSE temp_unschedulable_reason END,updated_at=NOW()
- WHERE platform='openai' AND type='oauth' AND deleted_at IS NULL AND (temp_unschedulable_reason LIKE 'turn_state_hold:%' OR COALESCE(extra->'openai_turn_state_model_holds','{}'::jsonb)<>'{}'::jsonb) RETURNING id)
- INSERT INTO scheduler_outbox(event_type,account_id) SELECT $1,id FROM released`, service.SchedulerOutboxEventAccountChanged)
+	if enabled && len(excluded)==0{return 0,errors.New("hold policy changed concurrently; reload settings")}
+ exclusions,_:=json.Marshal(excluded)
+ result,err:=tx.Client().ExecContext(ctx,`WITH targets AS (
+ SELECT id, COALESCE((SELECT jsonb_object_agg(key,value) FROM jsonb_each(COALESCE(extra->'openai_turn_state_model_holds','{}'::jsonb)) WHERE $2::boolean AND NOT ($3::jsonb ? key)),'{}'::jsonb) AS kept,
+ (temp_unschedulable_reason LIKE 'turn_state_hold:%' AND (NOT $2::boolean OR $3::jsonb ? substring(temp_unschedulable_reason from length('turn_state_hold:')+1))) AS clear_legacy
+ FROM accounts WHERE platform='openai' AND type='oauth' AND deleted_at IS NULL FOR NO KEY UPDATE
+ ), released AS (
+ UPDATE accounts a SET extra=jsonb_set(COALESCE(a.extra,'{}'::jsonb),'{openai_turn_state_model_holds}',t.kept),
+ temp_unschedulable_until=CASE WHEN t.clear_legacy THEN NULL ELSE a.temp_unschedulable_until END,
+ temp_unschedulable_reason=CASE WHEN t.clear_legacy THEN NULL ELSE a.temp_unschedulable_reason END,updated_at=NOW()
+ FROM targets t WHERE a.id=t.id AND (t.clear_legacy OR COALESCE(a.extra->'openai_turn_state_model_holds','{}'::jsonb)<>t.kept) RETURNING a.id)
+ INSERT INTO scheduler_outbox(event_type,account_id) SELECT $1,id FROM released`,service.SchedulerOutboxEventAccountChanged,enabled,string(exclusions))
 	if err != nil {
 		return 0, err
 	}
