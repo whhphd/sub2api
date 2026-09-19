@@ -39,11 +39,11 @@ func TestTurnStateHoldImmediateReleaseAndFaultIsolation(t *testing.T) {
 	require.True(t, ok)
 	stale, err := repo.GetByID(ctx, b.ID)
 	require.NoError(t, err)
-	// A later, shorter real credential fault supersedes the long hunter hold.
+	// Real credential faults are independent of the model hold. Releasing it retains the fault.
 	require.NoError(t, repo.SetTempUnschedulable(ctx, b.ID, time.Now().Add(time.Hour), "credential_rejected"))
-	ok, err = repo.CompareAndSwapTurnStateHold(ctx, stale, nil, "")
+	ok, err = repo.CompareAndSwapTurnStateHold(ctx, stale, nil, "turn_state_hold:gpt-test")
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.True(t, ok)
 	_, err = integrationDB.Exec(`UPDATE accounts SET rate_limit_reset_at=NOW()+INTERVAL '1 hour' WHERE id=$1`, a.ID)
 	require.NoError(t, err)
 	_, err = integrationDB.Exec(`UPDATE settings SET value=$2 WHERE key=$1`, service.SettingKeyOpenAIOAuthRuntimeSettings, `{"openai_oauth_turn_state_auto_enabled":true,"openai_oauth_turn_state_hunter":{"enabled":true,"hold_when_degraded":false}}`)

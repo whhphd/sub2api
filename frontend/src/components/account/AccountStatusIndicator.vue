@@ -32,6 +32,7 @@
       </span>
     </template>
 
+    <span v-for="model in heldModels" :key="model" class="badge badge-warning text-xs" :title="t('admin.accounts.status.turnStateHoldWaiting', { model })">{{ model }} · {{ t('admin.accounts.status.turnStateHold') }}</span>
     <!-- Error Info Indicator -->
     <div v-if="hasError && account.error_message" class="group/error relative">
       <svg
@@ -322,6 +323,10 @@ const overloadCountdown = computed(() => {
   return formatCountdownWithSuffix(props.account.overload_until)
 })
 
+const heldModels = computed(() => {
+ const holds = props.account.extra?.openai_turn_state_model_holds as Record<string,string> | undefined
+ return Object.entries(holds ?? {}).filter(([,until]) => new Date(until).getTime() > Date.now()).map(([model]) => model)
+})
 const heldModel = computed(() => props.account.temp_unschedulable_reason?.startsWith('turn_state_hold:') ? props.account.temp_unschedulable_reason.slice('turn_state_hold:'.length) : '')
 
 const tempUnschedRecoveryText = computed(() => {

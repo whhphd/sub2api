@@ -30,6 +30,8 @@ func openAITurnStateProbeContext(c *gin.Context) bool {
 }
 
 type openAITurnStateHuntAttempt struct {
+ BackoffScope string `json:"backoff_scope,omitempty"`
+ BackoffUntil time.Time `json:"backoff_until,omitempty"`
 	RetryAttempt int       `json:"retry_attempt,omitempty"`
 	At           time.Time `json:"at"`
 	Model        string    `json:"model"`
@@ -56,6 +58,9 @@ type openAITurnStateHuntExit struct {
 
 // openAITurnStateHuntState 是 extra.openai_turn_state_hunt 的形态，每次探测后写一次。
 type openAITurnStateHuntState struct {
+ BackoffVersion int `json:"backoff_version,omitempty"`
+ ModelNext map[string]time.Time `json:"model_next,omitempty"`
+ ProxyNext map[string]time.Time `json:"proxy_next,omitempty"`
 	Owner     string                       `json:"owner"`
 	NextAt    time.Time                    `json:"next_at"`
 	HourStart time.Time                    `json:"hour_start"`
@@ -136,7 +141,7 @@ func readOpenAITurnStateHuntState(a *Account) openAITurnStateHuntState {
 	if err := json.Unmarshal(encoded, &st); err != nil {
 		return openAITurnStateHuntState{}
 	}
-	if st.Cursor < 0 || len(st.Last) > openAITurnStateHuntLastKeep || len(st.Exits) > openAITurnStateHuntExitsKeep || st.Owner != turnStateOwner(a) {
+	if len(st.ModelNext)>16 || len(st.ProxyNext)>64 || st.Cursor < 0 || len(st.Last) > openAITurnStateHuntLastKeep || len(st.Exits) > openAITurnStateHuntExitsKeep || st.Owner != turnStateOwner(a) {
 		return openAITurnStateHuntState{}
 	}
 	return st

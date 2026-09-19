@@ -69,7 +69,7 @@ func (r *accountRepository) MutateCodexTurnState(ctx context.Context, id int64, 
 func stripCodexTurnStateManagedExtra(extra map[string]any) map[string]any {
 	out := make(map[string]any, len(extra))
 	for k, v := range extra {
-		if k != service.CodexTurnStatePoolKey && k != service.CodexTurnStateObservationKey && k != service.CodexTurnStateSummaryKey && k != service.CodexTurnStateHuntKey {
+		if k != service.CodexTurnStatePoolKey && k != service.CodexTurnStateObservationKey && k != service.CodexTurnStateSummaryKey && k != service.CodexTurnStateHuntKey && k != service.CodexTurnStateModelHoldsKey {
 			out[k] = v
 		}
 	}
