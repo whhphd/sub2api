@@ -7,12 +7,55 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
 
 const OpenAITurnStateHoldReason GatewayFailureReason = "openai_turn_state_hold"
 const openAITurnStateHoldReasonPrefix = "turn_state_hold:"
+const CodexTurnStateModelHoldsKey = "openai_turn_state_model_holds"
+
+// Separate from real upstream limits: each entry is a model -> expiry string.
+func turnStateModelHolds(a *Account) map[string]time.Time {
+	out := map[string]time.Time{}
+	if a == nil {
+		return out
+	}
+	if raw, ok := a.Extra[CodexTurnStateModelHoldsKey].(map[string]any); ok {
+		for model, v := range raw {
+			if value, ok := v.(string); ok {
+				if at, err := time.Parse(time.RFC3339Nano, value); err == nil {
+					out[model] = at
+				}
+			}
+		}
+	}
+	return out
+}
+func turnStateHoldModels(a *Account) []string {
+	keys := map[string]bool{}
+	for model := range turnStateModelHolds(a) {
+		keys[model] = true
+	}
+	if a != nil {
+		if model, ok := strings.CutPrefix(a.TempUnschedulableReason, openAITurnStateHoldReasonPrefix); ok && model != "" {
+			keys[model] = true
+		}
+	}
+	out := make([]string, 0, len(keys))
+	for key := range keys {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
+}
+func (a *Account) turnStateModelHoldRemaining(model string) time.Duration {
+	if a == nil || a.Platform != PlatformOpenAI {
+		return 0
+	}
+	return time.Until(turnStateModelHolds(a)[turnStateModel(model)])
+}
 
 // A compare-and-swap must update the account and scheduler outbox atomically.
 // It must not replace another fault, clear a concurrent fault, or mutate a new identity.
@@ -54,7 +97,7 @@ func (s *OpenAIGatewayService) holdTurnStateIfUnfilled(req *http.Request, latest
 		return
 	}
 	now := time.Now()
-	if openAITurnStateHeldModel(latest, now) != "" || !latest.IsSchedulable() {
+	if turnStateModelHolds(latest)[a.Model].After(now) || !latest.IsSchedulable() {
 		s.logTurnState(a, "hold", "already_unavailable", nil)
 		return
 	}
@@ -83,7 +126,7 @@ func turnStateHoldError(req *http.Request) error {
 // Run even while the hunter is disabled and before budget/backoff gates. Re-read
 // policy/account for every transition; a failed pool read must never release a hold.
 func (s *OpenAITurnStateHunterService) syncHold(ctx context.Context, account *Account) {
-	if account == nil || !strings.HasPrefix(account.TempUnschedulableReason, openAITurnStateHoldReasonPrefix) {
+	if account == nil || len(turnStateHoldModels(account)) == 0 {
 		return
 	}
 	store, ok := s.accounts.(CodexTurnStateHoldStore)
@@ -94,45 +137,41 @@ func (s *OpenAITurnStateHunterService) syncHold(ctx context.Context, account *Ac
 	if err != nil {
 		return
 	}
-	latest, err := s.fresh(ctx, account.ID)
-	if err != nil || latest == nil {
-		return
-	}
-	model, ok := strings.CutPrefix(latest.TempUnschedulableReason, openAITurnStateHoldReasonPrefix)
-	if !ok || model == "" {
-		return
-	}
-	release := !policy.Enabled || !policy.HoldWhenDegraded || latest.Status != StatusActive || turnStateOwner(latest) == "" || (!policy.AutoModels && !policy.hunts(model)) || (policy.AutoModels && isOpenAIImageGenerationModel(model))
-	if !release {
-		pool, e := s.gateway.decodeTurnStatePool(latest)
+	for _, model := range turnStateHoldModels(account) {
+		latest, err := s.fresh(ctx, account.ID)
+		if err != nil || latest == nil {
+			return
+		}
+		release := !policy.Enabled || !policy.HoldWhenDegraded || latest.Status != StatusActive || turnStateOwner(latest) == "" || (!policy.AutoModels && !policy.hunts(model)) || (policy.AutoModels && isOpenAIImageGenerationModel(model))
+		if !release {
+			pool, e := s.gateway.decodeTurnStatePool(latest)
+			if e != nil {
+				return
+			}
+			_, release = pickTurnStateCandidate(pool, model, s.now())
+		}
+		var until *time.Time
+		if !release {
+			if turnStateModelHolds(latest)[model].Sub(s.now()) >= 12*time.Hour {
+				continue
+			}
+			v := s.now().Add(24 * time.Hour)
+			until = &v
+		}
+		op, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnStateTimeout)
+		changed, e := store.CompareAndSwapTurnStateHold(op, latest, until, openAITurnStateHoldReasonPrefix+model)
+		cancel()
 		if e != nil {
-			return
+			s.log(latest, model, "hunter_hold_error", "transition_failed", nil)
+			continue
 		}
-		_, release = pickTurnStateCandidate(pool, model, s.now())
-	}
-	var until *time.Time
-	reason := ""
-	if !release {
-		if latest.TempUnschedulableUntil != nil && latest.TempUnschedulableUntil.Sub(s.now()) >= 12*time.Hour {
-			return
+		if changed {
+			event := "hunter_hold_renewed"
+			if release {
+				event = "hunter_hold_released"
+			}
+			s.log(latest, model, event, "model_policy_or_candidate", nil)
 		}
-		v := s.now().Add(24 * time.Hour)
-		until = &v
-		reason = openAITurnStateHoldReasonPrefix + model
-	}
-	op, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnStateTimeout)
-	defer cancel()
-	changed, err := store.CompareAndSwapTurnStateHold(op, latest, until, reason)
-	if err != nil {
-		s.log(latest, model, "hunter_hold_error", "transition_failed", nil)
-		return
-	}
-	if changed {
-		event := "hunter_hold_renewed"
-		if release {
-			event = "hunter_hold_released"
-		}
-		s.log(latest, model, event, "policy_or_candidate", nil)
 	}
 }
 

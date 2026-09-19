@@ -30,6 +30,8 @@ func openAITurnStateProbeContext(c *gin.Context) bool {
 }
 
 type openAITurnStateHuntAttempt struct {
+	BackoffScope string    `json:"backoff_scope,omitempty"`
+	BackoffUntil time.Time `json:"backoff_until,omitempty"`
 	RetryAttempt int       `json:"retry_attempt,omitempty"`
 	At           time.Time `json:"at"`
 	Model        string    `json:"model"`
@@ -56,14 +58,17 @@ type openAITurnStateHuntExit struct {
 
 // openAITurnStateHuntState 是 extra.openai_turn_state_hunt 的形态，每次探测后写一次。
 type openAITurnStateHuntState struct {
-	Owner     string                       `json:"owner"`
-	NextAt    time.Time                    `json:"next_at"`
-	HourStart time.Time                    `json:"hour_start"`
-	HourCount int                          `json:"hour_count"`
-	Cursor    int                          `json:"cursor"`
-	Last      []openAITurnStateHuntAttempt `json:"last"`
-	Exits     []openAITurnStateHuntExit    `json:"exits,omitempty"`
-	LastError string                       `json:"last_error,omitempty"`
+	BackoffVersion int                          `json:"backoff_version,omitempty"`
+	ModelNext      map[string]time.Time         `json:"model_next,omitempty"`
+	ProxyNext      map[string]time.Time         `json:"proxy_next,omitempty"`
+	Owner          string                       `json:"owner"`
+	NextAt         time.Time                    `json:"next_at"`
+	HourStart      time.Time                    `json:"hour_start"`
+	HourCount      int                          `json:"hour_count"`
+	Cursor         int                          `json:"cursor"`
+	Last           []openAITurnStateHuntAttempt `json:"last"`
+	Exits          []openAITurnStateHuntExit    `json:"exits,omitempty"`
+	LastError      string                       `json:"last_error,omitempty"`
 	// CapWait 标记 NextAt 是「撞上限等窗」定的（而不是出错退避）：上限调高后本窗还有余量
 	// 就不用等到点，立刻恢复。
 	CapWait bool `json:"cap_wait,omitempty"`
@@ -136,7 +141,7 @@ func readOpenAITurnStateHuntState(a *Account) openAITurnStateHuntState {
 	if err := json.Unmarshal(encoded, &st); err != nil {
 		return openAITurnStateHuntState{}
 	}
-	if st.Cursor < 0 || len(st.Last) > openAITurnStateHuntLastKeep || len(st.Exits) > openAITurnStateHuntExitsKeep || st.Owner != turnStateOwner(a) {
+	if len(st.ModelNext) > 16 || len(st.ProxyNext) > 64 || st.Cursor < 0 || len(st.Last) > openAITurnStateHuntLastKeep || len(st.Exits) > openAITurnStateHuntExitsKeep || st.Owner != turnStateOwner(a) {
 		return openAITurnStateHuntState{}
 	}
 	return st
@@ -167,17 +172,6 @@ func openAITurnStateHuntJitter(base time.Duration) time.Duration {
 		return 0
 	}
 	return base/2 + time.Duration(rand.Int64N(int64(base)))
-}
-
-func openAITurnStateHuntBackoff(status int) time.Duration {
-	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return 6 * time.Hour // 凭据问题，猎手自己修不了；真实流量会触发刷新/停号
-	case http.StatusTooManyRequests:
-		return time.Hour
-	default:
-		return 15 * time.Minute
-	}
 }
 
 type openAITurnStateProbeIdentity struct {

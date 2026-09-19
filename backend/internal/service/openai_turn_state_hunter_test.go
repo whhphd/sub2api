@@ -140,7 +140,7 @@ func TestHunterIdleFreshCapAndReadFailure(t *testing.T) {
 	latest, _ = s.fresh(ctx, a.ID)
 	st := readOpenAITurnStateHuntState(latest)
 	require.Equal(t, 1, st.HourCount)
-	require.True(t, st.NextAt.After(s.now().Add(59*time.Minute)))
+	require.True(t, st.ModelNext["gpt-test"].After(s.now().Add(50*time.Second)))
 	require.True(t, latest.Schedulable, "probe failure must not change scheduling")
 	repo, ok := s.accounts.(*hunterAccounts)
 	require.True(t, ok)
@@ -178,8 +178,6 @@ func TestHunterProviderRotationAndBackoff(t *testing.T) {
 	cfg.ProxyIDs = []int64{9}
 	cfg.RotatingProxyIDs = []int64{9}
 	require.True(t, openAITurnStateHuntProxyRotating(cfg, Proxy{ID: 9, Host: "other.invalid", Username: "fixed"}))
-	require.Equal(t, time.Hour, openAITurnStateHuntBackoff(429))
-	require.Equal(t, 6*time.Hour, openAITurnStateHuntBackoff(401))
 	now := time.Now()
 	st := openAITurnStateHuntState{NextAt: now.Add(time.Hour), CapWait: true, HourCount: 30}
 	cfg = DefaultTurnStateHunterSettings()
@@ -273,9 +271,9 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 		{"three_failures", []int{0, 0, 0, 200}, 1000, 1000, 3, time.Minute},
 		{"global_budget_refunded", []int{0, 0, 200}, 1, 1000, 3, 0},
 		{"account_budget_refunded", []int{0, 0, 200}, 1000, 1, 3, 0},
-		{"rate_limit", []int{0, 429, 200}, 1000, 1000, 2, time.Hour},
-		{"forbidden", []int{403, 200}, 1000, 1000, 1, 6 * time.Hour},
-		{"unauthorized", []int{401, 200}, 1000, 1000, 1, 6 * time.Hour},
+		{"rate_limit", []int{0, 429, 200}, 1000, 1000, 2, time.Minute},
+		{"forbidden", []int{403, 200}, 1000, 1000, 1, time.Minute},
+		{"unauthorized", []int{401, 200}, 1000, 1000, 1, time.Hour},
 		{"upstream_error", []int{503, 200}, 1000, 1000, 1, 15 * time.Minute},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -317,7 +315,16 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 			if tc.backoff == 0 {
 				require.True(t, st.NextAt.IsZero())
 			} else {
-				require.Equal(t, fixed.Add(tc.backoff), st.NextAt)
+				last := st.Last[0]
+				require.Equal(t, fixed.Add(tc.backoff), last.BackoffUntil)
+				switch last.BackoffScope {
+				case "account":
+					require.Equal(t, last.BackoffUntil, st.NextAt)
+				case "model":
+					require.Equal(t, last.BackoffUntil, st.ModelNext[last.Model])
+				case "proxy":
+					require.Equal(t, last.BackoffUntil, st.ProxyNext["1"])
+				}
 			}
 			raw, err := s.gateway.settingService.settingRepo.GetValue(context.Background(), hunterBudgetKey)
 			require.NoError(t, err)

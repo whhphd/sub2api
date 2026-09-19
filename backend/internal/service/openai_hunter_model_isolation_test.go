@@ -1,0 +1,139 @@
+package service
+
+import (
+	"context"
+	"github.com/stretchr/testify/require"
+	"net/http"
+	"testing"
+	"time"
+)
+
+func TestHunterHoldsOnlyRequestedModel(t *testing.T) {
+	s, a, cfg := newHunterTest(t)
+	cfg.HoldWhenDegraded = true
+	cfg.Models = []string{"gpt-test", "gpt-other"}
+	_, e := s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(context.Background(), &cfg, nil, nil)
+	require.NoError(t, e)
+	r := stateBoundRequest(s.gateway, a, 1, "session", "gpt-test")
+	s.gateway.prepareTurnStateHTTP(r)
+	require.Error(t, turnStateHoldError(r))
+	fresh, e := s.fresh(context.Background(), a.ID)
+	require.NoError(t, e)
+	require.True(t, fresh.IsSchedulable())
+	require.True(t, fresh.isModelRateLimitedWithContext(context.Background(), "gpt-test"))
+	require.False(t, fresh.isModelRateLimitedWithContext(context.Background(), "gpt-other"))
+	require.Empty(t, fresh.TempUnschedulableReason)
+	r = stateBoundRequest(s.gateway, fresh, 1, "session", "gpt-other")
+	s.gateway.prepareTurnStateHTTP(r)
+	fresh, e = s.fresh(context.Background(), a.ID)
+	require.NoError(t, e)
+	require.Len(t, turnStateModelHolds(fresh), 2)
+}
+func TestHunter403ClassificationAndQuota(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		status             int
+		body, scope, label string
+		duration           time.Duration
+	}{
+		{403, `{"error":{"message":"forbidden"}}`, "model", "forbidden_unclassified", time.Minute},
+		{403, `{"error":{"code":"model_not_found"}}`, "model", "model_unavailable", 15 * time.Minute},
+		{403, `{"error":{"code":"invalid_token"}}`, "account", "credential_rejected", time.Hour},
+		{401, `{}`, "account", "credential_rejected", time.Hour},
+		{429, `{"error":{"code":"usage_limit_reached"}}`, "account", "quota_exhausted", time.Hour},
+		{429, `{"error":{"code":"rate_limit_exceeded"}}`, "model", "rate_limited_transient", time.Minute},
+		{407, ``, "proxy", "proxy_authentication", 5 * time.Minute},
+	}
+	for _, c := range cases {
+		label, scope, until := classifyHunterError(nil, c.status, nil, []byte(c.body), now)
+		require.Equal(t, c.label, label)
+		require.Equal(t, c.scope, scope)
+		require.Equal(t, now.Add(c.duration), until)
+	}
+	label, scope, _ := classifyHunterError(nil, 403, http.Header{"Cf-Mitigated": []string{"challenge"}}, []byte(`<html>private</html>`), now)
+	require.Equal(t, "exit_challenge", label)
+	require.Equal(t, "proxy", scope)
+}
+func TestHunterQuotaExhaustedNeverProbes(t *testing.T) {
+	for _, kind := range []string{"rate_limit", "quota_snapshot", "manual", "model_limit"} {
+		t.Run(kind, func(t *testing.T) {
+			s, a, cfg := newHunterTest(t)
+			repo, ok := s.accounts.(*hunterAccounts)
+			require.True(t, ok)
+			until := time.Now().Add(time.Hour)
+			switch kind {
+			case "rate_limit":
+				repo.account.RateLimitResetAt = &until
+			case "quota_snapshot":
+				repo.account.Extra["codex_5h_used_percent"] = 100.0
+				repo.account.Extra["codex_5h_reset_at"] = until.Format(time.RFC3339)
+				repo.account.Extra["codex_usage_updated_at"] = time.Now().Format(time.RFC3339)
+			case "manual":
+				repo.account.Schedulable = false
+			case "model_limit":
+				repo.account.Extra["model_rate_limits"] = map[string]any{"gpt-test": map[string]any{"rate_limit_reset_at": until.Format(time.RFC3339)}}
+			}
+			s.probeOverride = func(context.Context, *Account, string, TurnStateHunterSettings, Proxy) openAITurnStateHuntAttempt {
+				t.Fatal("must not probe blocked account/model")
+				return openAITurnStateHuntAttempt{}
+			}
+			spent, _ := s.huntOne(context.Background(), a, cfg)
+			require.False(t, spent)
+		})
+	}
+}
+func TestHunterBackoffIsolationAndLegacy403(t *testing.T) {
+	now := time.Now()
+	st := openAITurnStateHuntState{NextAt: now.Add(5 * time.Hour), Last: []openAITurnStateHuntAttempt{{Status: 403, Model: "a", At: now.Add(-time.Hour)}}}
+	st.upgradeBackoff(now)
+	require.True(t, st.NextAt.IsZero())
+	r := openAITurnStateHuntAttempt{Status: 403, Model: "a"}
+	st.applyBackoff(&r, now)
+	require.True(t, st.NextAt.IsZero())
+	require.True(t, st.ModelNext["a"].After(now))
+	require.True(t, st.ModelNext["b"].IsZero())
+	st2 := openAITurnStateHuntState{NextAt: now.Add(time.Hour), Last: []openAITurnStateHuntAttempt{{Status: 429}}}
+	st2.upgradeBackoff(now)
+	require.True(t, st2.NextAt.After(now))
+}
+
+func TestHunter403DoesNotBlockNextModelProbe(t *testing.T) {
+	s, a, cfg := newHunterTest(t)
+	cfg.Models = []string{"gpt-a", "gpt-b"}
+	_, err := s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(context.Background(), &cfg, nil, nil)
+	require.NoError(t, err)
+	calls := []string{}
+	s.probeOverride = func(_ context.Context, _ *Account, model string, _ TurnStateHunterSettings, p Proxy) openAITurnStateHuntAttempt {
+		calls = append(calls, model)
+		status := 200
+		if model == "gpt-a" {
+			status = 403
+		}
+		return openAITurnStateHuntAttempt{At: s.now(), Model: model, ProxyID: p.ID, Status: status}
+	}
+	spent, halt := s.huntOne(context.Background(), a, cfg)
+	require.True(t, spent)
+	require.False(t, halt)
+	spent, halt = s.huntOne(context.Background(), a, cfg)
+	require.True(t, spent)
+	require.False(t, halt)
+	require.Equal(t, []string{"gpt-a", "gpt-b"}, calls)
+}
+func TestHunterQuotaChangeStopsTransportRetry(t *testing.T) {
+	s, a, cfg := newHunterTest(t)
+	calls := 0
+	s.probeOverride = func(_ context.Context, _ *Account, model string, _ TurnStateHunterSettings, p Proxy) openAITurnStateHuntAttempt {
+		calls++
+		return openAITurnStateHuntAttempt{At: s.now(), Model: model, ProxyID: p.ID, Error: "transport_error"}
+	}
+	s.retryWait = func(context.Context) error {
+		repo, ok := s.accounts.(*hunterAccounts)
+		require.True(t, ok)
+		until := s.now().Add(time.Hour)
+		repo.account.RateLimitResetAt = &until
+		return nil
+	}
+	spent, _ := s.huntOne(context.Background(), a, cfg)
+	require.True(t, spent)
+	require.Equal(t, 1, calls)
+}

@@ -91,7 +91,7 @@ func stripTurnStateRuntimeExtra(extra map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(extra))
 	for k, v := range extra {
-		if k != CodexTurnStatePoolKey && k != CodexTurnStateObservationKey && k != CodexTurnStateSummaryKey && k != CodexTurnStateHuntKey {
+		if k != CodexTurnStatePoolKey && k != CodexTurnStateObservationKey && k != CodexTurnStateSummaryKey && k != CodexTurnStateHuntKey && k != CodexTurnStateModelHoldsKey {
 			out[k] = v
 		}
 	}

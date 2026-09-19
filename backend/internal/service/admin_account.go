@@ -686,6 +686,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, CodexTurnStatePoolKey)
 		delete(normalizedExtra, CodexTurnStateObservationKey)
 		delete(normalizedExtra, CodexTurnStateSummaryKey)
+		delete(normalizedExtra, CodexTurnStateModelHoldsKey)
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -705,7 +706,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
 			OpenAIAutoResetCreditStateExtraKey,
-			CodexTurnStatePoolKey, CodexTurnStateObservationKey, CodexTurnStateSummaryKey,
+			CodexTurnStatePoolKey, CodexTurnStateObservationKey, CodexTurnStateSummaryKey, CodexTurnStateModelHoldsKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v

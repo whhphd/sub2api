@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,11 +21,32 @@ func (r *hunterAccounts) CompareAndSwapTurnStateHold(_ context.Context, e *Accou
 		return false, errors.New("offline")
 	}
 	a := r.account
-	if !reflect.DeepEqual(a.Credentials, e.Credentials) || a.TempUnschedulableReason != e.TempUnschedulableReason || !sameHoldTime(a.TempUnschedulableUntil, e.TempUnschedulableUntil) {
+	model := strings.TrimPrefix(reason, openAITurnStateHoldReasonPrefix)
+	if model == reason || model == "" {
+		return false, errors.New("missing model")
+	}
+	current := turnStateModelHolds(a)
+	old := turnStateModelHolds(e)
+	if !reflect.DeepEqual(a.Credentials, e.Credentials) || !current[model].Equal(old[model]) {
 		return false, nil
 	}
-	a.TempUnschedulableUntil = u
-	a.TempUnschedulableReason = reason
+	if a.Extra == nil {
+		a.Extra = map[string]any{}
+	}
+	raw, _ := a.Extra[CodexTurnStateModelHoldsKey].(map[string]any)
+	if raw == nil {
+		raw = map[string]any{}
+	}
+	if u == nil {
+		delete(raw, model)
+	} else {
+		raw[model] = u.Format(time.RFC3339Nano)
+	}
+	a.Extra[CodexTurnStateModelHoldsKey] = raw
+	if a.TempUnschedulableReason == reason && e.TempUnschedulableReason == reason && sameHoldTime(a.TempUnschedulableUntil, e.TempUnschedulableUntil) {
+		a.TempUnschedulableUntil = nil
+		a.TempUnschedulableReason = ""
+	}
 	return true, nil
 }
 func TestHunterHoldLifecycle(t *testing.T) {
@@ -42,13 +64,15 @@ func TestHunterHoldLifecycle(t *testing.T) {
 	require.Same(t, fe, s.gateway.handleOpenAIUpstreamTransportError(ctx, nil, a, fe, false))
 	latest, err := s.fresh(ctx, a.ID)
 	require.NoError(t, err)
-	require.Equal(t, "gpt-test", openAITurnStateHeldModel(latest, time.Now()))
+	require.True(t, turnStateModelHolds(latest)["gpt-test"].After(time.Now()))
+	require.True(t, latest.IsSchedulable())
 	cfg.HoldWhenDegraded = false
 	_, err = s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(ctx, &cfg, nil, nil)
 	require.NoError(t, err)
 	s.syncHold(ctx, latest)
 	latest, err = s.fresh(ctx, a.ID)
 	require.NoError(t, err)
+	require.Empty(t, turnStateModelHolds(latest))
 	require.Empty(t, latest.TempUnschedulableReason)
 }
 func TestHunterAutoModelsNaturalOnlyAndDisabled(t *testing.T) {
@@ -158,11 +182,13 @@ func TestHunterHoldOnlyMatchingLiveCandidateReleases(t *testing.T) {
 			require.NoError(t, err)
 			switch kind {
 			case "valid", "disabled", "auto_off":
+				require.Empty(t, turnStateModelHolds(latest))
 				require.Empty(t, latest.TempUnschedulableReason)
 			case "other_fault":
 				require.Equal(t, "credential_rejected", latest.TempUnschedulableReason)
 			default:
-				require.Equal(t, "gpt-test", openAITurnStateHeldModel(latest, time.Now()))
+				require.True(t, turnStateModelHolds(latest)["gpt-test"].After(time.Now()))
+				require.True(t, latest.IsSchedulable())
 			}
 		})
 	}

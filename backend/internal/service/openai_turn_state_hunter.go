@@ -422,6 +422,16 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 	}
 	st := readOpenAITurnStateHuntState(a)
 	now := s.now()
+	if st.BackoffVersion < 2 {
+		st.upgradeBackoff(now)
+		if s.save(ctx, a, st) != nil {
+			return false, true
+		}
+	}
+	if s.hunterAccountBlocked(ctx, a, now) {
+		s.gate(ctx, a, st, "account_unavailable_or_quota")
+		return false, false
+	}
 	st.rollHour(now)
 	if st.waiting(cfg, now) {
 		return false, false
@@ -439,13 +449,18 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 	}
 	models := []string{}
 	configuredModels := s.gateway.hunterModelsForAccount(cfg, a.ID, now)
-	held := openAITurnStateHeldModel(a, now)
-	if cfg.HoldWhenDegraded && held != "" && (cfg.AutoModels || cfg.hunts(held)) && !isOpenAIImageGenerationModel(held) && !slices.Contains(configuredModels, held) {
-		configuredModels = append(configuredModels, held)
+	heldModels := turnStateHoldModels(a)
+	for _, held := range heldModels {
+		if cfg.HoldWhenDegraded && (cfg.AutoModels || cfg.hunts(held)) && !isOpenAIImageGenerationModel(held) && !slices.Contains(configuredModels, held) {
+			configuredModels = append(configuredModels, held)
+		}
 	}
 	active := false
 	for _, model := range configuredModels {
-		if model != held && cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
+		if !slices.Contains(heldModels, model) && cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
+			continue
+		}
+		if st.ModelNext[model].After(now) || a.isRateLimitActiveForKey(model) {
 			continue
 		}
 		active = true
@@ -481,7 +496,7 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 	for n := 0; n < len(cfg.ProxyIDs); n++ {
 		id := cfg.ProxyIDs[(st.Cursor+n)%len(cfg.ProxyIDs)]
 		for _, p := range proxies {
-			if p.ID != id || !p.IsActive() || p.IsExpired(now) {
+			if p.ID != id || !p.IsActive() || p.IsExpired(now) || st.ProxyNext[strconv.FormatInt(p.ID, 10)].After(now) {
 				continue
 			}
 			exit = ""
@@ -548,6 +563,10 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 		if err != nil || a == nil || a.Status != StatusActive || turnStateOwner(a) != turnStateOwner(account) {
 			return spent, true
 		}
+		if s.hunterAccountBlocked(ctx, a, s.now()) || a.isRateLimitActiveForKey(model) {
+			s.gate(ctx, a, st, "account_unavailable_or_quota")
+			return spent, false
+		}
 		// Reload the proxy before retrying; do not reuse a deleted/disabled or edited binding.
 		if attempt > 1 {
 			op, cancel := context.WithTimeout(ctx, turnStateTimeout)
@@ -605,18 +624,15 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 		transportFailure := result.Status == 0 && result.Error == "transport_error"
 		result.transport = transportFailure
 		st.HourCount-- // push consumes the allowance reserved above.
+		st.applyBackoff(&result, s.now())
 		st.push(result)
 		if transportFailure {
 			if err := s.releaseGlobal(context.WithoutCancel(ctx), reservedWindow); err != nil {
 				s.log(a, model, "hunter_storage_error", "transport_budget_release_failed", nil)
 			}
 		}
-		if transportFailure {
-			st.NextAt = s.now().Add(time.Minute)
-		} else if result.Status != http.StatusOK || result.Error != "" {
-			st.NextAt = s.now().Add(openAITurnStateHuntBackoff(result.Status))
-		}
-		s.log(a, model, "hunter_attempt", result.Error, map[string]any{"proxy_id": result.ProxyID, "http_status": result.Status, "length": result.Chars, "baseline": result.Healthy, "headers_ms": result.LatencyMs, "hour_count": st.HourCount, "retry_attempt": attempt})
+
+		s.log(a, model, "hunter_attempt", result.Error, map[string]any{"proxy_id": result.ProxyID, "http_status": result.Status, "length": result.Chars, "baseline": result.Healthy, "headers_ms": result.LatencyMs, "hour_count": st.HourCount, "retry_attempt": attempt, "backoff_scope": result.BackoffScope, "backoff_until": result.BackoffUntil})
 		if s.save(context.WithoutCancel(ctx), a, st) != nil {
 			return spent, true
 		}
@@ -684,7 +700,7 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 	if resp.StatusCode != http.StatusOK {
 		peek, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		_ = resp.Body.Close()
-		result.Error = diagnosticErrorClass(resp.StatusCode, peek)
+		result.Error, result.BackoffScope, result.BackoffUntil = classifyHunterError(a, resp.StatusCode, resp.Header, peek, s.now())
 		return result
 	}
 	// Close before DB access; never wait for text generation to finish.

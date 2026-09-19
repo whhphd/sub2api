@@ -257,3 +257,7 @@ it('distinguishes hunter hold from quota and credential faults', () => {
  expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulableUntil')
  wrapper.unmount()
 })
+it('shows only the affected model without marking the whole account unavailable', () => {
+ const wrapper=mount(AccountStatusIndicator,{props:{account:makeAccount({platform:'openai',extra:{openai_turn_state_model_holds:{'gpt-a':'2099-01-01T00:00:00Z','gpt-expired':'2000-01-01T00:00:00Z'}}})}})
+ expect(wrapper.text()).toContain('gpt-a');expect(wrapper.text()).not.toContain('gpt-expired');expect(wrapper.text()).toContain('admin.accounts.status.active');wrapper.unmount()
+})

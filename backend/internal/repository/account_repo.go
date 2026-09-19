@@ -653,7 +653,7 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'upstream_balance',
  extra -> 'openai_turn_state_pool',
  extra -> 'openai_turn_state_observed',
- extra -> 'openai_turn_state_summary', extra -> 'openai_turn_state_hunt', credentials
+ extra -> 'openai_turn_state_summary', extra -> 'openai_turn_state_hunt', extra -> 'openai_turn_state_model_holds', credentials
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -684,6 +684,7 @@ func lockAndMergeAccountProbeExtra(
 		currentTurnStateObservation  []byte
 		currentTurnStateSummary      []byte
 		currentTurnStateHunt         []byte
+		currentModelHolds            []byte
 		currentTurnStateCredentials  []byte
 	)
 	if err := rows.Scan(
@@ -697,7 +698,7 @@ func lockAndMergeAccountProbeExtra(
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
 		&currentBalanceSnapshot,
-		&currentTurnStatePool, &currentTurnStateObservation, &currentTurnStateSummary, &currentTurnStateHunt, &currentTurnStateCredentials,
+		&currentTurnStatePool, &currentTurnStateObservation, &currentTurnStateSummary, &currentTurnStateHunt, &currentModelHolds, &currentTurnStateCredentials,
 	); err != nil {
 		return nil, err
 	}
@@ -714,7 +715,7 @@ func lockAndMergeAccountProbeExtra(
 	credentialText := func(m map[string]any, k string) string { v, _ := m[k].(string); return strings.TrimSpace(v) }
 	turnStateSameOwner := credentialText(oldCreds, "chatgpt_account_id") == credentialText(account.Credentials, "chatgpt_account_id") && credentialText(oldCreds, "chatgpt_user_id") == credentialText(account.Credentials, "chatgpt_user_id")
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
-	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary, service.CodexTurnStateHuntKey: currentTurnStateHunt} {
+	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary, service.CodexTurnStateHuntKey: currentTurnStateHunt, service.CodexTurnStateModelHoldsKey: currentModelHolds} {
 		delete(extra, key)
 		if turnStateSameOwner && len(raw) > 0 {
 			var value any
