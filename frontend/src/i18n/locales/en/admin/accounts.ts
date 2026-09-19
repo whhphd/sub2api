@@ -1,20 +1,23 @@
 export default {
     accounts: {
       turnState: {
-hunterSummary: "Hunter reserved {count} probes this hour",hunterNext: "Next: {time}",hunterGate: {"ready": "Waiting for next cycle", "account_cap": "Account hourly limit reached", "global_cap": "Site hourly limit reached", "fresh": "Candidates still fresh", "idle": "No recent model traffic", "pool_unavailable": "Pool unavailable", "proxy_unavailable": "Proxies unavailable", "no_usable_exit": "No available exit or exit cooling"},
+hunterSummary: "Hunter reserved {count} probes this hour",hunterNext: "Next: {time}",hunterGate: {"needsRefresh": "No valid candidates; awaiting refresh", "held": "Model paused for missing candidates; awaiting replenishment","ready": "Waiting for next cycle", "account_cap": "Account hourly limit reached", "global_cap": "Site hourly limit reached", "fresh": "Candidates still fresh", "idle": "No recent model traffic", "pool_unavailable": "Pool unavailable", "proxy_unavailable": "Proxies unavailable", "no_usable_exit": "No available exit or exit cooling"},
 
+        autoEnabled: "Automatic takeover enabled",
+        autoDisabled: "Automatic takeover disabled",
+        requestDecision: "Candidate inventory below; injection is decided per request.",
         parent: "Uses parent account #{id} state pool",
         inherited: "Parent managed",
         unknown: "Settings unavailable",
-        observeOnly: "Observation only",
-        waiting: "Waiting for candidates",
+        observeOnly: "Automatic takeover disabled",
+        waiting: "No available candidates",
         ready: "Candidates available",
         rejected: "Candidates rejected",
         expired: "Candidates expired",
         baseline: "Baseline shape",
         nonBaseline: "Non-baseline shape",
         available: "{count} available",
-        latestObservation: "Latest observation (length / blocks)",
+        latestObservation: "Latest natural response (upstream length / blocks)",
         coverage: "Models with available candidates: {available}/{total}",
         expires: "Latest expiry: {time}",
         viewDetails: "View Turn-State details",

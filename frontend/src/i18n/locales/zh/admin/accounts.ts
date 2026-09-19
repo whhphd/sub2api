@@ -1,20 +1,23 @@
 export default {
     accounts: {
       turnState: {
-hunterSummary: "猎手本小时已预留 {count} 次探测",hunterNext: "下次：{time}",hunterGate: {"ready": "等待下一轮", "account_cap": "达到单账号上限", "global_cap": "达到全站上限", "fresh": "候选尚未到期", "idle": "模型近期无请求", "pool_unavailable": "候选池读取失败", "proxy_unavailable": "代理读取失败", "no_usable_exit": "没有可用出口或出口冷却中"},
+hunterSummary: "猎手本小时已预留 {count} 次探测",hunterNext: "下次：{time}",hunterGate: {"needsRefresh": "暂无有效候选，等待刷新", "held": "模型缺候选暂停，等待补票","ready": "等待下一轮", "account_cap": "达到单账号上限", "global_cap": "达到全站上限", "fresh": "候选尚未到期", "idle": "模型近期无请求", "pool_unavailable": "候选池读取失败", "proxy_unavailable": "代理读取失败", "no_usable_exit": "没有可用出口或出口冷却中"},
 
+        autoEnabled: "自动接管已开启",
+        autoDisabled: "自动接管已关闭",
+        requestDecision: "下方显示候选库存；是否注入按每次请求判定。",
         parent: "沿用母账号 #{id} 的状态池",
         inherited: "母账号管理",
         unknown: "设置待确认",
-        observeOnly: "仅观测",
-        waiting: "等待候选",
-        ready: "可接管",
+        observeOnly: "自动接管已关闭",
+        waiting: "无可用候选",
+        ready: "候选可用",
         rejected: "候选被拒绝",
         expired: "候选过期",
         baseline: "基线形态",
         nonBaseline: "非基线形态",
         available: "可用候选 {count} 条",
-        latestObservation: "最近观测（长度 / 块数）",
+        latestObservation: "最近自然响应（上游返回长度 / 块数）",
         coverage: "有可用候选的模型 {available}/{total}",
         expires: "最晚到期：{time}",
         viewDetails: "查看 Turn-State 详情",

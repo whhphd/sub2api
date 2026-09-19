@@ -1,5 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
+
+enableAutoUnmount(afterEach)
+afterEach(() => vi.useRealTimers())
 import AccountStatusIndicator from '../AccountStatusIndicator.vue'
 import type { Account } from '@/types'
 
@@ -260,4 +263,27 @@ it('distinguishes hunter hold from quota and credential faults', () => {
 it('shows only the affected model without marking the whole account unavailable', () => {
  const wrapper=mount(AccountStatusIndicator,{props:{account:makeAccount({platform:'openai',extra:{openai_turn_state_model_holds:{'gpt-a':'2099-01-01T00:00:00Z','gpt-expired':'2000-01-01T00:00:00Z'}}})}})
  expect(wrapper.get('[data-testid="model-hold-badge"]').attributes('aria-label')).toContain('gpt-a');expect(wrapper.text()).not.toContain('gpt-a');expect(wrapper.text()).not.toContain('gpt-expired');expect(wrapper.text()).toContain('admin.accounts.status.active');wrapper.unmount()
+})
+
+it('expires quota, overload, temporary and model holds without fetching account data', async () => {
+ vi.useFakeTimers()
+ const start = new Date('2026-09-19T10:00:00Z')
+ vi.setSystemTime(start)
+ const until = new Date(start.getTime() + 10_000).toISOString()
+ const wrapper = mount(AccountStatusIndicator, { props: { account: makeAccount({
+  platform: 'openai', rate_limit_reset_at: until, overload_until: until,
+  temp_unschedulable_until: until, temp_unschedulable_reason: 'temporary error',
+  extra: { openai_turn_state_model_holds: { 'gpt-6-astra': until }, model_rate_limits: { 'gpt-5.6-sol': { rate_limit_reset_at: until } } }
+ }) } })
+ expect(wrapper.text()).toContain('429')
+ expect(wrapper.text()).toContain('529')
+ expect(wrapper.text()).toContain('gpt-5.6-sol')
+ expect(wrapper.find('[data-testid="model-hold-badge"]').exists()).toBe(true)
+ await vi.advanceTimersByTimeAsync(30_000)
+ expect(wrapper.text()).not.toContain('429')
+ expect(wrapper.text()).not.toContain('529')
+ expect(wrapper.text()).not.toContain('gpt-5.6-sol')
+ expect(wrapper.find('[data-testid="model-hold-badge"]').exists()).toBe(false)
+ expect(wrapper.text()).toContain('admin.accounts.status.active')
+ expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulable')
 })

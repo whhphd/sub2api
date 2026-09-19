@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
+import { useNowTicker } from '@/composables/useNowTicker'
 import type { Account } from '@/types'
 import AccountTurnStateCell from '../AccountTurnStateCell.vue'
 vi.mock('vue-i18n', async () => ({
@@ -35,6 +36,8 @@ describe('AccountTurnStateCell', () => {
     expect(bars[0].classes()).toContain('bg-emerald-500')
     expect(bars[1].classes()).toContain('bg-amber-500')
     await trigger().trigger('mouseenter')
+    expect(dialog()?.textContent).toContain('autoEnabled')
+    expect(dialog()?.textContent).toContain('requestDecision')
     expect(dialog()?.textContent).toContain('gpt-terra')
     expect(dialog()?.textContent).toContain('356 / 13')
     expect(dialog()?.textContent).toContain('nonBaseline')
@@ -108,4 +111,41 @@ describe('AccountTurnStateCell', () => {
     await wrapper.setProps({ account: { ...account(), id: 99 } })
     expect(dialog()).toBeNull()
   })
+})
+
+it('ages candidate inventory and hunter freshness without a table reload', async () => {
+ vi.useFakeTimers()
+ vi.setSystemTime(now)
+ const value = account({ openai_turn_state_summary: { candidates: [candidate()] }, openai_turn_state_hunt: { hour_count: 0, gate: 'fresh' } })
+ const Host = defineComponent({ setup() {
+  const clock = useNowTicker()
+  return () => h(AccountTurnStateCell, { account: value, enabled: true, now: clock.value })
+ } })
+ wrapper = mount(Host, { attachTo: document.body })
+ expect(trigger().attributes('aria-label')).toContain('ready')
+ await trigger().trigger('click')
+ expect(dialog()?.textContent).toContain('hunterGate.fresh')
+ await vi.advanceTimersByTimeAsync(30_000)
+ expect(trigger().attributes('aria-label')).toContain('expired')
+ expect(dialog()?.textContent).toContain('hunterGate.needsRefresh')
+ expect(dialog()?.textContent).not.toContain('hunterGate.fresh')
+ expect(wrapper.get('[data-testid="turn-state-coverage"]').text()).toBe('0/1')
+})
+
+it('shows the disabled switch even when the inventory contains valid candidates', async () => {
+ render({ openai_turn_state_summary: { candidates: [candidate()] } }, false)
+ await trigger().trigger('click')
+ expect(dialog()?.textContent).toContain('autoDisabled')
+ expect(dialog()?.textContent).not.toContain('autoEnabled')
+ expect(dialog()?.textContent).not.toContain('requestDecision')
+ expect(wrapper.get('[data-testid="turn-state-coverage"]').text()).toBe('1/1')
+})
+
+it('does not call a held model idle until its hold expires', async () => {
+ render({ openai_turn_state_hunt: { hour_count: 0, gate: 'idle' }, openai_turn_state_model_holds: { 'gpt-test': new Date(now + 1000).toISOString() } })
+ await trigger().trigger('click')
+ expect(dialog()?.textContent).toContain('hunterGate.held')
+ await wrapper.setProps({ now: now + 2000 })
+ expect(dialog()?.textContent).toContain('hunterGate.idle')
+ expect(dialog()?.textContent).not.toContain('hunterGate.held')
 })

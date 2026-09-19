@@ -505,6 +505,7 @@
 <script setup lang="ts">
 import RecentRequestsCell from '@/components/account/RecentRequestsCell.vue'
 import { useAccountRecentRequests } from '@/composables/useAccountRecentRequests'
+import { useNowTicker } from '@/composables/useNowTicker'
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
@@ -640,12 +641,11 @@ const menu = reactive<{show:boolean, acc:Account|null, anchorRect:DOMRect|null}>
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
-const upstreamBillingNow = ref(Date.now())
+const upstreamBillingNow = useNowTicker()
 const queryingUpstreamBalance = reactive(new Set<number>())
 const upstreamBillingRateETag = ref<string | null>(null)
 const upstreamBillingRateRefreshing = ref(false)
 let upstreamBillingRateAbortController: AbortController | null = null
-useIntervalFn(() => { upstreamBillingNow.value = Date.now() }, 60_000)
 
 // Account tools dropdown
 const showAccountToolsDropdown = ref(false)

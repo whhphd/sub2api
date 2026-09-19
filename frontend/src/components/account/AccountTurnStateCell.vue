@@ -51,16 +51,17 @@
       >
         <div class="flex items-center gap-2 border-b border-white/10 pb-2">
           <span class="font-semibold">Turn-State</span>
-          <span class="text-gray-300">{{ t(`admin.accounts.turnState.${status}`) }}</span>
+          <span class="text-gray-300">{{ modeLabel }}</span>
           <button type="button" class="ml-auto rounded p-1 text-gray-400 hover:bg-white/10 hover:text-white" :aria-label="t('common.close')" @click.stop="close">
             <Icon name="x" size="xs" />
           </button>
         </div>
         <p v-if="account.parent_account_id" class="pt-2 text-gray-300">{{ t('admin.accounts.turnState.parent', { id: account.parent_account_id }) }}</p>
         <template v-else>
+          <p v-if="enabled" class="pt-2 text-gray-400">{{ t('admin.accounts.turnState.requestDecision') }}</p>
           <div v-if="hunt" class="space-y-1 border-b border-white/10 py-2 text-gray-300">
             <div>{{ t('admin.accounts.turnState.hunterSummary', { count: hunt.hour_count }) }}</div>
-            <div>{{ t(`admin.accounts.turnState.hunterGate.${hunt.gate || 'ready'}`) }}</div>
+            <div>{{ t(`admin.accounts.turnState.hunterGate.${hunterGate}`) }}</div>
             <div v-if="hunt.next_at && Date.parse(hunt.next_at) > now">{{ t('admin.accounts.turnState.hunterNext', { time: formatTime(hunt.next_at) }) }}</div>
             <div v-if="hunt.last?.[0]">{{ hunt.last[0].model }} · {{ hunt.last[0].chars || '--' }} · HTTP {{ hunt.last[0].status }} · {{ formatTime(hunt.last[0].at) }}</div>
           </div>
@@ -144,7 +145,16 @@ const status = computed(() => {
   if (!candidates.value.length) return 'waiting'
   return candidates.value.every(item => item.failed) ? 'rejected' : 'expired'
 })
+const modeLabel = computed(() => t(`admin.accounts.turnState.${props.account.parent_account_id ? 'inherited' : props.enabled === null ? 'unknown' : props.enabled ? 'autoEnabled' : 'autoDisabled'}`))
+// Stored hunter gates are snapshots: do not keep claiming freshness after expiry.
+const hunterGate = computed(() => {
+  if (hunt.value?.gate === 'fresh' && candidates.value.length && !availableModels.value) return 'needsRefresh'
+  const holds = props.account.extra?.openai_turn_state_model_holds as Record<string, string> | undefined
+  if (hunt.value?.gate === 'idle' && Object.values(holds ?? {}).some(until => Date.parse(until) > props.now)) return 'held'
+  return hunt.value?.gate || 'ready'
+})
 const summaryLabel = computed(() => [
+  modeLabel.value,
   `Turn-State · ${t(`admin.accounts.turnState.${status.value}`)}`,
   props.account.parent_account_id
     ? t('admin.accounts.turnState.parent', { id: props.account.parent_account_id })
