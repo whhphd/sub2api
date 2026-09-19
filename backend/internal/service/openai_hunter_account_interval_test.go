@@ -84,6 +84,8 @@ func TestHunterExemptModelsNeverActivelyProbed(t *testing.T) {
 			cfg.HoldExcludedModels = []string{"gpt-5.6-terra"}
 			s.gateway.turnStateTraffic.note(a.ID, "gpt-5.6-terra", s.now())
 			s.gateway.turnStateTraffic.note(a.ID, "gpt-test", s.now())
+			s.gateway.turnStateTraffic.noteMinted(a.ID, "gpt-5.6-terra", s.now())
+			s.gateway.turnStateTraffic.noteMinted(a.ID, "gpt-test", s.now())
 			_, err := s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(context.Background(), &cfg, nil, nil)
 			require.NoError(t, err)
 			var probed []string
