@@ -483,14 +483,25 @@ func updatedAccountRows(id int64, extra string) *sqlmock.Rows {
 }
 
 func TestLockAndMergeAccountPreservesModelHoldsAcrossOrdinaryEdit(t *testing.T) {
- for _,changed:=range []bool{false,true}{
-  db,mock,err:=sqlmock.New();require.NoError(t,err);t.Cleanup(func(){_=db.Close()})
-  client:=dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres,db)));t.Cleanup(func(){_=client.Close()})
-  identity:="old";if changed{identity="new"}
-  mock.ExpectQuery(`(?s)SELECT.*FOR NO KEY UPDATE`).WillReturnRows(sqlmock.NewRows([]string{"identity","ollama_group","ollama_proxy","enabled","rate","snapshot","session","auto","ollama","balance","pool","observed","summary","hunt","holds","credentials"}).AddRow(true,false,true,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,[]byte(`{"gpt-test":"2099-01-01T00:00:00Z"}`),[]byte(`{"chatgpt_account_id":"old"}`)))
-  a:=&service.Account{ID:27,Platform:service.PlatformOpenAI,Type:service.AccountTypeOAuth,Credentials:map[string]any{"chatgpt_account_id":identity},Extra:map[string]any{service.CodexTurnStateModelHoldsKey:map[string]any{"forged":"2099"}}}
-  got,err:=lockAndMergeAccountProbeExtra(context.Background(),client,a,nil,nil);require.NoError(t,err)
-  if changed{require.NotContains(t,got,service.CodexTurnStateModelHoldsKey)}else{require.Equal(t,map[string]any{"gpt-test":"2099-01-01T00:00:00Z"},got[service.CodexTurnStateModelHoldsKey])}
-  require.NoError(t,mock.ExpectationsWereMet())
- }
+	for _, changed := range []bool{false, true} {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+		client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+		t.Cleanup(func() { _ = client.Close() })
+		identity := "old"
+		if changed {
+			identity = "new"
+		}
+		mock.ExpectQuery(`(?s)SELECT.*FOR NO KEY UPDATE`).WillReturnRows(sqlmock.NewRows([]string{"identity", "ollama_group", "ollama_proxy", "enabled", "rate", "snapshot", "session", "auto", "ollama", "balance", "pool", "observed", "summary", "hunt", "holds", "credentials"}).AddRow(true, false, true, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []byte(`{"gpt-test":"2099-01-01T00:00:00Z"}`), []byte(`{"chatgpt_account_id":"old"}`)))
+		a := &service.Account{ID: 27, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Credentials: map[string]any{"chatgpt_account_id": identity}, Extra: map[string]any{service.CodexTurnStateModelHoldsKey: map[string]any{"forged": "2099"}}}
+		got, err := lockAndMergeAccountProbeExtra(context.Background(), client, a, nil, nil)
+		require.NoError(t, err)
+		if changed {
+			require.NotContains(t, got, service.CodexTurnStateModelHoldsKey)
+		} else {
+			require.Equal(t, map[string]any{"gpt-test": "2099-01-01T00:00:00Z"}, got[service.CodexTurnStateModelHoldsKey])
+		}
+		require.NoError(t, mock.ExpectationsWereMet())
+	}
 }
