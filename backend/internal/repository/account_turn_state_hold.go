@@ -36,15 +36,42 @@ func turnStateHoldPolicyLocked(ctx context.Context, tx *dbent.Tx) (bool, error) 
 }
 
 func (r *accountRepository) CompareAndSwapTurnStateHold(ctx context.Context, expected *service.Account, until *time.Time, reason string) (bool, error) {
- if expected==nil||expected.Platform!=service.PlatformOpenAI||expected.Type!=service.AccountTypeOAuth{return false,errors.New("invalid turn-state account")}
- model,ok:=strings.CutPrefix(reason,"turn_state_hold:");if !ok||strings.TrimSpace(model)==""||len(model)>256{return false,errors.New("invalid hold model")}
- credentials,err:=json.Marshal(expected.Credentials);if err!=nil{return false,err}
- holds,_:=expected.Extra[service.CodexTurnStateModelHoldsKey].(map[string]any)
- old,err:=json.Marshal(holds[model]);if err!=nil{return false,err}
- var next any;if until!=nil{next=until.UTC().Format(time.RFC3339Nano)};value,err:=json.Marshal(next);if err!=nil{return false,err}
- tx,err:=r.client.Tx(ctx);if err!=nil{return false,err};defer func(){_=tx.Rollback()}()
- if until!=nil{enabled,e:=turnStateHoldPolicyLocked(ctx,tx);if e!=nil||!enabled{return false,e}}
- result,err:=tx.Client().ExecContext(ctx,`WITH changed AS (
+	if expected == nil || expected.Platform != service.PlatformOpenAI || expected.Type != service.AccountTypeOAuth {
+		return false, errors.New("invalid turn-state account")
+	}
+	model, ok := strings.CutPrefix(reason, "turn_state_hold:")
+	if !ok || strings.TrimSpace(model) == "" || len(model) > 256 {
+		return false, errors.New("invalid hold model")
+	}
+	credentials, err := json.Marshal(expected.Credentials)
+	if err != nil {
+		return false, err
+	}
+	holds, _ := expected.Extra[service.CodexTurnStateModelHoldsKey].(map[string]any)
+	old, err := json.Marshal(holds[model])
+	if err != nil {
+		return false, err
+	}
+	var next any
+	if until != nil {
+		next = until.UTC().Format(time.RFC3339Nano)
+	}
+	value, err := json.Marshal(next)
+	if err != nil {
+		return false, err
+	}
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if until != nil {
+		enabled, e := turnStateHoldPolicyLocked(ctx, tx)
+		if e != nil || !enabled {
+			return false, e
+		}
+	}
+	result, err := tx.Client().ExecContext(ctx, `WITH changed AS (
  UPDATE accounts SET extra=jsonb_set(COALESCE(extra,'{}'::jsonb),'{openai_turn_state_model_holds}',
  CASE WHEN $1::boolean THEN COALESCE(extra->'openai_turn_state_model_holds','{}'::jsonb)-$2::text
  ELSE COALESCE(extra->'openai_turn_state_model_holds','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb) END),
@@ -56,9 +83,19 @@ func (r *accountRepository) CompareAndSwapTurnStateHold(ctx context.Context, exp
  AND (temp_unschedulable_reason IS DISTINCT FROM $4 OR (temp_unschedulable_until IS NOT DISTINCT FROM $8::timestamptz AND COALESCE(temp_unschedulable_reason,'')=$9))
  AND (NOT $1::boolean OR (extra->'openai_turn_state_model_holds') ? $2::text OR temp_unschedulable_reason=$4)
  RETURNING id)
- INSERT INTO scheduler_outbox(event_type,account_id) SELECT $10,id FROM changed`,until==nil,model,string(value),"turn_state_hold:"+model,expected.ID,string(credentials),string(old),expected.TempUnschedulableUntil,expected.TempUnschedulableReason,service.SchedulerOutboxEventAccountChanged)
- if err!=nil{return false,err};n,err:=result.RowsAffected();if err!=nil||n==0{return false,err};if err=tx.Commit();err!=nil{return false,err}
- r.syncSchedulerAccountSnapshotDetached(ctx,expected.ID);return true,nil
+ INSERT INTO scheduler_outbox(event_type,account_id) SELECT $10,id FROM changed`, until == nil, model, string(value), "turn_state_hold:"+model, expected.ID, string(credentials), string(old), expected.TempUnschedulableUntil, expected.TempUnschedulableReason, service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, expected.ID)
+	return true, nil
 }
 
 func (r *accountRepository) ReleaseTurnStateHoldsIfDisabled(ctx context.Context) (int, error) {

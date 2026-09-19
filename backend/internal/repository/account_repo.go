@@ -684,7 +684,7 @@ func lockAndMergeAccountProbeExtra(
 		currentTurnStateObservation  []byte
 		currentTurnStateSummary      []byte
 		currentTurnStateHunt         []byte
- currentModelHolds []byte
+		currentModelHolds            []byte
 		currentTurnStateCredentials  []byte
 	)
 	if err := rows.Scan(
@@ -715,7 +715,7 @@ func lockAndMergeAccountProbeExtra(
 	credentialText := func(m map[string]any, k string) string { v, _ := m[k].(string); return strings.TrimSpace(v) }
 	turnStateSameOwner := credentialText(oldCreds, "chatgpt_account_id") == credentialText(account.Credentials, "chatgpt_account_id") && credentialText(oldCreds, "chatgpt_user_id") == credentialText(account.Credentials, "chatgpt_user_id")
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
-	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary, service.CodexTurnStateHuntKey: currentTurnStateHunt,service.CodexTurnStateModelHoldsKey:currentModelHolds} {
+	for key, raw := range map[string][]byte{service.CodexTurnStatePoolKey: currentTurnStatePool, service.CodexTurnStateObservationKey: currentTurnStateObservation, service.CodexTurnStateSummaryKey: currentTurnStateSummary, service.CodexTurnStateHuntKey: currentTurnStateHunt, service.CodexTurnStateModelHoldsKey: currentModelHolds} {
 		delete(extra, key)
 		if turnStateSameOwner && len(raw) > 0 {
 			var value any

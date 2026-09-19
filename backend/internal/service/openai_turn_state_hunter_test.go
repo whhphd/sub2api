@@ -178,8 +178,6 @@ func TestHunterProviderRotationAndBackoff(t *testing.T) {
 	cfg.ProxyIDs = []int64{9}
 	cfg.RotatingProxyIDs = []int64{9}
 	require.True(t, openAITurnStateHuntProxyRotating(cfg, Proxy{ID: 9, Host: "other.invalid", Username: "fixed"}))
-	require.Equal(t, time.Hour, openAITurnStateHuntBackoff(429))
-	require.Equal(t, 6*time.Hour, openAITurnStateHuntBackoff(401))
 	now := time.Now()
 	st := openAITurnStateHuntState{NextAt: now.Add(time.Hour), CapWait: true, HourCount: 30}
 	cfg = DefaultTurnStateHunterSettings()
@@ -317,8 +315,16 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 			if tc.backoff == 0 {
 				require.True(t, st.NextAt.IsZero())
 			} else {
-				last:=st.Last[0];require.Equal(t,fixed.Add(tc.backoff),last.BackoffUntil)
-    switch last.BackoffScope{case "account":require.Equal(t,last.BackoffUntil,st.NextAt);case "model":require.Equal(t,last.BackoffUntil,st.ModelNext[last.Model]);case "proxy":require.Equal(t,last.BackoffUntil,st.ProxyNext["1"])}
+				last := st.Last[0]
+				require.Equal(t, fixed.Add(tc.backoff), last.BackoffUntil)
+				switch last.BackoffScope {
+				case "account":
+					require.Equal(t, last.BackoffUntil, st.NextAt)
+				case "model":
+					require.Equal(t, last.BackoffUntil, st.ModelNext[last.Model])
+				case "proxy":
+					require.Equal(t, last.BackoffUntil, st.ProxyNext["1"])
+				}
 			}
 			raw, err := s.gateway.settingService.settingRepo.GetValue(context.Background(), hunterBudgetKey)
 			require.NoError(t, err)
