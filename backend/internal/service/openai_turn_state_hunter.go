@@ -168,7 +168,9 @@ type OpenAITurnStateHunterService struct {
 	recordUsage func(context.Context, *OpenAIRecordUsageInput) error
 	leader      LeaderLockCache
 	owner       string
-	cursor      int64
+	budgetMu sync.Mutex
+ attemptOverride func(context.Context,*Account,TurnStateHunterSettings)(bool,bool)
+ accountWait func(context.Context,time.Duration) error
 	ctx         context.Context
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
@@ -253,45 +255,44 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 	if !cfg.Enabled {
 		return
 	}
-	sort.Slice(accounts, func(i, j int) bool { return accounts[i].ID < accounts[j].ID })
-	// One bounded probe sequence per account per pass prevents budget monopolization.
-	for len(accounts) > 0 && ctx.Err() == nil {
-		progressed := false
-		start := sort.Search(len(accounts), func(i int) bool { return accounts[i].ID > s.cursor }) % len(accounts)
-		for n := 0; n < len(accounts); n++ {
-			if ctx.Err() != nil {
-				return
-			}
-			a := accounts[(start+n)%len(accounts)]
-			if a.Status != StatusActive || turnStateOwner(&a) == "" {
-				continue
-			}
-			current, e := s.gateway.hunterPolicy(ctx)
-			if e != nil || !current.Enabled || !sameHunterPolicy(current, cfg) {
-				return
-			}
-			s.cursor = a.ID
-			spent, halt := s.huntOne(ctx, &a, cfg)
-			if halt {
-				return
-			}
-			if !spent {
-				continue
-			}
-			progressed = true
-			timer := time.NewTimer(openAITurnStateHuntJitter(time.Duration(cfg.GapSeconds) * time.Second))
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			}
-		}
-		if !progressed {
-			return
-		}
-	}
+ s.runAccountWorkers(ctx,accounts,cfg)
 }
+
+// The leader owns one worker per OAuth account, never one worker per model.
+// Unavailable accounts remain idle until their existing quota/backoff gates clear.
+// Slow proxies only delay their own account. Each worker performs attempts
+// sequentially and waits the configured interval after the attempt finishes.
+func(s *OpenAITurnStateHunterService) runAccountWorkers(ctx context.Context,accounts []Account,cfg TurnStateHunterSettings){
+ var workers sync.WaitGroup
+ seen:=map[int64]bool{}
+ for i:=range accounts{
+  a:=accounts[i]
+  if seen[a.ID]||turnStateOwner(&a)==""{continue}
+  seen[a.ID]=true
+  workers.Add(1)
+  go func(){defer workers.Done();defer func(){if recover()!=nil{s.log(&a,"","hunter_error","account_worker_panic",nil)}}()
+   for ctx.Err()==nil{
+    current,e:=s.gateway.hunterPolicy(ctx)
+    if e!=nil||!current.Enabled||!sameHunterPolicy(current,cfg){return}
+    var halt bool
+    if s.attemptOverride!=nil{_,halt=s.attemptOverride(ctx,&a,cfg)}else{
+     latest,e:=s.fresh(ctx,a.ID);if e!=nil||latest==nil||turnStateOwner(latest)!=turnStateOwner(&a){return}
+     s.syncHold(ctx,latest)
+     _,halt=s.huntOne(ctx,latest,cfg)
+    }
+    if halt{return}
+    if s.waitAccountInterval(ctx,time.Duration(cfg.GapSeconds)*time.Second)!=nil{return}
+   }
+  }()
+ }
+ workers.Wait()
+}
+func(s *OpenAITurnStateHunterService) waitAccountInterval(ctx context.Context,gap time.Duration)error{
+ if s.accountWait!=nil{return s.accountWait(ctx,gap)}
+ timer:=time.NewTimer(gap);defer timer.Stop()
+ select{case <-ctx.Done():return ctx.Err();case <-timer.C:return nil}
+}
+
 func (s *OpenAITurnStateHunterService) fresh(ctx context.Context, id int64) (*Account, error) {
 	op, cancel := context.WithTimeout(ctx, turnStateTimeout)
 	defer cancel()
@@ -334,6 +335,7 @@ func (s *OpenAITurnStateHunterService) gate(ctx context.Context, a *Account, st 
 	s.log(a, "", "hunter_gate", reason, nil)
 }
 func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg TurnStateHunterSettings, reservedWindow ...*time.Time) (bool, error) {
+ s.budgetMu.Lock();defer s.budgetMu.Unlock()
 	repo := s.gateway.settingService.settingRepo
 	cas, ok := repo.(SettingCompareAndSwapper)
 	if !ok {
@@ -381,6 +383,7 @@ func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg Tu
 // releaseGlobal gives back a reservation when the proxy failed before an HTTP
 // response. Such a failure consumes no upstream request budget in KlN's model.
 func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context, reservedWindow time.Time) error {
+ s.budgetMu.Lock();defer s.budgetMu.Unlock()
 	repo := s.gateway.settingService.settingRepo
 	cas, ok := repo.(SettingCompareAndSwapper)
 	if !ok {
@@ -457,6 +460,7 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 	}
 	active := false
 	for _, model := range configuredModels {
+ if cfg.HoldExempt(model){continue}
 		if !slices.Contains(heldModels, model) && cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
 			continue
 		}
@@ -563,7 +567,7 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 		if err != nil || a == nil || a.Status != StatusActive || turnStateOwner(a) != turnStateOwner(account) {
 			return spent, true
 		}
-		if s.hunterAccountBlocked(ctx, a, s.now()) || a.isRateLimitActiveForKey(model) {
+		if cfg.HoldExempt(model) || s.hunterAccountBlocked(ctx, a, s.now()) || a.isRateLimitActiveForKey(model) {
 			s.gate(ctx, a, st, "account_unavailable_or_quota")
 			return spent, false
 		}
