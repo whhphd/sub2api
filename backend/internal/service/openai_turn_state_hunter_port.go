@@ -10,7 +10,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -165,13 +164,6 @@ func (st *openAITurnStateHuntState) push(attempt openAITurnStateHuntAttempt) {
 	st.LastError = attempt.Error
 	st.UpdatedAt = attempt.At
 	st.noteExit(attempt)
-}
-
-func openAITurnStateHuntJitter(base time.Duration) time.Duration {
-	if base <= 0 {
-		return 0
-	}
-	return base/2 + time.Duration(rand.Int64N(int64(base)))
 }
 
 type openAITurnStateProbeIdentity struct {

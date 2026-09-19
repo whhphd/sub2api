@@ -160,21 +160,21 @@ type hunterUsageAPIKeys interface {
 }
 
 type OpenAITurnStateHunterService struct {
-	gateway     *OpenAIGatewayService
-	accounts    AccountRepository
-	proxies     ProxyRepository
-	prober      IPAPIProxyProber
-	apiKeys     hunterUsageAPIKeys
-	recordUsage func(context.Context, *OpenAIRecordUsageInput) error
-	leader      LeaderLockCache
-	owner       string
-	budgetMu sync.Mutex
- attemptOverride func(context.Context,*Account,TurnStateHunterSettings)(bool,bool)
- accountWait func(context.Context,time.Duration) error
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
-	start, stop sync.Once
+	gateway         *OpenAIGatewayService
+	accounts        AccountRepository
+	proxies         ProxyRepository
+	prober          IPAPIProxyProber
+	apiKeys         hunterUsageAPIKeys
+	recordUsage     func(context.Context, *OpenAIRecordUsageInput) error
+	leader          LeaderLockCache
+	owner           string
+	budgetMu        sync.Mutex
+	attemptOverride func(context.Context, *Account, TurnStateHunterSettings) (bool, bool)
+	accountWait     func(context.Context, time.Duration) error
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	start, stop     sync.Once
 	// Offline tests inject the paid-probe boundary and clock, never a real AI endpoint.
 	probeOverride func(context.Context, *Account, string, TurnStateHunterSettings, Proxy) openAITurnStateHuntAttempt
 	now           func() time.Time
@@ -255,42 +255,69 @@ func (s *OpenAITurnStateHunterService) runOnce(parent context.Context) {
 	if !cfg.Enabled {
 		return
 	}
- s.runAccountWorkers(ctx,accounts,cfg)
+	s.runAccountWorkers(ctx, accounts, cfg)
 }
 
 // The leader owns one worker per OAuth account, never one worker per model.
 // Unavailable accounts remain idle until their existing quota/backoff gates clear.
 // Slow proxies only delay their own account. Each worker performs attempts
 // sequentially and waits the configured interval after the attempt finishes.
-func(s *OpenAITurnStateHunterService) runAccountWorkers(ctx context.Context,accounts []Account,cfg TurnStateHunterSettings){
- var workers sync.WaitGroup
- seen:=map[int64]bool{}
- for i:=range accounts{
-  a:=accounts[i]
-  if seen[a.ID]||turnStateOwner(&a)==""{continue}
-  seen[a.ID]=true
-  workers.Add(1)
-  go func(){defer workers.Done();defer func(){if recover()!=nil{s.log(&a,"","hunter_error","account_worker_panic",nil)}}()
-   for ctx.Err()==nil{
-    current,e:=s.gateway.hunterPolicy(ctx)
-    if e!=nil||!current.Enabled||!sameHunterPolicy(current,cfg){return}
-    var halt bool
-    if s.attemptOverride!=nil{_,halt=s.attemptOverride(ctx,&a,cfg)}else{
-     latest,e:=s.fresh(ctx,a.ID);if e!=nil||latest==nil||turnStateOwner(latest)!=turnStateOwner(&a){return}
-     s.syncHold(ctx,latest)
-     _,halt=s.huntOne(ctx,latest,cfg)
-    }
-    if halt{return}
-    if s.waitAccountInterval(ctx,time.Duration(cfg.GapSeconds)*time.Second)!=nil{return}
-   }
-  }()
- }
- workers.Wait()
+func (s *OpenAITurnStateHunterService) runAccountWorkers(ctx context.Context, accounts []Account, cfg TurnStateHunterSettings) {
+	var workers sync.WaitGroup
+	seen := map[int64]bool{}
+	for i := range accounts {
+		a := accounts[i]
+		if seen[a.ID] || turnStateOwner(&a) == "" {
+			continue
+		}
+		seen[a.ID] = true
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			defer func() {
+				if recover() != nil {
+					s.log(&a, "", "hunter_error", "account_worker_panic", nil)
+				}
+			}()
+			for ctx.Err() == nil {
+				current, e := s.gateway.hunterPolicy(ctx)
+				if e != nil || !current.Enabled || !sameHunterPolicy(current, cfg) {
+					return
+				}
+				var halt bool
+				if s.attemptOverride != nil {
+					_, halt = s.attemptOverride(ctx, &a, cfg)
+				} else {
+					latest, e := s.fresh(ctx, a.ID)
+					if e != nil || latest == nil || turnStateOwner(latest) != turnStateOwner(&a) {
+						return
+					}
+					s.syncHold(ctx, latest)
+					_, halt = s.huntOne(ctx, latest, cfg)
+				}
+				if halt {
+					return
+				}
+				if s.waitAccountInterval(ctx, time.Duration(cfg.GapSeconds)*time.Second) != nil {
+					return
+				}
+			}
+		}()
+	}
+	workers.Wait()
 }
-func(s *OpenAITurnStateHunterService) waitAccountInterval(ctx context.Context,gap time.Duration)error{
- if s.accountWait!=nil{return s.accountWait(ctx,gap)}
- timer:=time.NewTimer(gap);defer timer.Stop()
- select{case <-ctx.Done():return ctx.Err();case <-timer.C:return nil}
+func (s *OpenAITurnStateHunterService) waitAccountInterval(ctx context.Context, gap time.Duration) error {
+	if s.accountWait != nil {
+		return s.accountWait(ctx, gap)
+	}
+	timer := time.NewTimer(gap)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *OpenAITurnStateHunterService) fresh(ctx context.Context, id int64) (*Account, error) {
@@ -335,7 +362,8 @@ func (s *OpenAITurnStateHunterService) gate(ctx context.Context, a *Account, st 
 	s.log(a, "", "hunter_gate", reason, nil)
 }
 func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg TurnStateHunterSettings, reservedWindow ...*time.Time) (bool, error) {
- s.budgetMu.Lock();defer s.budgetMu.Unlock()
+	s.budgetMu.Lock()
+	defer s.budgetMu.Unlock()
 	repo := s.gateway.settingService.settingRepo
 	cas, ok := repo.(SettingCompareAndSwapper)
 	if !ok {
@@ -383,7 +411,8 @@ func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg Tu
 // releaseGlobal gives back a reservation when the proxy failed before an HTTP
 // response. Such a failure consumes no upstream request budget in KlN's model.
 func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context, reservedWindow time.Time) error {
- s.budgetMu.Lock();defer s.budgetMu.Unlock()
+	s.budgetMu.Lock()
+	defer s.budgetMu.Unlock()
 	repo := s.gateway.settingService.settingRepo
 	cas, ok := repo.(SettingCompareAndSwapper)
 	if !ok {
@@ -460,7 +489,9 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 	}
 	active := false
 	for _, model := range configuredModels {
- if cfg.HoldExempt(model){continue}
+		if cfg.HoldExempt(model) {
+			continue
+		}
 		if !slices.Contains(heldModels, model) && cfg.IdleMinutes > 0 && !s.gateway.turnStateTraffic.active(a.ID, model, now.Add(-time.Duration(cfg.IdleMinutes)*time.Minute)) {
 			continue
 		}

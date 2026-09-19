@@ -25,7 +25,9 @@ func TestHunterAccountWorkersIndependentAndSequential(t *testing.T) {
 	var fastCount, slowCount atomic.Int32
 	s.attemptOverride = func(ctx context.Context, account *Account, _ TurnStateHunterSettings) (bool, bool) {
 		if account.ID == a.ID {
-			if slowCount.Add(1) == 1 { close(slowStarted) }
+			if slowCount.Add(1) == 1 {
+				close(slowStarted)
+			}
 			<-ctx.Done()
 			return true, true
 		}
@@ -35,20 +37,40 @@ func TestHunterAccountWorkersIndependentAndSequential(t *testing.T) {
 	s.accountWait = func(ctx context.Context, gap time.Duration) error {
 		intervals <- gap
 		select {
-		case <-ctx.Done(): return ctx.Err()
-		case <-resume: return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-resume:
+			return nil
 		}
 	}
 	done := make(chan struct{})
 	go func() { defer close(done); s.runAccountWorkers(ctx, []Account{*a, b, *a}, cfg) }()
-	select { case <-slowStarted: case <-time.After(3*time.Second): t.Fatal("slow worker did not start") }
-	select { case n := <-fastStarted: require.Equal(t, 1, n); case <-time.After(3*time.Second): t.Fatal("slow account blocked other accounts") }
+	select {
+	case <-slowStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("slow worker did not start")
+	}
+	select {
+	case n := <-fastStarted:
+		require.Equal(t, 1, n)
+	case <-time.After(3 * time.Second):
+		t.Fatal("slow account blocked other accounts")
+	}
 	require.Equal(t, 5*time.Second, <-intervals)
 	require.EqualValues(t, 1, fastCount.Load(), "account cannot run again before its own interval")
 	resume <- struct{}{}
-	select { case n := <-fastStarted: require.Equal(t, 2, n); case <-time.After(3*time.Second): t.Fatal("fast account did not resume independently") }
+	select {
+	case n := <-fastStarted:
+		require.Equal(t, 2, n)
+	case <-time.After(3 * time.Second):
+		t.Fatal("fast account did not resume independently")
+	}
 	cancel()
-	select { case <-done: case <-time.After(3*time.Second): t.Fatal("cancellation did not join all account workers") }
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancellation did not join all account workers")
+	}
 	require.EqualValues(t, 1, slowCount.Load(), "duplicate IDs must not create overlapping probes")
 }
 
@@ -77,7 +99,7 @@ func TestHunterAccountIntervalCancellation(t *testing.T) {
 
 func TestHunterExemptModelsNeverActivelyProbed(t *testing.T) {
 	for _, auto := range []bool{false, true} {
-		t.Run(map[bool]string{false:"configured", true:"auto_discovered"}[auto], func(t *testing.T) {
+		t.Run(map[bool]string{false: "configured", true: "auto_discovered"}[auto], func(t *testing.T) {
 			s, a, cfg := newHunterTest(t)
 			cfg.AutoModels = auto
 			cfg.Models = []string{"gpt-5.6-terra", "gpt-test"}
@@ -91,7 +113,7 @@ func TestHunterExemptModelsNeverActivelyProbed(t *testing.T) {
 			var probed []string
 			s.probeOverride = func(_ context.Context, _ *Account, model string, _ TurnStateHunterSettings, proxy Proxy) openAITurnStateHuntAttempt {
 				probed = append(probed, model)
-				return openAITurnStateHuntAttempt{At:s.now(), Model:model, ProxyID:proxy.ID, Status:429, Error:"rate_limited"}
+				return openAITurnStateHuntAttempt{At: s.now(), Model: model, ProxyID: proxy.ID, Status: 429, Error: "rate_limited"}
 			}
 			spent, halt := s.huntOne(context.Background(), a, cfg)
 			require.True(t, spent)
