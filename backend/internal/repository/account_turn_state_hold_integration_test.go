@@ -76,7 +76,7 @@ func TestTurnStateModelHoldsMigrateLegacyAndPreserveQuota(t *testing.T){
  ok,e:=repo.CompareAndSwapTurnStateHold(ctx,old,&until,"turn_state_hold:gpt-a");require.NoError(t,e);require.True(t,ok)
  v,e:=repo.GetByID(ctx,a.ID);require.NoError(t,e);require.Empty(t,v.TempUnschedulableReason);require.True(t,v.IsSchedulable());require.False(t,v.IsSchedulableForModel("gpt-a"));require.True(t,v.IsSchedulableForModel("gpt-b"))
  projected:=filterSchedulerExtra(v.Extra);require.Contains(t,projected,service.CodexTurnStateModelHoldsKey)
- require.NoError(t,repo.SetModelRateLimit(ctx,a.ID,"gpt-b",until,"real_quota"))
+ require.NoError(t,repo.SetModelRateLimit(ctx,a.ID,"gpt-b",until,"real_quota"));v,e=repo.GetByID(ctx,a.ID);require.NoError(t,e)
  // Different model writes based on the same snapshot must both survive.
  ok,e=repo.CompareAndSwapTurnStateHold(ctx,v,&until,"turn_state_hold:gpt-c");require.NoError(t,e);require.True(t,ok)
  v.Name="edited";require.NoError(t,repo.Update(ctx,v));v,e=repo.GetByID(ctx,a.ID);require.NoError(t,e);holds,ok:=v.Extra[service.CodexTurnStateModelHoldsKey].(map[string]any);require.True(t,ok);require.Len(t,holds,2)
