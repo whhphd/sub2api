@@ -23,14 +23,17 @@
         <label class="text-sm">{{ t('admin.settings.turnStateHunter.effort') }}<select v-model="form.reasoning_effort" class="input mt-1 w-full"><option v-for="v in ['minimal', 'low', 'medium', 'high', 'xhigh']" :key="v" :value="v">{{ v }}</option></select></label>
         <label class="text-sm">{{ t('admin.settings.turnStateHunter.usageApiKey') }}<input v-model.number="form.usage_api_key_id" class="input mt-1 w-full" type="number" min="0" step="1" data-testid="hunter-usage-api-key" /></label>
       </div>
-      <label class="flex items-center justify-between gap-4 text-sm"><span>{{ t('admin.settings.turnStateHunter.usageAccounting') }}</span><Toggle v-model="form.usage_accounting_enabled" data-testid="hunter-usage-accounting" /></label>
-      <label class="flex items-center justify-between gap-4 text-sm"><span>{{ t('admin.settings.turnStateHunter.holdWhenDegraded') }}</span><Toggle v-model="form.hold_when_degraded" data-testid="hunter-hold-degraded" /></label>
+      <label class="flex items-center justify-between gap-4 text-sm"><span>{{ t('admin.settings.turnStateHunter.usageAccounting') }}</span><Toggle  :model-value="!!form.usage_accounting_enabled" @update:model-value="form.usage_accounting_enabled = $event" data-testid="hunter-usage-accounting" /></label>
+      <label class="flex items-center justify-between gap-4 text-sm"><span>{{ t('admin.settings.turnStateHunter.holdWhenDegraded') }}</span><Toggle  :model-value="!!form.hold_when_degraded" @update:model-value="form.hold_when_degraded = $event" data-testid="hunter-hold-degraded" /></label>
+      <p class="text-xs text-gray-500">{{ t('admin.settings.turnStateHunter.usageHint') }}</p>
+      <p v-if="form.usage_accounting_enabled && !form.usage_api_key_id" role="status" class="text-sm text-amber-600">{{ t('admin.settings.turnStateHunter.usageMissing') }}</p>
+      <p class="text-xs text-gray-500">{{ t('admin.settings.turnStateHunter.holdHint') }}</p>
       <div class="flex justify-end"><button type="button" class="btn btn-primary" data-testid="hunter-save" @click="save">{{ saving ? t('common.saving') : t('common.save') }}</button></div>
     </fieldset>
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api'
 import type { TurnStateHunterConfig } from '@/api/admin/settings'
@@ -50,6 +53,7 @@ const numericFields = [
 ] as const
 const filteredProxies = computed(() => proxies.value.filter(p => `${p.name} ${p.host}`.toLowerCase().includes(proxySearch.value.toLowerCase())))
 const missingProxyIDs = computed(() => form.proxy_ids.filter(id => !proxies.value.some(p => p.id === id)))
+watch(() => [...form.proxy_ids], ids => { form.rotating_proxy_ids = (form.rotating_proxy_ids ?? []).filter(id => ids.includes(id)) })
 const selectedProxies = computed(() => form.proxy_ids.map(id => proxies.value.find(p => p.id === id)).filter(Boolean) as Proxy[])
 async function load() {
   loading.value = true; loadError.value = ''
@@ -64,7 +68,7 @@ async function load() {
 async function save() {
   const models = [...new Set(modelsText.value.split(/[,，\n]/).map(v => v.trim().toLowerCase()).filter(Boolean))]
   const invalidNumbers = numericFields.some(f => !Number.isSafeInteger(form[f.key]) || form[f.key] < f.min || (f.max !== undefined && form[f.key] > f.max)) || form.idle_minutes === 0
-  if (models.length > 8 || form.proxy_ids.length > 64 || (form.rotating_proxy_ids ?? []).some(id => !form.proxy_ids.includes(id)) || invalidNumbers || (form.enabled && ((!models.length && !form.auto_models) || !form.proxy_ids.length || missingProxyIDs.value.length))) {
+  if (models.length > 8 || !Number.isSafeInteger(form.usage_api_key_id ?? 0) || (form.usage_api_key_id ?? 0) < 0 || form.proxy_ids.length > 64 || (form.rotating_proxy_ids ?? []).some(id => !form.proxy_ids.includes(id)) || invalidNumbers || (form.enabled && ((!models.length && !form.auto_models) || !form.proxy_ids.length || missingProxyIDs.value.length))) {
     app.showError(t('admin.settings.turnStateHunter.invalid')); return
   }
   saving.value = true
@@ -72,7 +76,7 @@ async function save() {
     const result = await adminAPI.settings.updateOpenAIOAuthRuntimeSettings({ openai_oauth_turn_state_hunter: { ...form, models, proxy_ids: [...form.proxy_ids], rotating_proxy_ids: [...(form.rotating_proxy_ids ?? [])] } })
     if (result.openai_oauth_turn_state_hunter) Object.assign(form, result.openai_oauth_turn_state_hunter)
     modelsText.value = form.models.join(', '); autoEnabled.value = result.openai_oauth_turn_state_auto_enabled ?? false
-    app.showSuccess(t('admin.settings.turnStateHunter.saved'))
+    app.showSuccess(result.turn_state_hold_release?.complete ? t('admin.settings.turnStateHunter.released', { count: result.turn_state_hold_release.released }) : t('admin.settings.turnStateHunter.saved'))
   } catch (e) { app.showError(extractApiErrorMessage(e, t('admin.settings.turnStateHunter.saveFailed'))) }
   finally { saving.value = false }
 }

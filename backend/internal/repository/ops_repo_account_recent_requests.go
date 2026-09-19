@@ -23,7 +23,7 @@ SELECT row_to_json(detail) FROM (
      NULL::integer AS status_code, NULL::bigint AS error_id,
      NULL::text AS phase, NULL::text AS severity, NULL::text AS message,
      ul.user_id, ul.api_key_id, ul.account_id, ul.group_id, ul.stream,
-     CASE ul.request_type WHEN 1 THEN 'sync' WHEN 2 THEN 'stream' WHEN 3 THEN 'ws_v2' WHEN 4 THEN 'cyber' WHEN 5 THEN 'live' ELSE NULL END AS request_type,
+     CASE ul.request_type WHEN 1 THEN 'sync' WHEN 2 THEN 'stream' WHEN 3 THEN 'ws_v2' WHEN 4 THEN 'cyber' WHEN 5 THEN 'live' WHEN 6 THEN 'probe' ELSE NULL END AS request_type,
      ul.openai_ws_mode, ul.input_tokens, ul.output_tokens,
      ul.cache_read_tokens, ul.cache_creation_tokens, ul.image_input_tokens, ul.image_output_tokens,
      ul.actual_cost, COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1) AS account_cost
@@ -36,7 +36,7 @@ SELECT row_to_json(detail) FROM (
      o.model, o.upstream_model, o.duration_ms, o.time_to_first_token_ms AS first_token_ms,
      o.status_code, o.id AS error_id, o.error_phase AS phase, o.severity, o.error_message AS message,
      o.user_id, o.api_key_id, o.account_id, o.group_id, o.stream,
-     CASE o.request_type WHEN 1 THEN 'sync' WHEN 2 THEN 'stream' WHEN 3 THEN 'ws_v2' WHEN 4 THEN 'cyber' WHEN 5 THEN 'live' ELSE NULL END AS request_type, false AS openai_ws_mode,
+     CASE o.request_type WHEN 1 THEN 'sync' WHEN 2 THEN 'stream' WHEN 3 THEN 'ws_v2' WHEN 4 THEN 'cyber' WHEN 5 THEN 'live' WHEN 6 THEN 'probe' ELSE NULL END AS request_type, false AS openai_ws_mode,
      NULL::integer, NULL::integer, NULL::integer, NULL::integer, NULL::integer, NULL::integer,
      NULL::numeric, NULL::numeric
     FROM ops_error_logs o

@@ -1073,6 +1073,7 @@ func ProvideOpenAITurnStateHunterService(gateway *OpenAIGatewayService, accounts
 	ipapi, _ := prober.(IPAPIProxyProber)
 	svc := NewOpenAITurnStateHunterService(gateway, accounts, proxies, ipapi, leader)
  svc.apiKeys = apiKeys
+ if gateway != nil && gateway.settingService != nil { gateway.settingService.turnStateHoldReleaser, _ = accounts.(TurnStateHoldReleaser) }
 	svc.Start()
 	return svc
 }

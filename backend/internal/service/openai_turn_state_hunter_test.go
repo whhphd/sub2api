@@ -182,7 +182,7 @@ func TestHunterProviderRotationAndBackoff(t *testing.T) {
 	require.Equal(t, 6*time.Hour, openAITurnStateHuntBackoff(401))
 	now := time.Now()
 	st := openAITurnStateHuntState{NextAt: now.Add(time.Hour), CapWait: true, HourCount: 30}
-	cfg := DefaultTurnStateHunterSettings()
+	cfg = DefaultTurnStateHunterSettings()
 	require.True(t, st.waiting(cfg, now))
 	cfg.PerAccountMaxPerHour = 40
 	require.False(t, st.waiting(cfg, now))
@@ -271,8 +271,8 @@ func TestHunterTransportRetryOutcomesAndBudgets(t *testing.T) {
 	}{
 		{"recovers", []int{0, 200}, 1000, 1000, 2, 0},
 		{"three_failures", []int{0, 0, 0, 200}, 1000, 1000, 3, time.Minute},
-		{"global_budget", []int{0, 0, 200}, 2, 1000, 2, time.Minute},
-		{"account_budget", []int{0, 0, 200}, 1000, 2, 2, time.Hour},
+		{"global_budget_refunded", []int{0, 0, 200}, 1, 1000, 3, 0},
+		{"account_budget_refunded", []int{0, 0, 200}, 1000, 1, 3, 0},
 		{"rate_limit", []int{0, 429, 200}, 1000, 1000, 2, time.Hour},
 		{"forbidden", []int{403, 200}, 1000, 1000, 1, 6 * time.Hour},
 		{"unauthorized", []int{401, 200}, 1000, 1000, 1, 6 * time.Hour},

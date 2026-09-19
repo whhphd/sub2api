@@ -5,7 +5,7 @@ const { get, proxies, save, error, success } = vi.hoisted(() => ({ get: vi.fn(),
 vi.mock('@/api', () => ({ adminAPI: { settings: { getOpenAIOAuthRuntimeSettings: get, updateOpenAIOAuthRuntimeSettings: save }, proxies: { getAll: proxies } } }))
 vi.mock('@/stores', () => ({ useAppStore: () => ({ showError: error, showSuccess: success }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (k: string) => k }) }))
-const config = { enabled: false, models: ['gpt-test'], proxy_ids: [2], max_per_hour: 300, per_account_max_per_hour: 30, gap_seconds: 20, lead_minutes: 10, retry_minutes: 10, idle_minutes: 60, reasoning_effort: 'high' }
+const config = { auto_models: false, rotating_proxy_ids: [] as number[], hold_when_degraded: false, usage_accounting_enabled: true, usage_api_key_id: 0, enabled: false, models: ['gpt-test'], proxy_ids: [2], max_per_hour: 300, per_account_max_per_hour: 30, gap_seconds: 20, lead_minutes: 10, retry_minutes: 10, idle_minutes: 60, reasoning_effort: 'high' }
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.clearAllMocks()
@@ -70,4 +70,28 @@ describe('global turn-state hunter settings', () => {
     expect(error).toHaveBeenCalledOnce()
   })
 
+})
+
+it('saves global auto models, rotation and independent hold/accounting switches', async () => {
+ await render()
+ await wrapper.get('[data-testid="hunter-auto-models"]').setValue(true)
+ expect(wrapper.get('[data-testid="hunter-models"]').attributes('disabled')).toBeDefined()
+ await wrapper.get('[data-testid="hunter-rotating-2"]').setValue(true)
+ await wrapper.get('[data-testid="hunter-hold-degraded"]').trigger('click')
+ await wrapper.get('[data-testid="hunter-usage-accounting"]').trigger('click')
+ await wrapper.get('[data-testid="hunter-save"]').trigger('click')
+ await flushPromises()
+ expect(save).toHaveBeenCalledWith({openai_oauth_turn_state_hunter:{...config,auto_models:true,rotating_proxy_ids:[2],hold_when_degraded:true,usage_accounting_enabled:false}})
+})
+it('removes rotation flags when a selected proxy is removed', async () => {
+ get.mockResolvedValue({openai_oauth_turn_state_auto_enabled:true,openai_oauth_turn_state_hunter:{...config,rotating_proxy_ids:[2]}})
+ await render()
+ await wrapper.get('input[type="checkbox"][value="2"]').setValue(false)
+ await wrapper.get('[data-testid="hunter-save"]').trigger('click');await flushPromises()
+ expect(save.mock.calls[0][0].openai_oauth_turn_state_hunter.rotating_proxy_ids).toEqual([])
+})
+it('shows the immediate release result after saving off',async()=>{
+ save.mockResolvedValue({openai_oauth_turn_state_auto_enabled:true,openai_oauth_turn_state_hunter:config,turn_state_hold_release:{released:22,complete:true}})
+ await render();await wrapper.get('[data-testid="hunter-save"]').trigger('click');await flushPromises()
+ expect(success).toHaveBeenCalledWith('admin.settings.turnStateHunter.released')
 })

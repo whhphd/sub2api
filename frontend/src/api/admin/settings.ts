@@ -1344,6 +1344,7 @@ export interface TurnStateHunterConfig {
 }
 
 export interface OpenAIOAuthRuntimeSettings {
+ turn_state_hold_release?: { released: number; complete: boolean };
   openai_oauth_turn_state_hunter?: TurnStateHunterConfig;
   openai_oauth_turn_state_auto_enabled?: boolean;
   openai_oauth_codex_fingerprint_enhancement_enabled: boolean;

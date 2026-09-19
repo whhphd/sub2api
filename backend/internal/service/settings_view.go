@@ -588,6 +588,7 @@ type RateLimit429CooldownSettings struct {
 // OpenAIOAuthRuntimeSettings contains the global OAuth runtime policies used by
 // the OpenAI-compatible gateway, including Grok-specific behavior switches.
 type OpenAIOAuthRuntimeSettings struct {
+ TurnStateHoldRelease *TurnStateHoldReleaseResult `json:"turn_state_hold_release,omitempty"`
 	TurnStateHunter                           TurnStateHunterSettings `json:"openai_oauth_turn_state_hunter"`
 	TurnStateAutoEnabled                      bool                    `json:"openai_oauth_turn_state_auto_enabled"`
 	CodexFingerprintEnhancementEnabled        bool                    `json:"openai_oauth_codex_fingerprint_enhancement_enabled"`
@@ -615,6 +616,7 @@ func cloneOpenAIOAuthRuntimeSettings(settings *OpenAIOAuthRuntimeSettings) *Open
 		return DefaultOpenAIOAuthRuntimeSettings(false)
 	}
 	cloned := *settings
+ cloned.TurnStateHoldRelease = nil
 	cloned.TurnStateHunter = settings.TurnStateHunter.clone()
 	return &cloned
 }

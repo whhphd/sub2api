@@ -79,7 +79,7 @@ func ParseUsageRequestType(value string) (RequestType, error) {
 	case "probe":
 		return RequestTypeTurnStateProbe, nil
 	default:
-		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber, live")
+		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber, live, probe")
 	}
 }
 

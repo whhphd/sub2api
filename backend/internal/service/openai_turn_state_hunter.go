@@ -128,12 +128,15 @@ func openAITurnStateHuntProxyRotating(cfg TurnStateHunterSettings, p Proxy) bool
 	return within("1024proxy.io") && u != "" && !strings.Contains(u, "-sid-") && !strings.Contains(u, "-t-")
 }
 
+type hunterUsageAPIKeys interface { APIKeyQuotaUpdater; GetByID(context.Context,int64)(*APIKey,error) }
+
 type OpenAITurnStateHunterService struct {
 	gateway     *OpenAIGatewayService
 	accounts    AccountRepository
 	proxies     ProxyRepository
 	prober      IPAPIProxyProber
-	apiKeys     *APIKeyService
+	apiKeys     hunterUsageAPIKeys
+ recordUsage func(context.Context,*OpenAIRecordUsageInput) error
 	leader      LeaderLockCache
 	owner       string
 	cursor      int64
@@ -296,7 +299,7 @@ func (s *OpenAITurnStateHunterService) gate(ctx context.Context, a *Account, st 
 	_ = s.save(ctx, a, st)
 	s.log(a, "", "hunter_gate", reason, nil)
 }
-func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg TurnStateHunterSettings) (bool, error) {
+func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg TurnStateHunterSettings, reservedWindow ...*time.Time) (bool, error) {
 	repo := s.gateway.settingService.settingRepo
 	cas, ok := repo.(SettingCompareAndSwapper)
 	if !ok {
@@ -332,6 +335,7 @@ func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg Tu
 			return false, err
 		}
 		if swapped {
+   if len(reservedWindow)>0 && reservedWindow[0]!=nil { *reservedWindow[0]=st.Start }
 			return true, nil
 		}
 	}
@@ -340,7 +344,7 @@ func (s *OpenAITurnStateHunterService) reserveGlobal(ctx context.Context, cfg Tu
 
 // releaseGlobal gives back a reservation when the proxy failed before an HTTP
 // response. Such a failure consumes no upstream request budget in KlN's model.
-func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context) error {
+func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context, reservedWindow time.Time) error {
 	repo := s.gateway.settingService.settingRepo
 	cas, ok := repo.(SettingCompareAndSwapper)
 	if !ok {
@@ -357,7 +361,7 @@ func (s *OpenAITurnStateHunterService) releaseGlobal(ctx context.Context) error 
 		if err := json.Unmarshal([]byte(raw), &st); err != nil {
 			return err
 		}
-		if st.Count <= 0 {
+		if !st.Start.Equal(reservedWindow) || st.Count <= 0 {
 			return nil
 		}
 		st.Count--
@@ -483,7 +487,7 @@ func (s *OpenAITurnStateHunterService) huntOne(ctx context.Context, old *Account
 }
 
 // Only transport failures with no HTTP response receive short retries. All three
-// attempts build new requests/connections and reserve independent budget entries.
+// attempts build new requests/connections; transport errors refund their reservations.
 // Backoff is persisted after each failure so interruption cannot skip it.
 func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Context, account *Account, model string, cfg TurnStateHunterSettings, selected Proxy, exit string, st openAITurnStateHuntState) (spent, halt bool) {
 	const maxAttempts = 3
@@ -527,7 +531,8 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 			s.gate(ctx, a, st, "account_cap")
 			return spent, false
 		}
-		allowed, err := s.reserveGlobal(ctx, cfg)
+		var reservedWindow time.Time
+ allowed, err := s.reserveGlobal(ctx, cfg, &reservedWindow)
 		if err != nil {
 			s.log(a, model, "hunter_storage_error", "budget_unavailable", nil)
 			return spent, true
@@ -557,7 +562,7 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 		st.HourCount-- // push consumes the allowance reserved above.
 		st.push(result)
 		if transportFailure {
-			if err := s.releaseGlobal(ctx); err != nil {
+			if err := s.releaseGlobal(context.WithoutCancel(ctx), reservedWindow); err != nil {
 				s.log(a, model, "hunter_storage_error", "transport_budget_release_failed", nil)
 			}
 		}
@@ -567,7 +572,7 @@ func (s *OpenAITurnStateHunterService) probeWithTransportRetry(ctx context.Conte
 			st.NextAt = s.now().Add(openAITurnStateHuntBackoff(result.Status))
 		}
 		s.log(a, model, "hunter_attempt", result.Error, map[string]any{"proxy_id": result.ProxyID, "http_status": result.Status, "length": result.Chars, "baseline": result.Healthy, "headers_ms": result.LatencyMs, "hour_count": st.HourCount, "retry_attempt": attempt})
-		if s.save(ctx, a, st) != nil {
+		if s.save(context.WithoutCancel(ctx), a, st) != nil {
 			return spent, true
 		}
 		if ctx.Err() != nil {
@@ -664,16 +669,18 @@ func (s *OpenAITurnStateHunterService) probe(ctx context.Context, a *Account, mo
 }
 
 func (s *OpenAITurnStateHunterService) recordProbeUsage(ctx context.Context, account *Account, model string, cfg TurnStateHunterSettings, req *http.Request, headers http.Header, attempt openAITurnStateHuntAttempt) {
-	if s == nil || s.apiKeys == nil || cfg.UsageAPIKeyID <= 0 || account == nil || req == nil || account.Platform != PlatformOpenAI {
+	if s == nil || !cfg.UsageAccountingEnabled || account == nil || req == nil || account.Platform != PlatformOpenAI {
 		return
 	}
+ if s.apiKeys == nil || cfg.UsageAPIKeyID <= 0 { s.log(account,model,"hunter_usage_error","usage_not_configured",nil);return }
 	key, err := s.apiKeys.GetByID(ctx, cfg.UsageAPIKeyID)
-	if err != nil || key == nil || key.User == nil || !key.IsActive() {
+	if err != nil || key == nil || key.User == nil || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() || !key.User.IsActive() {
 		s.log(account, model, "hunter_usage_error", "usage_api_key_unavailable", map[string]any{"api_key_id": cfg.UsageAPIKeyID})
 		return
 	}
 	var subscription *UserSubscription
 	if key.Group != nil && key.Group.IsSubscriptionType() && key.GroupID != nil {
+		if s.gateway.userSubRepo==nil {s.log(account,model,"hunter_usage_error","usage_subscription_unavailable",nil);return}
 		subscription, err = s.gateway.userSubRepo.GetActiveByUserIDAndGroupID(ctx, key.User.ID, *key.GroupID)
 		if err != nil || subscription == nil {
 			s.log(account, model, "hunter_usage_error", "usage_subscription_unavailable", map[string]any{"api_key_id": cfg.UsageAPIKeyID})
@@ -689,7 +696,9 @@ func (s *OpenAITurnStateHunterService) recordProbeUsage(ctx context.Context, acc
 		UpstreamEndpoint: req.URL.Path, ReasoningEffort: &effort,
 		Duration: time.Duration(attempt.LatencyMs) * time.Millisecond,
 	}
-	err = s.gateway.RecordUsage(ctx, &OpenAIRecordUsageInput{
+	record := s.gateway.RecordUsage
+ if s.recordUsage != nil {record=s.recordUsage}
+ err = record(ctx, &OpenAIRecordUsageInput{
 		Result: result, APIKey: key, User: key.User, Account: account,
 		Subscription: subscription, InboundEndpoint: "turn-state-probe", UpstreamEndpoint: req.URL.Path,
 		UserAgent: req.Header.Get("User-Agent"), SessionID: req.Header.Get("session-id"),

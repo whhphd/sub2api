@@ -81,3 +81,13 @@ func (s *OpenAITurnStateHunterService) syncHold(ctx context.Context, account *Ac
  if err != nil { s.log(latest,model,"hunter_hold_error","transition_failed",nil); return }
  if changed { event:="hunter_hold_renewed";if release {event="hunter_hold_released"};s.log(latest,model,event,"policy_or_candidate",nil) }
 }
+
+// The settings save waits for this operation. Re-saving OFF retries cleanup even
+// if an earlier save persisted the policy but failed to refresh Redis.
+type TurnStateHoldReleaser interface {
+ ReleaseTurnStateHoldsIfDisabled(context.Context) (int,error)
+}
+type TurnStateHoldReleaseResult struct {
+ Released int `json:"released"`
+ Complete bool `json:"complete"`
+}
