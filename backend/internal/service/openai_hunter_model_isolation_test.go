@@ -96,3 +96,15 @@ func TestHunterBackoffIsolationAndLegacy403(t *testing.T) {
 	st2.upgradeBackoff(now)
 	require.True(t, st2.NextAt.After(now))
 }
+
+func TestHunter403DoesNotBlockNextModelProbe(t *testing.T){
+ s,a,cfg:=newHunterTest(t);cfg.Models=[]string{"gpt-a","gpt-b"};_,err:=s.gateway.settingService.UpdateOpenAIOAuthRuntimePolicy(context.Background(),&cfg,nil,nil);require.NoError(t,err)
+ calls:=[]string{};s.probeOverride=func(_ context.Context,_ *Account,model string,_ TurnStateHunterSettings,p Proxy)openAITurnStateHuntAttempt{calls=append(calls,model);status:=200;if model=="gpt-a"{status=403};return openAITurnStateHuntAttempt{At:s.now(),Model:model,ProxyID:p.ID,Status:status}}
+ spent,halt:=s.huntOne(context.Background(),a,cfg);require.True(t,spent);require.False(t,halt)
+ spent,halt=s.huntOne(context.Background(),a,cfg);require.True(t,spent);require.False(t,halt);require.Equal(t,[]string{"gpt-a","gpt-b"},calls)
+}
+func TestHunterQuotaChangeStopsTransportRetry(t *testing.T){
+ s,a,cfg:=newHunterTest(t);calls:=0;s.probeOverride=func(_ context.Context,_ *Account,model string,_ TurnStateHunterSettings,p Proxy)openAITurnStateHuntAttempt{calls++;return openAITurnStateHuntAttempt{At:s.now(),Model:model,ProxyID:p.ID,Error:"transport_error"}}
+ s.retryWait=func(context.Context)error{repo,ok:=s.accounts.(*hunterAccounts);require.True(t,ok);until:=s.now().Add(time.Hour);repo.account.RateLimitResetAt=&until;return nil}
+ spent,_:=s.huntOne(context.Background(),a,cfg);require.True(t,spent);require.Equal(t,1,calls)
+}

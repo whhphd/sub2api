@@ -78,7 +78,12 @@ func (st *openAITurnStateHuntState) applyBackoff(result *openAITurnStateHuntAtte
 			result.BackoffScope = "proxy"
 			result.BackoffUntil = now.Add(time.Minute)
 		} else {
-			if result.Status == 0 || result.Status == http.StatusOK {result.BackoffScope="model";result.BackoffUntil=now.Add(15*time.Minute)}else{result.Error, result.BackoffScope, result.BackoffUntil = classifyHunterError(nil, result.Status, nil, nil, now)}
+			if result.Status == 0 || result.Status == http.StatusOK {
+				result.BackoffScope = "model"
+				result.BackoffUntil = now.Add(15 * time.Minute)
+			} else {
+				result.Error, result.BackoffScope, result.BackoffUntil = classifyHunterError(nil, result.Status, nil, nil, now)
+			}
 		}
 	}
 	switch result.BackoffScope {
@@ -88,12 +93,12 @@ func (st *openAITurnStateHuntState) applyBackoff(result *openAITurnStateHuntAtte
 		if st.ProxyNext == nil {
 			st.ProxyNext = map[string]time.Time{}
 		}
-		boundedHunterCooldown(st.ProxyNext,strconv.FormatInt(result.ProxyID,10),result.BackoffUntil,64)
+		boundedHunterCooldown(st.ProxyNext, strconv.FormatInt(result.ProxyID, 10), result.BackoffUntil, 64)
 	default:
 		if st.ModelNext == nil {
 			st.ModelNext = map[string]time.Time{}
 		}
-		boundedHunterCooldown(st.ModelNext,result.Model,result.BackoffUntil,16)
+		boundedHunterCooldown(st.ModelNext, result.Model, result.BackoffUntil, 16)
 	}
 	for k, v := range st.ModelNext {
 		if !now.Before(v) {
@@ -134,7 +139,17 @@ func (s *OpenAITurnStateHunterService) hunterAccountBlocked(ctx context.Context,
 	return false
 }
 
-func boundedHunterCooldown(entries map[string]time.Time,key string,until time.Time,limit int){
- if _,exists:=entries[key];!exists&&len(entries)>=limit{oldest:="";var at time.Time;for k,v:=range entries{if oldest==""||v.Before(at){oldest=k;at=v}};delete(entries,oldest)}
- entries[key]=until
+func boundedHunterCooldown(entries map[string]time.Time, key string, until time.Time, limit int) {
+	if _, exists := entries[key]; !exists && len(entries) >= limit {
+		oldest := ""
+		var at time.Time
+		for k, v := range entries {
+			if oldest == "" || v.Before(at) {
+				oldest = k
+				at = v
+			}
+		}
+		delete(entries, oldest)
+	}
+	entries[key] = until
 }
