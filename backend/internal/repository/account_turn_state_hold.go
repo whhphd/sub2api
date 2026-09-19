@@ -28,12 +28,14 @@ func turnStateHoldPolicyLocked(ctx context.Context, tx *dbent.Tx, exemptions ...
 	if err = rows.Scan(&raw); err != nil {
 		return false, err
 	}
-	var p service.OpenAIOAuthRuntimeSettings
+	p := *service.DefaultOpenAIOAuthRuntimeSettings(false)
 	if err = json.Unmarshal([]byte(raw), &p); err != nil {
 		return false, err
 	}
-	if len(exemptions)>0 && exemptions[0]!=nil{*exemptions[0]=p.TurnStateHunter.HoldExcludedModels}
- return p.TurnStateAutoEnabled && p.TurnStateHunter.Enabled && p.TurnStateHunter.HoldWhenDegraded, nil
+	if len(exemptions) > 0 && exemptions[0] != nil {
+		*exemptions[0] = p.TurnStateHunter.HoldExcludedModels
+	}
+	return p.TurnStateAutoEnabled && p.TurnStateHunter.Enabled && p.TurnStateHunter.HoldWhenDegraded, nil
 }
 
 func (r *accountRepository) CompareAndSwapTurnStateHold(ctx context.Context, expected *service.Account, until *time.Time, reason string) (bool, error) {
@@ -68,8 +70,13 @@ func (r *accountRepository) CompareAndSwapTurnStateHold(ctx context.Context, exp
 	defer func() { _ = tx.Rollback() }()
 	if until != nil {
 		var excluded []string
- enabled, e := turnStateHoldPolicyLocked(ctx, tx,&excluded)
- exempt:=false;for _,v:=range excluded{if v==model{exempt=true}}
+		enabled, e := turnStateHoldPolicyLocked(ctx, tx, &excluded)
+		exempt := false
+		for _, v := range excluded {
+			if v == model {
+				exempt = true
+			}
+		}
 		if e != nil || !enabled || exempt {
 			return false, e
 		}
@@ -108,13 +115,15 @@ func (r *accountRepository) ReleaseTurnStateHoldsIfDisabled(ctx context.Context)
 	}
 	defer func() { _ = tx.Rollback() }()
 	var excluded []string
- enabled, err := turnStateHoldPolicyLocked(ctx, tx,&excluded)
+	enabled, err := turnStateHoldPolicyLocked(ctx, tx, &excluded)
 	if err != nil {
 		return 0, err
 	}
-	if enabled && len(excluded)==0{return 0,errors.New("hold policy changed concurrently; reload settings")}
- exclusions,_:=json.Marshal(excluded)
- result,err:=tx.Client().ExecContext(ctx,`WITH targets AS (
+	if enabled && len(excluded) == 0 {
+		return 0, errors.New("hold policy changed concurrently; reload settings")
+	}
+	exclusions, _ := json.Marshal(excluded)
+	result, err := tx.Client().ExecContext(ctx, `WITH targets AS (
  SELECT id, COALESCE((SELECT jsonb_object_agg(key,value) FROM jsonb_each(COALESCE(extra->'openai_turn_state_model_holds','{}'::jsonb)) WHERE $2::boolean AND NOT ($3::jsonb ? key)),'{}'::jsonb) AS kept,
  (temp_unschedulable_reason LIKE 'turn_state_hold:%' AND (NOT $2::boolean OR $3::jsonb ? substring(temp_unschedulable_reason from length('turn_state_hold:')+1))) AS clear_legacy
  FROM accounts WHERE platform='openai' AND type='oauth' AND deleted_at IS NULL FOR NO KEY UPDATE
@@ -123,7 +132,7 @@ func (r *accountRepository) ReleaseTurnStateHoldsIfDisabled(ctx context.Context)
  temp_unschedulable_until=CASE WHEN t.clear_legacy THEN NULL ELSE a.temp_unschedulable_until END,
  temp_unschedulable_reason=CASE WHEN t.clear_legacy THEN NULL ELSE a.temp_unschedulable_reason END,updated_at=NOW()
  FROM targets t WHERE a.id=t.id AND (t.clear_legacy OR COALESCE(a.extra->'openai_turn_state_model_holds','{}'::jsonb)<>t.kept) RETURNING a.id)
- INSERT INTO scheduler_outbox(event_type,account_id) SELECT $1,id FROM released`,service.SchedulerOutboxEventAccountChanged,enabled,string(exclusions))
+ INSERT INTO scheduler_outbox(event_type,account_id) SELECT $1,id FROM released`, service.SchedulerOutboxEventAccountChanged, enabled, string(exclusions))
 	if err != nil {
 		return 0, err
 	}

@@ -48,7 +48,7 @@ const app = useAppStore()
 const loading = ref(true), saving = ref(false), loadError = ref(''), autoEnabled = ref(false)
 const excludedModelsText = ref('')
 const modelsText = ref(''), proxySearch = ref(''), proxies = ref<Proxy[]>([])
-const form = reactive<TurnStateHunterConfig>({ enabled: false, models: [], hold_excluded_models: [], proxy_ids: [], auto_models: false, rotating_proxy_ids: [], hold_when_degraded: false, usage_accounting_enabled: true, usage_api_key_id: 0, max_per_hour: 300, per_account_max_per_hour: 30, gap_seconds: 20, lead_minutes: 10, retry_minutes: 10, idle_minutes: 60, reasoning_effort: 'high' })
+const form = reactive<TurnStateHunterConfig>({ enabled: false, models: [], hold_excluded_models: ['gpt-5.6-terra'], proxy_ids: [], auto_models: false, rotating_proxy_ids: [], hold_when_degraded: false, usage_accounting_enabled: true, usage_api_key_id: 0, max_per_hour: 300, per_account_max_per_hour: 30, gap_seconds: 20, lead_minutes: 10, retry_minutes: 10, idle_minutes: 60, reasoning_effort: 'high' })
 const numericFields = [
   { key: 'max_per_hour', min: 1, max: undefined }, { key: 'per_account_max_per_hour', min: 1, max: undefined },
   { key: 'gap_seconds', min: 1, max: 600 }, { key: 'lead_minutes', min: 1, max: 55 },
